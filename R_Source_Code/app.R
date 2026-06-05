@@ -131,7 +131,7 @@ $(document).on('shiny:connected',async function(){Shiny.setInputValue('jspsych_d
 ## UI
 ## ======================================================================
 ui <- page_fluid(
-  theme = bs_theme(version=5, primary="#16263d", base_font=font_google("Open Sans")),
+  theme = bs_theme(version=5, primary="#16263d"),
   tags$head(tags$script(HTML(idb_js))),
   tags$style(HTML("
     .demo-banner{background:#16263d;color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;margin-bottom:10px;}
