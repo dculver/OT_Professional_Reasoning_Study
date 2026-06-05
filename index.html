@@ -28,6 +28,34 @@
     window.__loadTranscriber = (model, cb) =>
       pipeline("automatic-speech-recognition", model, { progress_callback: cb });
   </script>
+
+  <style>
+    /* Make jsPsych's default (dark) text readable on the navy background */
+    .jspsych-display-element, .jspsych-content { color:#dbe6f0; }
+    .jspsych-content h1, .jspsych-content h2, .jspsych-content h3,
+    .jspsych-content h4, .jspsych-content p, .jspsych-content label,
+    .jspsych-content span, .jspsych-survey-text-question label { color:#dbe6f0; }
+    /* Inputs stay dark-on-white for legibility while typing */
+    .jspsych-content input[type="text"], .jspsych-content textarea,
+    .jspsych-content select { color:#16263d; background:#ffffff; }
+    /* Buttons: dark text on a light button so they stay readable */
+    .jspsych-btn { color:#16263d; background:#e8eef5; border:1px solid #b8c6d6; }
+    .jspsych-btn:hover { background:#ffffff; }
+
+    /* High-contrast eye-tracking dots during calibration/validation/setup.
+       Several selectors are listed because the calibration point class name
+       varies by plugin version -- the bright fill + outline applies to whichever
+       is present. */
+    .jspsych-webgazer-calibrate-point,
+    .calibration-point,
+    div[id^="calibration-point"],
+    #webgazerGazeDot {
+      background-color:#ffd400 !important;
+      border:2px solid #16263d !important;
+      box-shadow:0 0 8px 2px rgba(255,212,0,0.8) !important;
+      opacity:1 !important;
+    }
+  </style>
 </head>
 
 <body style="margin:0; padding:0; background:#0f1b2d; font-family:'Segoe UI',Arial,sans-serif;">
@@ -121,7 +149,45 @@ function stopScreenRecording(id) {
 }
 
 /* =====================================================================
-   jsPsych init + final OSF save
+   OSF / DataPipe upload helpers
+   ===================================================================== */
+function uniqueName(tag) {
+  const id    = study.participant_code || study.sub_id_from_url || "ANON";
+  const stamp = new Date().toISOString().replace(/[:.]/g,"-");
+  const rand  = Math.random().toString(36).substr(2,5);
+  return id + "_" + tag + "_" + stamp + "_" + rand + ".json";
+}
+function postToDataPipe(filename, dataObj) {
+  return fetch("https://pipe.jspsych.org/api/data/", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Accept":"*/*" },
+    body: JSON.stringify({ experimentID: CONFIG.OSF_EXPERIMENT_ID, filename, data: JSON.stringify(dataObj) })
+  }).then(async resp => {
+    let body = null; try { body = await resp.json(); } catch (e) { body = await resp.text(); }
+    return { ok: resp.ok && !(body && body.error), status: resp.status, body };
+  });
+}
+// Fire-and-forget: banks one case as soon as its narration finishes, so a
+// dropout later in the session still preserves the completed case.
+function uploadCaseInBackground(caseId) {
+  const payload = {
+    participant_code: study.participant_code,
+    sub_id_from_url: study.sub_id_from_url,
+    experimental_condition: study.experimental_condition,
+    calibration: study.calibration,
+    case_id: caseId,
+    partial: true,
+    "case": study.cases[caseId] || {},
+    started_at: study.started_at,
+    saved_at: new Date().toISOString()
+  };
+  postToDataPipe(uniqueName("case" + caseId), payload)
+    .then(r => console.log("Per-case OSF save (case " + caseId + "):", r.ok ? "OK" : "REJECTED", r.status, r.body))
+    .catch(e => console.error("Per-case OSF save (case " + caseId + ") failed:", e));
+}
+
+/* =====================================================================
+   jsPsych init + final OSF save (consolidated record)
    ===================================================================== */
 var jsPsych = initJsPsych({
   extensions: [{ type: jsPsychExtensionWebgazer }],
@@ -134,19 +200,26 @@ var jsPsych = initJsPsych({
       experimental_condition: study.experimental_condition,
       calibration: study.calibration,
       cases: study.cases,
+      partial: false,
       user_agent: study.user_agent,
       started_at: study.started_at,
       finished_at: new Date().toISOString()
     };
-    const fn = (study.participant_code || study.sub_id_from_url || "ANON") + "_OT_session.json";
     try {
-      await fetch("https://pipe.jspsych.org/api/data/", {
-        method:"POST", headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ experimentID: CONFIG.OSF_EXPERIMENT_ID, filename: fn, data: JSON.stringify(payload) })
-      });
-      document.body.innerHTML = `<div style="text-align:center;margin-top:18%;color:#27ae60;"><h3>Sync complete. You may close this tab.</h3></div>`;
+      const r = await postToDataPipe(uniqueName("full"), payload);
+      if (r.ok) {
+        document.body.innerHTML = `<div style="text-align:center;margin-top:18%;color:#27ae60;"><h3>Sync complete. You may close this tab.</h3></div>`;
+      } else {
+        console.error("DataPipe rejected the upload:", r.status, r.body);
+        document.body.innerHTML = `<div style="text-align:center;margin-top:14%;color:#e74c3c;max-width:680px;margin-left:auto;margin-right:auto;">
+          <h3>OSF save was rejected.</h3>
+          <p>Status: ${r.status}</p>
+          <p style="font-family:monospace;font-size:13px;background:#1d3450;color:#fff;padding:10px;border-radius:6px;word-break:break-word;">${JSON.stringify(r.body)}</p>
+          <p>Open the console for details, then notify the researcher.</p></div>`;
+      }
     } catch (e) {
-      document.body.innerHTML = `<div style="text-align:center;margin-top:18%;color:#e74c3c;"><h3>Cloud sync failed \u2014 please notify the researcher.</h3></div>`;
+      console.error("OSF upload network error:", e);
+      document.body.innerHTML = `<div style="text-align:center;margin-top:18%;color:#e74c3c;"><h3>Cloud sync failed (network/CORS): ${e.message}</h3><p>Please notify the researcher.</p></div>`;
     }
   }
 });
@@ -186,7 +259,7 @@ timeline.push({
 });
 
 var calib_points = [[10,10],[50,10],[90,10],[10,50],[50,50],[90,50],[10,90],[50,90],[90,90],[30,30],[70,30],[30,70],[70,70]];
-var calibration_grid = { type: jsPsychWebgazerCalibrate, calibration_mode:"click", calibration_points: calib_points, point_size:18 };
+var calibration_grid = { type: jsPsychWebgazerCalibrate, calibration_mode:"click", calibration_points: calib_points, point_size:26 };
 var validation_instructions = {
   type: jsPsychHtmlKeyboardResponse,
   stimulus:`<div style="text-align:center;padding:20px;color:#cdd9e5;">
@@ -479,6 +552,7 @@ function buildCaseTrials(c) {
           }
           study.cases[c.id].transcript_segments = segs;
           delete study.cases[c.id]._gaze_raw;
+          uploadCaseInBackground(c.id);   // bank this case now (survives later dropout)
           if (aStream) aStream.getTracks().forEach(t => t.stop());
           if (m.url){ URL.revokeObjectURL(m.url); m.url=null; m.blob=null; }
           jsPsych.finishTrial();
