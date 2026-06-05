@@ -1,454 +1,539 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <title>Multimodal OT Case Study Simulation</title>
-    <script src="js/jspsych.js"></script>
-    <link href="js/jspsych.css" rel="stylesheet" type="text/css" />
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Multimodal OT Case Simulation (EHR)</title>
 
-    <script src="js/plugin-html-keyboard-response.js"></script>
-    <script src="js/plugin-image-keyboard-response.js"></script>
-    <script src="js/plugin-preload.js"></script>
-    <script src="js/plugin-call-function.js"></script> <script src="js/webgazer.js"></script>
-    <script src="js/extension-webgazer.js"></script>
-    <script src="js/plugin-webgazer-init-camera.js"></script>
-    <script src="js/plugin-webgazer-init-calibrate.js"></script>
-    <script src="js/plugin-webgazer-validate.js"></script>
+  <script src="js/jspsych.js"></script>
+  <link href="js/jspsych.css" rel="stylesheet" type="text/css" />
+  <script src="js/plugin-html-keyboard-response.js"></script>
+  <script src="js/plugin-survey-text.js"></script>
+  <script src="js/plugin-preload.js"></script>
+  <script src="js/plugin-call-function.js"></script>
 
-    <script src="js/plugin-initialize-microphone.js"></script>
-    <script src="js/plugin-html-audio-response.js"></script>
-  </head>
-  <body style="margin:0; padding:0; background:#ecf0f1;"></body>
-  <script>
+  <script src="js/webgazer.js"></script>
+  <script src="js/extension-webgazer.js"></script>
+  <script src="js/plugin-webgazer-init-camera.js"></script>
+  <script src="js/plugin-webgazer-init-calibrate.js"></script>
+  <script src="js/plugin-webgazer-validate.js"></script>
+  <script src="js/plugin-initialize-microphone.js"></script>
 
-    /* ================= GLOBAL VARIABLES ================= */
-    let rawCase1Data = null;
-    let rawCase2Data = null; 
-    let playbackTimeline = [];
-    let playbackGazePoints = [];
-    let totalPlaybackDuration = 0;
-    let playbackStartTime = 0;
-    let isPlaybackActive = false;
-
-    // WebGazer video interceptor
-    if (window.webgazer && typeof webgazer.showVideo === 'function') {
-      var originalShowVideo = webgazer.showVideo;
-      webgazer.showVideo = function(val) {
-        if (document.getElementById('webgazerVideoFeed')) {
-          return originalShowVideo.apply(this, arguments);
-        } else { return this; }
-      };
-    }
-
-    /* ================= INITIALIZATION & OSF SAVE ================= */
-    var jsPsych = initJsPsych({
-      extensions: [{ type: jsPsychExtensionWebgazer }],
-      on_finish: function() {
-        // Final Loading Screen
-        document.body.innerHTML = `
-          <div style="text-align:center; margin-top:20%; font-family:Arial; color:#2c3e50;">
-            <h3>Saving high-fidelity session data...</h3>
-            <p>Please wait...</p>
-          </div>
-        `;
-
-        let finalDataJson = jsPsych.data.get().json();
-        let uniqueId = "P_" + Math.random().toString(36).substr(2, 9).toUpperCase();
-
-        // Send full session to OSF
-        fetch("https://pipe.jspsych.org/api/data/", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            experimentID: "7to0EiezFvtE", 
-            filename: uniqueId + "_OT_Full_Session.json",
-            data: finalDataJson
-          })
-        })
-        .then(() => {
-            document.body.innerHTML = `<div style="text-align:center; margin-top:20%; font-family:Arial; color:green;"><h3>Sync complete! Thank you for participating. You may close this tab.</h3></div>`;
-        })
-        .catch((error) => {
-            console.error(error);
-            document.body.innerHTML = `<div style="text-align:center; margin-top:20%; font-family:Arial; color:red;"><h3>Data saved locally, but OSF cloud sync failed. Please notify researcher.</h3></div>`;
-        });
-      }
-    });
-
-    var timeline = [];
-
-    /* ================= RANDOMIZATION ================= */
-    // Assign to experimental (dashboard) or control group
-    var assigned_condition = jsPsych.randomization.sampleWithoutReplacement(['dashboard', 'control'], 1)[0];
-    
-    // Stamp the condition onto every row of data
-    jsPsych.data.addProperties({
-        experimental_condition: assigned_condition
-    });
-
-
-    /* ================= REPLAY HELPER (With Smoothing) ================= */
-    function buildPlaybackTimeline(trialData) {
-      playbackTimeline = [];
-      playbackGazePoints = [];
-      if (!trialData) return;
-      totalPlaybackDuration = trialData.rt;
-
-      let events = trialData.case_events;
-      if (events && events.length > 0) {
-          for(let i = 0; i < events.length; i++) {
-              let start = events[i].timestamp;
-              let end = (i < events.length - 1) ? events[i+1].timestamp : trialData.rt;
-              playbackTimeline.push({ startTime: start, endTime: end, html: events[i].html });
-          }
-      }
-
-      let rawPoints = [];
-      if(trialData.webgazer_data && Array.isArray(trialData.webgazer_data)) {
-          trialData.webgazer_data.forEach(p => rawPoints.push({ x: p.x, y: p.y, t: p.t }));
-      }
-      rawPoints.sort((a, b) => a.t - b.t);
-
-      // 5-frame rolling average for jitter reduction
-      let windowSize = 5;
-      for (let i = 0; i < rawPoints.length; i++) {
-          let startIdx = Math.max(0, i - windowSize);
-          let subset = rawPoints.slice(startIdx, i + 1);
-          let avgX = subset.reduce((sum, p) => sum + p.x, 0) / subset.length;
-          let avgY = subset.reduce((sum, p) => sum + p.y, 0) / subset.length;
-          playbackGazePoints.push({ x: avgX, y: avgY, t: rawPoints[i].t });
-      }
-    }
-
-
-    /* ================= SETUP & CALIBRATION ================= */
-    timeline.push({
-      type: jsPsychInitializeMicrophone,
-      error_message: "<p>Microphone access is required.</p>"
-    });
-
-    timeline.push({
-      type: jsPsychWebgazerInitCamera,
-      instructions: "<p>Center your face in the webcam window. Please ensure your face is well-lit and your screen brightness is up.</p>",
-      button_text: "Continue to Calibration"
-    });
-
-    var calibration_grid = {
-      type: jsPsychWebgazerCalibrate,
-      calibration_mode: 'click',
-      calibration_points: [[10,10], [10,50], [10,90], [50,10], [50,50], [50,90], [90,10], [90,50], [90,90]],
-      point_size: 20
-    };
-
-    var validation_instructions = {
-      type: jsPsychHtmlKeyboardResponse,
-      stimulus: `
-        <div style="font-family:Arial; text-align:center; padding: 20px;">
-          <h3 style="color:#2c3e50;">Calibration Complete. Now Testing Accuracy.</h3>
-          <p style="font-size: 18px;">A new set of dots will appear. <strong>Do not click them.</strong></p>
-          <p style="font-size: 18px;">Just <strong>look</strong> directly at each dot until it disappears.</p>
-          <p style="color:#7f8c8d; margin-top:30px;">Press any key to begin.</p>
-        </div>
-      `
-    };
-
-    var validation_trial = {
-      type: jsPsychWebgazerValidate,
-      validation_points: [[10,10], [10,50], [10,90], [50,10], [50,50], [50,90], [90,10], [90,50], [90,90]],
-      roi_radius: 200, 
-      time_limit: 2000, 
-      show_validation_data: false
-    };
-
-    var calibrate_and_validate_loop = {
-      timeline: [calibration_grid, validation_instructions, validation_trial],
-      loop_function: function(data) {
-        var validation_data = data.filter({trial_type: 'webgazer-validate'}).last(1).values()[0];
-        if (validation_data.percent_in_roi < 70) {
-            alert("Your eye-tracking accuracy was too low. Please check your lighting, keep your head completely still, and try again.");
-            return true; 
-        } else {
-            jsPsych.data.addProperties({
-                calibration_accuracy_percent: validation_data.percent_in_roi,
-                calibration_pixel_offset: validation_data.average_offset
-            });
-            return false; 
-        }
-      }
-    };
-    timeline.push(calibrate_and_validate_loop);
-
-
-    /* ================= CASE 1: EVELYN S ================= */
-    const tabContents1 = {
-      welcome: `<h2 style="color:#2c3e50;">Case Brief</h2><p style="font-size:18px;">Review Evelyn's chart and ADL video.</p>`,
-      history: `<h2 style="color:#2c3e50;">Medical Chart</h2><div style="background:#fff; padding:20px; font-size:16px;"><p><strong>Patient:</strong> Evelyn S.</p><p><strong>Diagnosis:</strong> Ischemic stroke (L MCA). R hemiparesis.</p><p><strong>Goal:</strong> Independent meal prep.</p></div>`,
-      video: `<h2 style="color:#2c3e50;">ADL Observation</h2><div style="background:#111; color:#aaa; height:400px; display:flex; align-items:center; justify-content:center;"><span>▶️ Evelyn struggling to stabilize bread while spreading peanut butter.</span></div>`,
-      eval: `<h2 style="color:#2c3e50;">Intervention Plan</h2><div style="background:#fff; padding:20px;"><label><input type="radio" name="ae"> Rocker Knife</label><br><label><input type="radio" name="ae"> Dycem</label><br><label><input type="radio" name="ae"> Universal Cuff</label></div>`
-    };
-
-    var ui_template_1 = `
-      <div id="ot-container-1" style="display:flex; width:100vw; height:100vh; text-align:left; font-family:Arial; overflow:hidden;">
-         <div style="width:280px; background:#2c3e50; color:white; padding:30px 20px;">
-            <h3 style="color:#3498db;">Case #1</h3><p>Patient: Evelyn S.<br>Dx: Stroke</p><hr>
-            <button id="t1_welcome" style="width:100%; padding:12px; margin-bottom:10px;">1. Case Brief</button>
-            <button id="t1_history" style="width:100%; padding:12px; margin-bottom:10px;">2. Medical Chart</button>
-            <button id="t1_video" style="width:100%; padding:12px; margin-bottom:10px;">3. ADL Observation</button>
-            <button id="t1_eval" style="width:100%; padding:12px; margin-bottom:10px;">4. Intervention Plan</button>
-         </div>
-         <div style="flex-grow:1; padding:50px; background:#ecf0f1; position:relative;">
-            <div id="dynamic_content_1"></div>
-            <button id="btn_submit_1" style="position:absolute; bottom:50px; right:50px; padding:15px 30px; background:#27ae60; color:white; font-weight:bold;">Submit</button>
-         </div>
-      </div>
-    `;
-
-    timeline.push({
-      type: jsPsychHtmlKeyboardResponse,
-      stimulus: ui_template_1,
-      choices: "NO_KEYS",
-      extensions: [{ type: jsPsychExtensionWebgazer, params: { targets: ['#ot-container-1'] } }],
-      data: { case_id: 1 },
-      on_load: function() {
-        let liveDot = document.getElementById('webgazerGazeDot');
-        if (liveDot) liveDot.style.display = 'none';
-
-        let caseStartTime = performance.now();
-        let caseEvents = [];
-
-        function logState(tabName) {
-          caseEvents.push({ state: tabName, html: tabContents1[tabName], timestamp: performance.now() - caseStartTime });
-          document.getElementById('dynamic_content_1').innerHTML = tabContents1[tabName];
-        }
-        logState('welcome');
-        document.getElementById('t1_welcome').addEventListener('click', () => logState('welcome'));
-        document.getElementById('t1_history').addEventListener('click', () => logState('history'));
-        document.getElementById('t1_video').addEventListener('click', () => logState('video'));
-        document.getElementById('t1_eval').addEventListener('click', () => logState('eval'));
-        document.getElementById('btn_submit_1').addEventListener('click', () => jsPsych.finishTrial({ case_events: caseEvents }));
-      },
-      on_finish: function(data) { rawCase1Data = data; }
-    });
-
-    timeline.push({
-      type: jsPsychHtmlKeyboardResponse,
-      stimulus: '<div style="text-align:center; font-family:Arial;"><h3>Processing media...</h3></div>',
-      choices: "NO_KEYS", trial_duration: 1000,
-      on_load: function() { buildPlaybackTimeline(rawCase1Data); }
-    });
-
-    timeline.push({
-      type: jsPsychHtmlAudioResponse,
-      stimulus: `<div style="font-family:Arial; text-align:left;">
-          <div style="position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:10000; background:#fff; padding:15px; border:2px solid #2980b9; text-align:center;">
-            <h4>Retrospective Review</h4><p style="color:red; margin:0;">🎙️ Audio Active. Narrate your reasoning.</p>
-          </div>
-          ${ui_template_1.replace('id="dynamic_content_1"', 'id="replay_content"')}
-          <canvas id="replay-gaze-overlay" willReadFrequently="true" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:9999; pointer-events:none;"></canvas>
-        </div>`,
-      recording_duration: 60000, show_done_button: true, data: { task: 'rta_case_1' },
-      on_load: function() {
-        playbackStartTime = performance.now();
-        isPlaybackActive = true;
-        function renderReplayLoop() {
-          if (!isPlaybackActive) return; 
-          let display = document.getElementById('replay_content');
-          let liveCanvas = document.getElementById('replay-gaze-overlay');
-          if (!display || !liveCanvas) return requestAnimationFrame(renderReplayLoop);
-
-          let elapsed = performance.now() - playbackStartTime;
-          if (elapsed > totalPlaybackDuration) { playbackStartTime = performance.now(); elapsed = 0; }
-
-          let currentState = playbackTimeline.find(s => elapsed >= s.startTime && elapsed < s.endTime);
-          if (currentState && display.innerHTML !== currentState.html) display.innerHTML = currentState.html;
-
-          liveCanvas.width = window.innerWidth; liveCanvas.height = window.innerHeight;
-          let ctx = liveCanvas.getContext('2d');
-          ctx.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
-          let gazeIndex = 0;
-          while (gazeIndex < playbackGazePoints.length && playbackGazePoints[gazeIndex].t < elapsed) gazeIndex++;
-          if (gazeIndex > 0) {
-            let p = playbackGazePoints[gazeIndex - 1];
-            if (elapsed - p.t < 400) { ctx.beginPath(); ctx.arc(p.x, p.y, 22, 0, 2*Math.PI); ctx.fillStyle = "rgba(217,83,79,0.75)"; ctx.fill(); }
-          }
-          requestAnimationFrame(renderReplayLoop);
-        }
-        requestAnimationFrame(renderReplayLoop);
-      },
-      on_finish: function() { isPlaybackActive = false; }
-    });
-
-    /* ================= MID-POINT INTERVENTION ================= */
-    timeline.push({
-        type: jsPsychCallFunction,
-        func: function() {
-            return new Promise((resolve) => {
-                try {
-                    let currentData = jsPsych.data.get().json();
-                    let request = indexedDB.open("OT_Simulation_DB", 1);
-                    
-                    // FIX 1: Automatically create the database if the user doesn't have it
-                    request.onupgradeneeded = (e) => {
-                        let db = e.target.result;
-                        if (!db.objectStoreNames.contains("sessions")) {
-                            db.createObjectStore("sessions", { keyPath: "id" });
-                        }
-                    };
-
-                    request.onsuccess = (e) => {
-                        try {
-                            let db = e.target.result;
-                            let tx = db.transaction("sessions", "readwrite");
-                            tx.objectStore("sessions").put({ id: "active_session", data: currentData });
-                            
-                            // Tell jsPsych to proceed to the Dashboard/Case 2 once saved
-                            tx.oncomplete = () => resolve();
-                            
-                            // FIX 2: If the save fails, still proceed (don't trap the user)
-                            tx.onerror = () => {
-                                console.error("IDB Save Failed");
-                                resolve();
-                            };
-                        } catch (err) {
-                            console.error("IDB transaction error:", err);
-                            resolve(); // Proceed anyway
-                        }
-                    };
-
-                    request.onerror = (e) => {
-                        console.error("IDB open error:", e);
-                        resolve(); // Proceed anyway
-                    };
-                } catch (fatalErr) {
-                    console.error("Fatal IDB error:", fatalErr);
-                    resolve(); // Proceed anyway
-                }
-            });
-        }, 
-        async: true
-    });
-
-    var dashboard_iframe_trial = {
-      type: jsPsychHtmlKeyboardResponse,
-      stimulus: `
-        <div style="width:100vw; height:100vh; display:flex; flex-direction:column; font-family:Arial;">
-            <div style="padding:15px; background:#2c3e50; color:white; display:flex; justify-content:space-between; align-items:center;">
-                <h3 style="margin:0;">Clinical Feedback Dashboard</h3>
-                <button id="btn_continue_case2" style="padding:10px 20px; font-weight:bold; background:#27ae60; color:white; border:none; cursor:pointer;">Continue to Case 2 ▶</button>
-            </div>
-            <iframe src="./dashboard/index.html" style="flex-grow:1; border:none; background:white;"></iframe>
-        </div>
-      `,
-      choices: "NO_KEYS",
-      on_load: function() {
-          document.getElementById('btn_continue_case2').addEventListener('click', function() { jsPsych.finishTrial(); });
-      }
-    };
-
-    timeline.push({
-      timeline: [dashboard_iframe_trial],
-      conditional_function: function() { return assigned_condition === 'dashboard'; }
-    });
-
-
-    /* ================= CASE 2: MARCUS T ================= */
-    const tabContents2 = {
-      welcome: `<h2 style="color:#2c3e50;">Case Brief</h2><p style="font-size:18px;">Review Marcus's chart and ADL video.</p>`,
-      history: `<h2 style="color:#2c3e50;">Medical Chart</h2><div style="background:#fff; padding:20px; font-size:16px;"><p><strong>Patient:</strong> Marcus T.</p><p><strong>Diagnosis:</strong> C6 Spinal Cord Injury (Incomplete).</p><p><strong>Status:</strong> Reduced grip strength, tenodesis grasp intact.</p></div>`,
-      video: `<h2 style="color:#2c3e50;">ADL Observation</h2><div style="background:#111; color:#aaa; height:400px; display:flex; align-items:center; justify-content:center;"><span>▶️ Marcus attempting to button a dress shirt.</span></div>`,
-      eval: `<h2 style="color:#2c3e50;">Intervention Plan</h2><div style="background:#fff; padding:20px;"><label><input type="radio" name="ae"> Button Hook</label><br><label><input type="radio" name="ae"> Dressing Stick</label><br><label><input type="radio" name="ae"> Velcro Conversions</label></div>`
-    };
-
-    var ui_template_2 = `
-      <div id="ot-container-2" style="display:flex; width:100vw; height:100vh; text-align:left; font-family:Arial; overflow:hidden;">
-         <div style="width:280px; background:#2c3e50; color:white; padding:30px 20px;">
-            <h3 style="color:#3498db;">Case #2</h3><p>Patient: Marcus T.<br>Dx: C6 SCI</p><hr>
-            <button id="t2_welcome" style="width:100%; padding:12px; margin-bottom:10px;">1. Case Brief</button>
-            <button id="t2_history" style="width:100%; padding:12px; margin-bottom:10px;">2. Medical Chart</button>
-            <button id="t2_video" style="width:100%; padding:12px; margin-bottom:10px;">3. ADL Observation</button>
-            <button id="t2_eval" style="width:100%; padding:12px; margin-bottom:10px;">4. Intervention Plan</button>
-         </div>
-         <div style="flex-grow:1; padding:50px; background:#ecf0f1; position:relative;">
-            <div id="dynamic_content_2"></div>
-            <button id="btn_submit_2" style="position:absolute; bottom:50px; right:50px; padding:15px 30px; background:#27ae60; color:white; font-weight:bold;">Submit</button>
-         </div>
-      </div>
-    `;
-
-    timeline.push({
-      type: jsPsychHtmlKeyboardResponse,
-      stimulus: ui_template_2,
-      choices: "NO_KEYS",
-      extensions: [{ type: jsPsychExtensionWebgazer, params: { targets: ['#ot-container-2'] } }],
-      data: { case_id: 2 },
-      on_load: function() {
-        let liveDot = document.getElementById('webgazerGazeDot');
-        if (liveDot) liveDot.style.display = 'none';
-        let caseStartTime = performance.now();
-        let caseEvents = [];
-        function logState(tabName) {
-          caseEvents.push({ state: tabName, html: tabContents2[tabName], timestamp: performance.now() - caseStartTime });
-          document.getElementById('dynamic_content_2').innerHTML = tabContents2[tabName];
-        }
-        logState('welcome');
-        document.getElementById('t2_welcome').addEventListener('click', () => logState('welcome'));
-        document.getElementById('t2_history').addEventListener('click', () => logState('history'));
-        document.getElementById('t2_video').addEventListener('click', () => logState('video'));
-        document.getElementById('t2_eval').addEventListener('click', () => logState('eval'));
-        document.getElementById('btn_submit_2').addEventListener('click', () => jsPsych.finishTrial({ case_events: caseEvents }));
-      },
-      on_finish: function(data) { rawCase2Data = data; }
-    });
-
-    timeline.push({
-      type: jsPsychHtmlKeyboardResponse,
-      stimulus: '<div style="text-align:center; font-family:Arial;"><h3>Processing media...</h3></div>',
-      choices: "NO_KEYS", trial_duration: 1000,
-      on_load: function() { buildPlaybackTimeline(rawCase2Data); }
-    });
-
-    timeline.push({
-      type: jsPsychHtmlAudioResponse,
-      stimulus: `<div style="font-family:Arial; text-align:left;">
-          <div style="position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:10000; background:#fff; padding:15px; border:2px solid #2980b9; text-align:center;">
-            <h4>Retrospective Review</h4><p style="color:red; margin:0;">🎙️ Audio Active. Narrate your reasoning.</p>
-          </div>
-          ${ui_template_2.replace('id="dynamic_content_2"', 'id="replay_content"')}
-          <canvas id="replay-gaze-overlay" willReadFrequently="true" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:9999; pointer-events:none;"></canvas>
-        </div>`,
-      recording_duration: 60000, show_done_button: true, data: { task: 'rta_case_2' },
-      on_load: function() {
-        playbackStartTime = performance.now();
-        isPlaybackActive = true;
-        function renderReplayLoop() {
-          if (!isPlaybackActive) return; 
-          let display = document.getElementById('replay_content');
-          let liveCanvas = document.getElementById('replay-gaze-overlay');
-          if (!display || !liveCanvas) return requestAnimationFrame(renderReplayLoop);
-
-          let elapsed = performance.now() - playbackStartTime;
-          if (elapsed > totalPlaybackDuration) { playbackStartTime = performance.now(); elapsed = 0; }
-
-          let currentState = playbackTimeline.find(s => elapsed >= s.startTime && elapsed < s.endTime);
-          if (currentState && display.innerHTML !== currentState.html) display.innerHTML = currentState.html;
-
-          liveCanvas.width = window.innerWidth; liveCanvas.height = window.innerHeight;
-          let ctx = liveCanvas.getContext('2d');
-          ctx.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
-          let gazeIndex = 0;
-          while (gazeIndex < playbackGazePoints.length && playbackGazePoints[gazeIndex].t < elapsed) gazeIndex++;
-          if (gazeIndex > 0) {
-            let p = playbackGazePoints[gazeIndex - 1];
-            if (elapsed - p.t < 400) { ctx.beginPath(); ctx.arc(p.x, p.y, 22, 0, 2*Math.PI); ctx.fillStyle = "rgba(217,83,79,0.75)"; ctx.fill(); }
-          }
-          requestAnimationFrame(renderReplayLoop);
-        }
-        requestAnimationFrame(renderReplayLoop);
-      },
-      on_finish: function() { isPlaybackActive = false; }
-    });
-
-    /* start the experiment */
-    jsPsych.run(timeline);
-
+  <!-- Local Whisper (small.en) via Transformers.js. Audio is transcribed in-browser;
+       only text + timestamps ever leave the machine. -->
+  <script type="module">
+    import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
+    env.allowLocalModels = false;
+    env.useBrowserCache = true;
+    window.__loadTranscriber = (model, cb) =>
+      pipeline("automatic-speech-recognition", model, { progress_callback: cb });
   </script>
+</head>
+
+<body style="margin:0; padding:0; background:#0f1b2d; font-family:'Segoe UI',Arial,sans-serif;">
+<script>
+/* =====================================================================
+   CONFIG
+   ===================================================================== */
+const CONFIG = {
+  OSF_EXPERIMENT_ID: "7to0EiezFvtE",
+  WHISPER_MODEL: "Xenova/whisper-small.en",  // medical terms; ~240MB first load. medium.en = better/heavier
+  FORCE_CONDITION: "dashboard",              // set to null for true random assignment
+  MIN_DWELL_MS: 150,                         // ignore gaze dwells shorter than this (noise)
+  SCREEN_FPS: 15,
+  RTA_MAX_SECONDS: 240
+};
+
+const CODE_LABELS = {
+  CUE:"Cue Acquisition", FRAME:"Problem Framing", HYPO:"Hypothesis Generation",
+  PATIENT:"Patient-Centered Reasoning", INTERV:"Intervention Selection",
+  MONITOR:"Metacognitive Monitoring"
+};
+
+/* =====================================================================
+   SESSION STATE (only de-identified text/numbers are ever transmitted)
+   ===================================================================== */
+const study = {
+  participant_code: null,
+  sub_id_from_url: new URLSearchParams(location.search).get("sub_id"),
+  experimental_condition: null,
+  calibration: {},
+  cases: {},
+  user_agent: navigator.userAgent,
+  started_at: new Date().toISOString()
+};
+const caseMedia = {};
+
+/* =====================================================================
+   TRANSCRIBER
+   ===================================================================== */
+let __transcriber = null, __transcriberPromise = null, __modelProgress = 0;
+function warmUpTranscriber() {
+  if (__transcriberPromise || !window.__loadTranscriber) return;
+  __transcriberPromise = window.__loadTranscriber(CONFIG.WHISPER_MODEL, (p) => {
+    if (p && p.progress != null) __modelProgress = Math.round(p.progress);
+  }).then(t => { __transcriber = t; }).catch(e => console.error("model load failed", e));
+}
+async function transcribeBlob(blob) {
+  try {
+    if (!window.__loadTranscriber) return { text:"[transcriber unavailable]", chunks:[] };
+    if (!__transcriber) { warmUpTranscriber(); await __transcriberPromise; }
+    if (!__transcriber) return { text:"[model not loaded]", chunks:[] };
+    const ab = await blob.arrayBuffer();
+    const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate:16000 });
+    const buf = await ctx.decodeAudioData(ab);
+    const out = await __transcriber(buf.getChannelData(0),
+      { return_timestamps:true, chunk_length_s:30, stride_length_s:5 });
+    return { text: out.text || "", chunks: Array.isArray(out.chunks) ? out.chunks : [] };
+  } catch (e) { console.error(e); return { text:"[transcription error]", chunks:[] }; }
+}
+
+/* =====================================================================
+   SCREEN RECORDING (retrospective cue source; stays local)
+   ===================================================================== */
+function pickVideoMime() {
+  for (const c of ["video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"])
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c;
+  return "";
+}
+async function startScreenRecording(id) {
+  const stream = await navigator.mediaDevices.getDisplayMedia({ video:{ frameRate:CONFIG.SCREEN_FPS }, audio:false });
+  const mime = pickVideoMime();
+  const rec = new MediaRecorder(stream, mime ? { mimeType:mime } : undefined);
+  const chunks = [];
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  caseMedia[id] = { stream, recorder:rec, chunks, blob:null, url:null };
+  rec.start(1000);
+  return stream;
+}
+function stopScreenRecording(id) {
+  return new Promise(res => {
+    const m = caseMedia[id];
+    if (!m || !m.recorder || m.recorder.state === "inactive") return res();
+    m.recorder.onstop = () => {
+      m.blob = new Blob(m.chunks, { type:m.recorder.mimeType || "video/webm" });
+      m.url = URL.createObjectURL(m.blob);
+      m.stream.getTracks().forEach(t => t.stop());
+      res();
+    };
+    try { m.recorder.stop(); } catch (e) { res(); }
+  });
+}
+
+/* =====================================================================
+   jsPsych init + final OSF save
+   ===================================================================== */
+var jsPsych = initJsPsych({
+  extensions: [{ type: jsPsychExtensionWebgazer }],
+  on_finish: async function () {
+    document.body.innerHTML = `<div style="text-align:center;margin-top:18%;color:#cdd9e5;">
+      <h3>Saving de-identified session data...</h3><p>No audio or video is uploaded.</p></div>`;
+    const payload = {
+      participant_code: study.participant_code,
+      sub_id_from_url: study.sub_id_from_url,
+      experimental_condition: study.experimental_condition,
+      calibration: study.calibration,
+      cases: study.cases,
+      user_agent: study.user_agent,
+      started_at: study.started_at,
+      finished_at: new Date().toISOString()
+    };
+    const fn = (study.participant_code || study.sub_id_from_url || "ANON") + "_OT_session.json";
+    try {
+      await fetch("https://pipe.jspsych.org/api/data/", {
+        method:"POST", headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ experimentID: CONFIG.OSF_EXPERIMENT_ID, filename: fn, data: JSON.stringify(payload) })
+      });
+      document.body.innerHTML = `<div style="text-align:center;margin-top:18%;color:#27ae60;"><h3>Sync complete. You may close this tab.</h3></div>`;
+    } catch (e) {
+      document.body.innerHTML = `<div style="text-align:center;margin-top:18%;color:#e74c3c;"><h3>Cloud sync failed \u2014 please notify the researcher.</h3></div>`;
+    }
+  }
+});
+
+var timeline = [];
+study.experimental_condition = CONFIG.FORCE_CONDITION ||
+  jsPsych.randomization.sampleWithoutReplacement(["dashboard","control"], 1)[0];
+
+/* =====================================================================
+   SELF-GENERATED CODE
+   ===================================================================== */
+timeline.push({
+  timeline: [{
+    type: jsPsychSurveyText,
+    preamble: `<div style="max-width:640px;margin:auto;text-align:left;color:#cdd9e5;">
+        <h3>Create your anonymous study code</h3>
+        <p>Links your data across phases without your name. Answer the same way each time.</p></div>`,
+    questions: [
+      { prompt:"First TWO letters of the street you grew up on:", required:true, name:"street" },
+      { prompt:"First TWO letters of your first pet's name:", required:true, name:"pet" },
+      { prompt:"Two-digit birth month (e.g., 03):", required:true, name:"month" }
+    ],
+    on_finish: d => { study.participant_code = (d.response.street + d.response.pet + d.response.month).toUpperCase().replace(/\s+/g,""); }
+  }],
+  conditional_function: () => !study.sub_id_from_url
+});
+
+/* =====================================================================
+   MEDIA + CALIBRATION (13 points)
+   ===================================================================== */
+timeline.push({ type: jsPsychInitializeMicrophone, error_message:"<p>Microphone access is required.</p>" });
+timeline.push({
+  type: jsPsychWebgazerInitCamera,
+  instructions:"<p>Center your face in the webcam window. Sit ~50cm away, ensure even lighting, and keep your head still during the study.</p>",
+  button_text:"Continue to calibration",
+  on_load: warmUpTranscriber
+});
+
+var calib_points = [[10,10],[50,10],[90,10],[10,50],[50,50],[90,50],[10,90],[50,90],[90,90],[30,30],[70,30],[30,70],[70,70]];
+var calibration_grid = { type: jsPsychWebgazerCalibrate, calibration_mode:"click", calibration_points: calib_points, point_size:18 };
+var validation_instructions = {
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus:`<div style="text-align:center;padding:20px;color:#cdd9e5;">
+      <h3>Calibration complete \u2014 testing accuracy.</h3>
+      <p style="font-size:18px;"><strong>Look</strong> at each dot until it disappears. Do not click.</p>
+      <p style="color:#8aa0b6;margin-top:24px;">Press any key to begin.</p></div>`
+};
+var validation_trial = {
+  type: jsPsychWebgazerValidate,
+  validation_points: calib_points,
+  roi_radius:180, time_limit:2200, show_validation_data:false
+};
+timeline.push({
+  timeline: [calibration_grid, validation_instructions, validation_trial],
+  loop_function: function (data) {
+    var v = data.filter({ trial_type:"webgazer-validate" }).last(1).values()[0];
+    if (v.percent_in_roi < 65) { alert("Eye-tracking accuracy too low. Fix lighting, keep your head still, and retry."); return true; }
+    study.calibration = { percent_in_roi:v.percent_in_roi, average_offset:v.average_offset };
+    return false;
+  }
+});
+
+/* ensure the speech model is fully loaded before cases begin */
+timeline.push({
+  type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
+  stimulus:`<div style="text-align:center;margin-top:18%;color:#cdd9e5;"><h3>Preparing analysis tools…</h3>
+            <p id="model_pct">Loading speech model…</p></div>`,
+  on_load: function () {
+    warmUpTranscriber();
+    const tick = setInterval(() => {
+      const el = document.getElementById("model_pct");
+      if (el) el.textContent = "Loading speech model… " + __modelProgress + "%";
+    }, 400);
+    (async () => { await __transcriberPromise; clearInterval(tick); jsPsych.finishTrial(); })();
+  }
+});
+
+/* =====================================================================
+   EHR CASE CONTENT
+   ===================================================================== */
+const EHR_AOIS = [
+  { id:"aoi_profile", code:"FRAME",   title:"Reason for Referral / Occupational Profile" },
+  { id:"aoi_problem", code:"CUE",     title:"Problem List & Diagnosis" },
+  { id:"aoi_vitals",  code:"CUE",     title:"Vitals & Labs" },
+  { id:"aoi_history", code:"HYPO",    title:"History & Clinical Notes" },
+  { id:"aoi_goals",   code:"PATIENT", title:"Patient Goals & Social History" },
+  { id:"aoi_adl",     code:"PATIENT", title:"ADL / Functional Observation" },
+  { id:"aoi_orders",  code:"INTERV",  title:"Care Plan & Orders" }
+];
+
+const CASES = {
+  1: {
+    id:1, name:"Evelyn Soto", mrn:"MRN 04417", dob:"DOB 1951-03-08 (74F)", dx:"Ischemic CVA, L MCA",
+    content: {
+      aoi_profile:`Referred to OT for evaluation and treatment following left MCA ischemic stroke. <em>Reason:</em> decline in ability to complete kitchen ADLs; goal of returning to independent meal preparation at home.`,
+      aoi_problem:`<strong>Active problems:</strong><ul><li>Ischemic stroke, L MCA (2 wks ago)</li><li>Right hemiparesis (UE &gt; LE)</li><li>Mild expressive aphasia</li></ul>`,
+      aoi_vitals:`BP 138/84 · HR 76 · O2 98% RA<br><strong>Motor:</strong> R grip 4 kg (L 22 kg); R UE MMT 3/5 distal.<br><strong>Sensation:</strong> intact. <strong>MoCA:</strong> 25/30.`,
+      aoi_history:`Prior level: fully independent, lived alone, cooked daily. Onset sudden R-sided weakness. Imaging: L MCA infarct. No prior CVA. Right-hand dominant.`,
+      aoi_goals:`Patient states she "needs to be able to make her own lunch" and fears losing independence. Lives alone in a single-story home; daughter visits weekly. Values cooking and hosting.`,
+      aoi_adl:`<div style="background:#0b1422;color:#7f93a8;height:170px;display:flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer;" id="vid_1">&#9654; Play: Evelyn stabilizing bread one-handed while spreading peanut butter</div>`,
+      orders_options:[["Rocker knife","rk"],["Dycem non-slip mat","dycem"],["Universal cuff","uc"]]
+    }
+  },
+  2: {
+    id:2, name:"Marcus Tran", mrn:"MRN 07732", dob:"DOB 1998-11-22 (27M)", dx:"C6 SCI, incomplete (AIS D)",
+    content: {
+      aoi_profile:`Referred to OT for upper-extremity ADL retraining after incomplete C6 spinal cord injury. <em>Reason:</em> difficulty with upper-body dressing; goal of independent dressing for return to work.`,
+      aoi_problem:`<strong>Active problems:</strong><ul><li>C6 SCI, incomplete (AIS D), 6 wks post</li><li>Reduced grip strength bilaterally</li><li>Tenodesis grasp intact</li></ul>`,
+      aoi_vitals:`BP 118/72 · HR 68 · O2 99% RA<br><strong>Motor:</strong> wrist extension 4/5; finger flexors 2/5; tenodesis present.<br><strong>Sensation:</strong> impaired below C6.`,
+      aoi_history:`Prior level: independent, active, works as a graphic designer. MVC 6 weeks ago. No TBI. Right-hand dominant. Currently uses wheelchair, transfers independently.`,
+      aoi_goals:`Patient states he "wants to dress himself without help before going back to the office." Lives with partner; values autonomy and returning to work soon.`,
+      aoi_adl:`<div style="background:#0b1422;color:#7f93a8;height:170px;display:flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer;" id="vid_2">&#9654; Play: Marcus attempting to button a dress shirt with limited grip</div>`,
+      orders_options:[["Button hook","bh"],["Dressing stick","ds"],["Velcro shirt conversions","velcro"]]
+    }
+  }
+};
+
+function ehrPanel(aoi, bodyHtml) {
+  return `<div class="ehr-panel" id="${aoi.id}" data-aoi="${aoi.id}" data-code="${aoi.code}">
+    <div class="ehr-h">${aoi.title}<span class="aoi-tag">${aoi.code}</span></div>
+    <div class="ehr-body">${bodyHtml}</div></div>`;
+}
+
+function ehrTemplate(c) {
+  const C = c.content;
+  const orders = C.orders_options.map(o =>
+    `<label style="display:block;margin:6px 0;"><input type="radio" name="ae_${c.id}" value="${o[0]}"> ${o[0]}</label>`).join("");
+  const byId = id => EHR_AOIS.find(a => a.id === id);
+  return `
+  <div id="ehr_${c.id}" class="ehr-root">
+    <div class="ehr-banner">
+      <div><strong>${c.name}</strong> &nbsp; ${c.dob} &nbsp; ${c.mrn}</div>
+      <div>${c.dx}</div>
+    </div>
+    <div class="ehr-grid">
+      <div class="ehr-col">
+        ${ehrPanel(byId("aoi_profile"), C.aoi_profile)}
+        ${ehrPanel(byId("aoi_problem"), C.aoi_problem)}
+        ${ehrPanel(byId("aoi_vitals"),  C.aoi_vitals)}
+      </div>
+      <div class="ehr-col">
+        ${ehrPanel(byId("aoi_history"), C.aoi_history)}
+        ${ehrPanel(byId("aoi_goals"),   C.aoi_goals)}
+      </div>
+      <div class="ehr-col">
+        ${ehrPanel(byId("aoi_adl"),     C.aoi_adl)}
+        ${ehrPanel(byId("aoi_orders"),
+          `<p style="margin-top:0;">Select an adaptive-equipment intervention:</p>${orders}
+           <button id="btn_submit_${c.id}" class="ehr-submit">Sign Orders &amp; Complete</button>`)}
+      </div>
+    </div>
+  </div>
+  <style>
+    .ehr-root{width:100vw;height:100vh;box-sizing:border-box;background:#0f1b2d;color:#dbe6f0;overflow:hidden;display:flex;flex-direction:column;}
+    .ehr-banner{background:#16263d;padding:12px 22px;display:flex;justify-content:space-between;border-bottom:2px solid #2b9fd6;font-size:15px;}
+    .ehr-grid{flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:14px;overflow:hidden;}
+    .ehr-col{display:flex;flex-direction:column;gap:12px;min-height:0;}
+    .ehr-panel{background:#16263d;border:1px solid #24405f;border-radius:8px;overflow:auto;flex:1;min-height:0;}
+    .ehr-h{background:#1d3450;padding:9px 14px;font-weight:600;font-size:14px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;}
+    .aoi-tag{font-size:10px;color:#0f1b2d;background:#5fb0e0;border-radius:4px;padding:1px 6px;}
+    .ehr-body{padding:12px 16px;font-size:14px;line-height:1.5;}
+    .ehr-body ul{margin:6px 0;padding-left:18px;}
+    .ehr-submit{margin-top:14px;padding:12px 22px;background:#27ae60;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;width:100%;}
+  </style>`;
+}
+
+function pointToAOI(x, y, rects) {
+  for (const r of rects) if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return r;
+  return null;
+}
+
+function gazeToDwells(samples, rects) {
+  const out = [];
+  let cur = null, curStart = null, lastT = null;
+  const sorted = (samples || []).filter(s => s && s.x != null).sort((a,b) => a.t - b.t);
+  for (const s of sorted) {
+    const hit = pointToAOI(s.x, s.y, rects);
+    const aoi = hit ? hit.id : null;
+    if (aoi !== cur) {
+      if (cur && (lastT - curStart) >= CONFIG.MIN_DWELL_MS) {
+        const r = rects.find(rr => rr.id === cur);
+        out.push({ t: Math.round(curStart), aoi: cur, code: r ? r.code : null, source:"gaze" });
+      }
+      cur = aoi; curStart = s.t;
+    }
+    lastT = s.t;
+  }
+  if (cur && lastT != null && (lastT - curStart) >= CONFIG.MIN_DWELL_MS) {
+    const r = rects.find(rr => rr.id === cur);
+    out.push({ t: Math.round(curStart), aoi: cur, code: r ? r.code : null, source:"gaze" });
+  }
+  return out.filter(e => e.code);
+}
+
+/* =====================================================================
+   CASE TRIAL FACTORY
+   ===================================================================== */
+function buildCaseTrials(c) {
+  const startRec = {
+    type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
+    stimulus:`<div style="max-width:660px;margin:11% auto;text-align:left;color:#dbe6f0;">
+        <h2>Case ${c.id}: ${c.name}</h2>
+        <p style="font-size:17px;">We will record this browser tab while you review the chart, so you can narrate over it afterward. The recording stays on your computer.</p>
+        <p style="font-size:17px;background:#1d3450;padding:12px;border-left:4px solid #5fb0e0;">When prompted, choose <strong>"This Tab"</strong> and click <strong>Share</strong>.</p>
+        <button id="rec_${c.id}" style="margin-top:12px;padding:14px 28px;background:#2b9fd6;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;">Open Case ${c.id}</button>
+        <p id="err_${c.id}" style="color:#e74c3c;"></p></div>`,
+    on_load: function () {
+      const b = document.getElementById("rec_"+c.id);
+      b.addEventListener("click", async () => {
+        b.disabled = true;
+        try {
+          const s = await startScreenRecording(c.id);
+          s.getVideoTracks()[0].addEventListener("ended", () => {
+            const sub = document.getElementById("btn_submit_"+c.id); if (sub) sub.click();
+          });
+          jsPsych.finishTrial();
+        } catch (e) { b.disabled = false; document.getElementById("err_"+c.id).textContent = "Screen share cancelled \u2014 click again and choose 'This Tab'."; }
+      });
+    }
+  };
+
+  const ehrTrial = {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: ehrTemplate(c),
+    choices:"NO_KEYS",
+    extensions: [{ type: jsPsychExtensionWebgazer, params:{ targets:["#ehr_"+c.id] } }],
+    data: { trial_tag:"ehr_case", case_id:c.id },
+    on_load: function () {
+      try { webgazer.showVideo(false); webgazer.showPredictionPoints(false); } catch (e) {}
+      const dot = document.getElementById("webgazerGazeDot"); if (dot) dot.style.display = "none";
+
+      const caseStart = performance.now();
+      const clickEvents = [];
+
+      EHR_AOIS.forEach(a => {
+        const el = document.getElementById(a.id);
+        if (el) el.addEventListener("click", () => {
+          clickEvents.push({ t: Math.round(performance.now() - caseStart), aoi:a.id, code:a.code, source:"click", action:"view" });
+        });
+      });
+      document.querySelectorAll(`input[name="ae_${c.id}"]`).forEach(r => {
+        r.addEventListener("change", () => {
+          clickEvents.push({ t: Math.round(performance.now() - caseStart), aoi:"aoi_orders", code:"INTERV", source:"click", action:"select:"+r.value });
+        });
+      });
+
+      document.getElementById("btn_submit_"+c.id).addEventListener("click", async () => {
+        const rects = EHR_AOIS.map(a => {
+          const el = document.getElementById(a.id);
+          const r = el ? el.getBoundingClientRect() : null;
+          return r ? { id:a.id, code:a.code, left:r.left, right:r.right, top:r.top, bottom:r.bottom } : null;
+        }).filter(Boolean);
+        const picked = document.querySelector(`input[name="ae_${c.id}"]:checked`);
+        await stopScreenRecording(c.id);
+        jsPsych.finishTrial({ click_events:clickEvents, aoi_rects:rects, choice: picked ? picked.value : null });
+      });
+    },
+    on_finish: function (data) {
+      study.cases[c.id] = study.cases[c.id] || {};
+      study.cases[c.id].click_events = data.click_events || [];
+      study.cases[c.id].choice = data.choice;
+      study.cases[c.id].aoi_map = EHR_AOIS.map(a => ({ aoi:a.id, code:a.code, label:a.title }));
+      study.cases[c.id].gaze_events = gazeToDwells(data.webgazer_data || [], data.aoi_rects || []);
+      study.cases[c.id]._gaze_raw = (data.webgazer_data || []);
+    }
+  };
+
+  const rtaTrial = {
+    type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
+    stimulus:`<div style="position:fixed;inset:0;background:#000;">
+        <div style="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10;background:#fff;padding:10px 16px;border:2px solid #2b9fd6;border-radius:6px;text-align:center;">
+          <strong>Retrospective Review</strong> <span style="color:#c0392b;margin-left:8px;">&#127908; narrate your reasoning as you re-watch</span></div>
+        <video id="rv_${c.id}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;" muted playsinline></video>
+        <canvas id="ro_${c.id}" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;"></canvas>
+        <button id="rd_${c.id}" disabled style="position:fixed;bottom:24px;right:24px;z-index:10;padding:14px 28px;background:#7f8c8d;color:#fff;border:none;border-radius:6px;font-weight:700;">Done narrating</button>
+      </div>`,
+    data: { trial_tag:"rta", case_id:c.id },
+    on_load: async function () {
+      const m = caseMedia[c.id];
+      const video = document.getElementById("rv_"+c.id);
+      const canvas = document.getElementById("ro_"+c.id);
+      const done = document.getElementById("rd_"+c.id);
+      const ctx = canvas.getContext("2d");
+      const gaze = (study.cases[c.id] && study.cases[c.id]._gaze_raw) || [];
+
+      if (!m || !m.url) { study.cases[c.id].transcript_segments = []; return jsPsych.finishTrial(); }
+      video.src = m.url;
+
+      let aStream=null, aRec=null, aChunks=[], aStart=0, vStart=0;
+      try {
+        aStream = await navigator.mediaDevices.getUserMedia({ audio:true });
+        aRec = new MediaRecorder(aStream);
+        aRec.ondataavailable = e => { if (e.data && e.data.size) aChunks.push(e.data); };
+      } catch (e) { console.error("mic failed", e); }
+
+      function loop() {
+        if (video.paused || video.ended) return;
+        canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        const tMs = video.currentTime * 1000;
+        const sx = canvas.width / window.innerWidth, sy = canvas.height / window.innerHeight;
+        let idx = -1;
+        for (let i=0;i<gaze.length;i++){ if (gaze[i].t <= tMs) idx = i; else break; }
+        if (idx>=0 && (tMs - gaze[idx].t) < 400) {
+          ctx.beginPath(); ctx.arc(gaze[idx].x*sx, gaze[idx].y*sy, 20, 0, 2*Math.PI);
+          ctx.fillStyle="rgba(217,83,79,0.6)"; ctx.fill();
+        }
+        requestAnimationFrame(loop);
+      }
+      video.addEventListener("play", () => { vStart=performance.now(); if (aRec && aRec.state==="inactive"){ aRec.start(); aStart=performance.now(); } requestAnimationFrame(loop); });
+      video.addEventListener("ended", () => { done.disabled=false; done.style.background="#27ae60"; });
+      setTimeout(() => { if (done.disabled){ done.disabled=false; done.style.background="#27ae60"; } }, CONFIG.RTA_MAX_SECONDS*1000);
+      try { await video.play(); } catch (e) { done.disabled=false; done.style.background="#27ae60"; }
+
+      done.addEventListener("click", async () => {
+        done.disabled=true; done.textContent="Transcribing locally…";
+        try { video.pause(); } catch(e){}
+        const offset = (aStart - vStart)/1000;
+        const finalize = async (blob) => {
+          let segs = [];
+          if (blob && blob.size) {
+            const out = await transcribeBlob(blob);
+            segs = (out.chunks||[]).map(ch => {
+              const [s,e] = ch.timestamp || [null,null];
+              return { start_ms: s==null?null:Math.round((s+offset)*1000),
+                       end_ms:   e==null?null:Math.round((e+offset)*1000),
+                       text: (ch.text||"").trim() };
+            }).filter(x => x.text);
+            study.cases[c.id].transcript_full = out.text.trim();
+          }
+          study.cases[c.id].transcript_segments = segs;
+          delete study.cases[c.id]._gaze_raw;
+          if (aStream) aStream.getTracks().forEach(t => t.stop());
+          if (m.url){ URL.revokeObjectURL(m.url); m.url=null; m.blob=null; }
+          jsPsych.finishTrial();
+        };
+        if (aRec && aRec.state!=="inactive"){ aRec.onstop = () => finalize(new Blob(aChunks,{type:aRec.mimeType||"audio/webm"})); aRec.stop(); }
+        else finalize(null);
+      });
+    }
+  };
+
+  return [startRec, ehrTrial, rtaTrial];
+}
+
+/* =====================================================================
+   ASSEMBLE TIMELINE
+   ===================================================================== */
+buildCaseTrials(CASES[1]).forEach(t => timeline.push(t));
+
+timeline.push({
+  type: jsPsychCallFunction, async:true,
+  func: function (done) {
+    const c1 = study.cases[1] || {};
+    const handoff = {
+      case_id:1, condition: study.experimental_condition,
+      aoi_map: c1.aoi_map || [],
+      gaze_events: c1.gaze_events || [],
+      click_events: c1.click_events || [],
+      transcript_segments: c1.transcript_segments || [],
+      choice: c1.choice || null
+    };
+    try {
+      const req = indexedDB.open("OT_Simulation_DB", 1);
+      req.onupgradeneeded = e => { const db=e.target.result; if(!db.objectStoreNames.contains("sessions")) db.createObjectStore("sessions",{keyPath:"id"}); };
+      req.onsuccess = e => { try { const db=e.target.result; const tx=db.transaction("sessions","readwrite"); tx.objectStore("sessions").put({id:"active_session",data:JSON.stringify(handoff)}); tx.oncomplete=()=>done(); tx.onerror=()=>done(); } catch(err){ done(); } };
+      req.onerror = () => done();
+    } catch (e) { done(); }
+  }
+});
+
+timeline.push({
+  timeline: [{
+    type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
+    stimulus:`<div style="width:100vw;height:100vh;display:flex;flex-direction:column;">
+        <div style="padding:14px;background:#16263d;color:#fff;display:flex;justify-content:space-between;align-items:center;">
+          <h3 style="margin:0;">Clinical Reasoning Feedback</h3>
+          <button id="cont2" style="padding:10px 20px;font-weight:700;background:#27ae60;color:#fff;border:none;border-radius:6px;cursor:pointer;">Continue to Case 2 &#9654;</button></div>
+        <iframe src="./dashboard/index.html" style="flex-grow:1;border:none;background:#fff;"></iframe></div>`,
+    on_load: () => document.getElementById("cont2").addEventListener("click", () => jsPsych.finishTrial())
+  }],
+  conditional_function: () => study.experimental_condition === "dashboard"
+});
+
+buildCaseTrials(CASES[2]).forEach(t => timeline.push(t));
+
+jsPsych.run(timeline);
+</script>
+</body>
 </html>
