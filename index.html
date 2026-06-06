@@ -47,13 +47,17 @@
        varies by plugin version -- the bright fill + outline applies to whichever
        is present. */
     .jspsych-webgazer-calibrate-point,
+    .jspsych-webgazer-validate-point,
     .calibration-point,
+    .validation-point,
     div[id^="calibration-point"],
+    div[id^="validation-point"],
     #webgazerGazeDot {
       background-color:#ffd400 !important;
       border:2px solid #16263d !important;
       box-shadow:0 0 8px 2px rgba(255,212,0,0.8) !important;
       opacity:1 !important;
+      transition: top 80ms linear, left 80ms linear !important;
     }
   </style>
 </head>
@@ -255,7 +259,10 @@ timeline.push({
   type: jsPsychWebgazerInitCamera,
   instructions:"<p>Center your face in the webcam window. Sit ~50cm away, ensure even lighting, and keep your head still during the study.</p>",
   button_text:"Continue to calibration",
-  on_load: warmUpTranscriber
+  on_load: function() {
+    warmUpTranscriber();
+    try { webgazer.applyKalmanFilter(true); } catch(e) {}
+  }
 });
 
 var calib_points = [[10,10],[50,10],[90,10],[10,50],[50,50],[90,50],[10,90],[50,90],[90,90],[30,30],[70,30],[30,70],[70,70]];
@@ -483,7 +490,8 @@ function buildCaseTrials(c) {
       study.cases[c.id].choice = data.choice;
       study.cases[c.id].aoi_map = EHR_AOIS.map(a => ({ aoi:a.id, code:a.code, label:a.title }));
       study.cases[c.id].gaze_events = gazeToDwells(data.webgazer_data || [], data.aoi_rects || []);
-      study.cases[c.id]._gaze_raw = (data.webgazer_data || []);
+      study.cases[c.id]._gaze_raw  = (data.webgazer_data || []);
+      study.cases[c.id].aoi_rects  = data.aoi_rects || [];
     }
   };
 
@@ -502,8 +510,13 @@ function buildCaseTrials(c) {
       const video = document.getElementById("rv_"+c.id);
       const canvas = document.getElementById("ro_"+c.id);
       const done = document.getElementById("rd_"+c.id);
-      const ctx = canvas.getContext("2d");
-      const gaze = (study.cases[c.id] && study.cases[c.id]._gaze_raw) || [];
+      const ctx      = canvas.getContext("2d");
+      const gaze     = (study.cases[c.id] && study.cases[c.id]._gaze_raw)  || [];
+      const aoiRects = (study.cases[c.id] && study.cases[c.id].aoi_rects) || [];
+
+      // per-code overlay colours (semi-transparent fill on the dark EHR bg)
+      const AOI_COLORS = { CUE:'91,176,224', FRAME:'155,89,182', HYPO:'26,188,156',
+                           PATIENT:'39,174,96', INTERV:'241,196,15', MONITOR:'231,76,60' };
 
       if (!m || !m.url) { study.cases[c.id].transcript_segments = []; return jsPsych.finishTrial(); }
       video.src = m.url;
@@ -518,15 +531,43 @@ function buildCaseTrials(c) {
       function loop() {
         if (video.paused || video.ended) return;
         canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
-        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         const tMs = video.currentTime * 1000;
-        const sx = canvas.width / window.innerWidth, sy = canvas.height / window.innerHeight;
-        let idx = -1;
-        for (let i=0;i<gaze.length;i++){ if (gaze[i].t <= tMs) idx = i; else break; }
-        if (idx>=0 && (tMs - gaze[idx].t) < 400) {
-          ctx.beginPath(); ctx.arc(gaze[idx].x*sx, gaze[idx].y*sy, 20, 0, 2*Math.PI);
-          ctx.fillStyle="rgba(217,83,79,0.6)"; ctx.fill();
+        const sx = canvas.width / window.innerWidth;
+        const sy = canvas.height / window.innerHeight;
+
+        // Rolling average over the last 200ms of samples (smoothing)
+        const recent = gaze.filter(p => p.t <= tMs && (tMs - p.t) < 200);
+        if (!recent.length) return requestAnimationFrame(loop);
+        const ax  = recent.reduce((s,p) => s+p.x, 0) / recent.length;
+        const ay  = recent.reduce((s,p) => s+p.y, 0) / recent.length;
+        const age = tMs - recent[recent.length-1].t;
+        if (age > 500) return requestAnimationFrame(loop);  // stale — skip frame
+
+        // AOI highlight: semi-transparent colour fill over the whole panel
+        const hit = aoiRects.find(r => ax>=r.left && ax<=r.right && ay>=r.top && ay<=r.bottom);
+        if (hit) {
+          const rgb = AOI_COLORS[hit.code] || '255,255,255';
+          const rx = hit.left*sx, ry = hit.top*sy,
+                rw = (hit.right-hit.left)*sx, rh = (hit.bottom-hit.top)*sy;
+          ctx.fillStyle   = `rgba(${rgb},0.22)`;
+          ctx.strokeStyle = `rgba(${rgb},0.85)`;
+          ctx.lineWidth   = 3;
+          ctx.fillRect(rx, ry, rw, rh);
+          ctx.strokeRect(rx, ry, rw, rh);
+          ctx.fillStyle = `rgba(${rgb},1)`;
+          ctx.font      = "bold 13px 'Segoe UI',Arial,sans-serif";
+          ctx.fillText(hit.code, rx+10, ry+20);
         }
+
+        // Small smoothed dot — secondary fine-grained indicator
+        ctx.beginPath();
+        ctx.arc(ax*sx, ay*sy, 10, 0, 2*Math.PI);
+        ctx.fillStyle   = "rgba(255,212,0,0.75)";
+        ctx.strokeStyle = "rgba(0,0,0,0.4)";
+        ctx.lineWidth   = 1.5;
+        ctx.fill(); ctx.stroke();
+
         requestAnimationFrame(loop);
       }
       video.addEventListener("play", () => { vStart=performance.now(); if (aRec && aRec.state==="inactive"){ aRec.start(); aStart=performance.now(); } requestAnimationFrame(loop); });
