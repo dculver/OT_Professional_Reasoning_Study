@@ -1,13 +1,13 @@
-/*  whisper-worker.js
-    Runs Whisper (small.en) in a dedicated Web Worker thread.
-    The main thread posts { type:'transcribe', audioData: Float32Array }
-    and receives back { type:'result', text, chunks } or { type:'error', message }
-    Progress updates are sent as { type:'progress', progress: 0-100 }
+/*  whisper-worker.js  — ES module worker (requires {type:"module"} in main thread)
+    Posts:
+      { type:'progress', progress: 0-100 }
+      { type:'ready' }
+      { type:'result', text, chunks }
+      { type:'error',  message }
 */
 
-importScripts("https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js");
+import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
 
-const { pipeline, env } = self.Transformers;
 env.allowLocalModels = false;
 env.useBrowserCache  = true;
 
@@ -32,8 +32,12 @@ self.onmessage = async (e) => {
   const { type, audioData } = e.data;
 
   if (type === "warmup") {
-    try { await loadModel(); self.postMessage({ type:"ready" }); }
-    catch(err) { self.postMessage({ type:"error", message: err.message }); }
+    try {
+      await loadModel();
+      self.postMessage({ type:"ready" });
+    } catch(err) {
+      self.postMessage({ type:"error", message: String(err) });
+    }
     return;
   }
 
@@ -42,8 +46,8 @@ self.onmessage = async (e) => {
       await loadModel();
       const result = await transcriber(audioData, {
         return_timestamps: true,
-        chunk_length_s: 30,
-        stride_length_s: 5
+        chunk_length_s:    30,
+        stride_length_s:   5
       });
       self.postMessage({
         type:   "result",
@@ -51,7 +55,7 @@ self.onmessage = async (e) => {
         chunks: Array.isArray(result.chunks) ? result.chunks : []
       });
     } catch(err) {
-      self.postMessage({ type:"error", message: err.message });
+      self.postMessage({ type:"error", message: String(err) });
     }
     return;
   }
