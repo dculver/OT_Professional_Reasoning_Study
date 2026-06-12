@@ -453,21 +453,47 @@ timeline.push({
 });
 
 var calib_points = [[10,10],[50,10],[90,10],[10,50],[50,50],[90,50],[10,90],[50,90],[90,90],[30,30],[70,30],[30,70],[70,70]];
+
+var calibration_instructions = {
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus:`<div style="max-width:620px;margin:10% auto;text-align:left;color:#cdd9e5;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#5ab0f0;margin-bottom:20px;">Eye-Tracking Calibration</h2>
+      <p style="font-size:17px;margin-bottom:16px;">A series of yellow dots will appear one at a time around the screen.</p>
+      <div style="background:#1d3450;border-left:4px solid #5ab0f0;padding:14px 18px;border-radius:6px;margin-bottom:16px;">
+        <p style="font-size:17px;margin:0;"><strong>Click each dot</strong> as it appears. Look directly at it before clicking.</p>
+      </div>
+      <p style="font-size:15px;color:#8aa0b6;margin-bottom:8px;">Tips for best accuracy:</p>
+      <ul style="font-size:15px;color:#8aa0b6;line-height:1.8;padding-left:20px;margin-bottom:24px;">
+        <li>Sit approximately 50cm (20 inches) from your screen</li>
+        <li>Keep your head still — move only your eyes</li>
+        <li>Ensure your face is evenly lit from the front</li>
+        <li>Maximize your screen brightness</li>
+      </ul>
+      <p style="color:#8aa0b6;">Press any key to begin calibration.</p>
+    </div>`
+};
+
 var calibration_grid = { type: jsPsychWebgazerCalibrate, calibration_mode:"click", calibration_points: calib_points, point_size:26 };
+
 var validation_instructions = {
   type: jsPsychHtmlKeyboardResponse,
-  stimulus:`<div style="text-align:center;padding:20px;color:#cdd9e5;">
-      <h3>Calibration complete — testing accuracy.</h3>
-      <p style="font-size:18px;"><strong>Look</strong> at each dot until it disappears. Do not click.</p>
-      <p style="color:#8aa0b6;margin-top:24px;">Press any key to begin.</p></div>`
+  stimulus:`<div style="max-width:620px;margin:10% auto;text-align:center;color:#cdd9e5;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#5ab0f0;margin-bottom:20px;">Testing Accuracy</h2>
+      <p style="font-size:17px;">Another set of dots will appear. This time:</p>
+      <div style="background:#1d3450;border-left:4px solid #5ac070;padding:14px 18px;border-radius:6px;margin:20px auto;max-width:420px;text-align:left;">
+        <p style="font-size:17px;margin:0;"><strong>Do not click.</strong> Just <strong>look</strong> directly at each dot until it disappears.</p>
+      </div>
+      <p style="color:#8aa0b6;margin-top:24px;">Press any key to begin.</p>
+    </div>`
 };
+
 var validation_trial = {
   type: jsPsychWebgazerValidate,
   validation_points: calib_points,
   roi_radius:180, time_limit:2200, show_validation_data:false
 };
 timeline.push({
-  timeline: [calibration_grid, validation_instructions, validation_trial],
+  timeline: [calibration_instructions, calibration_grid, validation_instructions, validation_trial],
   loop_function: function (data) {
     var v = data.filter({ trial_type:"webgazer-validate" }).last(1).values()[0];
     if (v.percent_in_roi < 65) { alert("Eye-tracking accuracy too low. Fix lighting, keep your head still, and retry."); return true; }
@@ -1286,30 +1312,78 @@ function buildBioWorldTrials(c) {
       try { await video.play(); } catch(e){ done.disabled=false; done.style.background="#27ae60"; }
 
       done.addEventListener("click", async () => {
-        done.disabled=true; done.textContent="Transcribing locally…";
+        done.disabled=true; done.textContent="Processing…";
         try { video.pause(); } catch(e){}
         const offset=(aStart-vStart)/1000;
+
+        /* Show transcription progress so the screen doesn't appear frozen */
+        const progressDiv = document.createElement("div");
+        progressDiv.style.cssText = "position:fixed;bottom:80px;right:24px;z-index:20;background:#16263d;color:#cdd9e5;padding:12px 18px;border-radius:8px;border:1px solid #2b9fd6;font-size:14px;font-family:'Segoe UI',Arial,sans-serif;max-width:320px;text-align:center;";
+        progressDiv.innerHTML = `<div style="margin-bottom:6px;">&#127908; Transcribing narration locally…</div>
+          <div style="font-size:12px;color:#8aa0b6;">This may take 30–90 seconds. Do not close the tab.</div>
+          <div id="trans_dots" style="margin-top:6px;letter-spacing:4px;">●○○</div>`;
+        document.body.appendChild(progressDiv);
+        let dotState=0;
+        const dotInterval = setInterval(()=>{
+          const dots=["●○○","○●○","○○●"];
+          dotState=(dotState+1)%3;
+          const el=document.getElementById("trans_dots");
+          if(el) el.textContent=dots[dotState];
+        }, 500);
+
         const finalize = async (blob) => {
+          clearInterval(dotInterval);
+          if(progressDiv.parentNode) progressDiv.parentNode.removeChild(progressDiv);
           let segs=[];
           if (blob && blob.size) {
-            const out=await transcribeBlob(blob);
-            segs=(out.chunks||[]).map(ch=>{
-              const [s,e]=ch.timestamp||[null,null];
-              return { start_ms:s==null?null:Math.round((s+offset)*1000),
-                       end_ms:  e==null?null:Math.round((e+offset)*1000),
-                       text:(ch.text||"").trim() };
-            }).filter(x=>x.text);
-            study.cases[c.id].transcript_full=out.text.trim();
+            try {
+              const out=await transcribeBlob(blob);
+              segs=(out.chunks||[]).map(ch=>{
+                const [s,e]=ch.timestamp||[null,null];
+                return { start_ms:s==null?null:Math.round((s+offset)*1000),
+                         end_ms:  e==null?null:Math.round((e+offset)*1000),
+                         text:(ch.text||"").trim() };
+              }).filter(x=>x.text);
+              study.cases[c.id].transcript_full=out.text.trim();
+            } catch(transcribeErr) {
+              console.error("Transcription failed:", transcribeErr);
+              study.cases[c.id].transcript_full="[transcription error]";
+            }
           }
           study.cases[c.id].transcript_segments=segs;
           delete study.cases[c.id]._gaze_raw;
           uploadCaseInBackground(c.id);
-          if (aStream) aStream.getTracks().forEach(t=>t.stop());
-          if (m.url){ URL.revokeObjectURL(m.url); m.url=null; m.blob=null; }
+          if (aStream) try { aStream.getTracks().forEach(t=>t.stop()); } catch(e){}
+          if (m.url){ try { URL.revokeObjectURL(m.url); } catch(e){} m.url=null; m.blob=null; }
           jsPsych.finishTrial();
         };
-        if (aRec&&aRec.state!=="inactive"){ aRec.onstop=()=>finalize(new Blob(aChunks,{type:aRec.mimeType||"audio/webm"})); aRec.stop(); }
-        else finalize(null);
+
+        /* Hard timeout: if Whisper takes >90s or MediaRecorder never fires, proceed anyway */
+        const transcriptionTimeout = setTimeout(()=>{
+          console.warn("Transcription timeout — proceeding without transcript.");
+          study.cases[c.id].transcript_segments=[];
+          study.cases[c.id].transcript_full="[timeout — transcription skipped]";
+          delete study.cases[c.id]._gaze_raw;
+          clearInterval(dotInterval);
+          if(progressDiv.parentNode) progressDiv.parentNode.removeChild(progressDiv);
+          uploadCaseInBackground(c.id);
+          if (aStream) try { aStream.getTracks().forEach(t=>t.stop()); } catch(e){}
+          if (m && m.url){ try { URL.revokeObjectURL(m.url); } catch(e){} m.url=null; m.blob=null; }
+          jsPsych.finishTrial();
+        }, 90000);
+
+        const wrappedFinalize = async (blob) => {
+          clearTimeout(transcriptionTimeout);
+          await finalize(blob);
+        };
+
+        if (aRec && aRec.state!=="inactive") {
+          aRec.onstop = () => wrappedFinalize(new Blob(aChunks,{type:aRec.mimeType||"audio/webm"}));
+          aRec.onerror = () => wrappedFinalize(null);
+          try { aRec.stop(); } catch(e) { wrappedFinalize(null); }
+        } else {
+          wrappedFinalize(null);
+        }
       });
     }
   };
