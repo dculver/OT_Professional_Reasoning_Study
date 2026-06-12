@@ -19,39 +19,82 @@
   <script src="js/plugin-webgazer-validate.js"></script>
   <script src="js/plugin-initialize-microphone.js"></script>
 
-  <!-- Whisper transcription via Web Worker (off main thread — no UI freeze) -->
+  <!-- Whisper transcription via inline Blob Worker (no external file needed, no CORS issues) -->
   <script>
-    /* Worker is loaded from whisper-worker.js in the same directory as index.html.
-       The worker handles model loading and transcription without blocking the UI. */
     let __whisperWorker   = null;
     let __workerReady     = false;
-    let __workerReadyCbs  = [];
     let __modelProgress   = 0;
     let __pendingResolve  = null;
     let __pendingReject   = null;
 
+    /* The entire worker code as a string — avoids file-serving and MIME-type issues.
+       Uses importScripts with the UMD/classic build which works in classic workers. */
+    const WORKER_CODE = `
+      let transcriber = null;
+
+      async function loadModel() {
+        if (transcriber) return;
+        const { pipeline, env } = await import("https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2");
+        env.allowLocalModels = false;
+        env.useBrowserCache  = true;
+        transcriber = await pipeline(
+          "automatic-speech-recognition",
+          "Xenova/whisper-small.en",
+          {
+            progress_callback: (p) => {
+              if (p && p.progress != null)
+                self.postMessage({ type:"progress", progress: Math.round(p.progress) });
+            }
+          }
+        );
+      }
+
+      self.onmessage = async (e) => {
+        const { type, audioData } = e.data;
+        if (type === "warmup") {
+          try { await loadModel(); self.postMessage({ type:"ready" }); }
+          catch(err) { self.postMessage({ type:"error", message: String(err) }); }
+          return;
+        }
+        if (type === "transcribe") {
+          try {
+            await loadModel();
+            const result = await transcriber(audioData, {
+              return_timestamps: true, chunk_length_s: 30, stride_length_s: 5
+            });
+            self.postMessage({ type:"result", text: result.text||"", chunks: Array.isArray(result.chunks)?result.chunks:[] });
+          } catch(err) {
+            self.postMessage({ type:"error", message: String(err) });
+          }
+          return;
+        }
+      };
+    `;
+
     function initWhisperWorker() {
       if (__whisperWorker) return;
-      __whisperWorker = new Worker("whisper-worker-v2.js", { type: "module" });
+      /* Create worker from Blob — same-origin, no file needed, no MIME issues */
+      const blob = new Blob([WORKER_CODE], { type:"application/javascript" });
+      const url  = URL.createObjectURL(blob);
+      __whisperWorker = new Worker(url, { type:"module" });
+
       __whisperWorker.onmessage = (e) => {
         const { type, progress, text, chunks, message } = e.data;
         if (type === "progress") {
           __modelProgress = progress;
         } else if (type === "ready") {
           __workerReady = true;
-          __workerReadyCbs.forEach(cb => cb());
-          __workerReadyCbs = [];
         } else if (type === "result") {
           if (__pendingResolve) { __pendingResolve({ text, chunks }); __pendingResolve = null; __pendingReject = null; }
         } else if (type === "error") {
-          if (__pendingReject)  { __pendingReject(new Error(message));  __pendingResolve = null; __pendingReject = null; }
+          console.error("Whisper worker error:", message);
+          if (__pendingReject) { __pendingReject(new Error(message)); __pendingResolve = null; __pendingReject = null; }
         }
       };
       __whisperWorker.onerror = (e) => {
-        console.error("Whisper worker error:", e);
-        if (__pendingReject) { __pendingReject(new Error("Worker error: " + e.message)); __pendingResolve = null; __pendingReject = null; }
+        console.error("Whisper worker onerror:", e);
+        if (__pendingReject) { __pendingReject(new Error("Worker error")); __pendingResolve = null; __pendingReject = null; }
       };
-      /* Start warming up the model immediately */
       __whisperWorker.postMessage({ type:"warmup" });
     }
 
@@ -60,22 +103,20 @@
     async function transcribeBlob(blob) {
       try {
         initWhisperWorker();
-        /* Decode audio to 16kHz Float32Array on the main thread (fast, non-blocking) */
         const ab  = await blob.arrayBuffer();
         const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate:16000 });
         const buf = await ctx.decodeAudioData(ab);
-        const audioData = buf.getChannelData(0);   /* Float32Array */
+        const audioData = buf.getChannelData(0);
 
         return new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
             __pendingResolve = null; __pendingReject = null;
             resolve({ text:"[transcription timeout]", chunks:[] });
-          }, 120000);  /* 2-minute hard cap */
+          }, 120000);
 
           __pendingResolve = (result) => { clearTimeout(timeout); resolve(result); };
           __pendingReject  = (err)    => { clearTimeout(timeout); reject(err); };
 
-          /* Transfer the Float32Array buffer to the worker (zero-copy) */
           __whisperWorker.postMessage({ type:"transcribe", audioData }, [audioData.buffer]);
         });
       } catch(e) {
