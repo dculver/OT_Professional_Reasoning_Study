@@ -19,13 +19,70 @@
   <script src="js/plugin-webgazer-validate.js"></script>
   <script src="js/plugin-initialize-microphone.js"></script>
 
-  <!-- Local Whisper (small.en) via Transformers.js -->
-  <script type="module">
-    import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
-    env.allowLocalModels = false;
-    env.useBrowserCache = true;
-    window.__loadTranscriber = (model, cb) =>
-      pipeline("automatic-speech-recognition", model, { progress_callback: cb });
+  <!-- Whisper transcription via Web Worker (off main thread — no UI freeze) -->
+  <script>
+    /* Worker is loaded from whisper-worker.js in the same directory as index.html.
+       The worker handles model loading and transcription without blocking the UI. */
+    let __whisperWorker   = null;
+    let __workerReady     = false;
+    let __workerReadyCbs  = [];
+    let __modelProgress   = 0;
+    let __pendingResolve  = null;
+    let __pendingReject   = null;
+
+    function initWhisperWorker() {
+      if (__whisperWorker) return;
+      __whisperWorker = new Worker("whisper-worker.js");
+      __whisperWorker.onmessage = (e) => {
+        const { type, progress, text, chunks, message } = e.data;
+        if (type === "progress") {
+          __modelProgress = progress;
+        } else if (type === "ready") {
+          __workerReady = true;
+          __workerReadyCbs.forEach(cb => cb());
+          __workerReadyCbs = [];
+        } else if (type === "result") {
+          if (__pendingResolve) { __pendingResolve({ text, chunks }); __pendingResolve = null; __pendingReject = null; }
+        } else if (type === "error") {
+          if (__pendingReject)  { __pendingReject(new Error(message));  __pendingResolve = null; __pendingReject = null; }
+        }
+      };
+      __whisperWorker.onerror = (e) => {
+        console.error("Whisper worker error:", e);
+        if (__pendingReject) { __pendingReject(new Error("Worker error: " + e.message)); __pendingResolve = null; __pendingReject = null; }
+      };
+      /* Start warming up the model immediately */
+      __whisperWorker.postMessage({ type:"warmup" });
+    }
+
+    function warmUpTranscriber() { initWhisperWorker(); }
+
+    async function transcribeBlob(blob) {
+      try {
+        initWhisperWorker();
+        /* Decode audio to 16kHz Float32Array on the main thread (fast, non-blocking) */
+        const ab  = await blob.arrayBuffer();
+        const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate:16000 });
+        const buf = await ctx.decodeAudioData(ab);
+        const audioData = buf.getChannelData(0);   /* Float32Array */
+
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            __pendingResolve = null; __pendingReject = null;
+            resolve({ text:"[transcription timeout]", chunks:[] });
+          }, 120000);  /* 2-minute hard cap */
+
+          __pendingResolve = (result) => { clearTimeout(timeout); resolve(result); };
+          __pendingReject  = (err)    => { clearTimeout(timeout); reject(err); };
+
+          /* Transfer the Float32Array buffer to the worker (zero-copy) */
+          __whisperWorker.postMessage({ type:"transcribe", audioData }, [audioData.buffer]);
+        });
+      } catch(e) {
+        console.error("transcribeBlob error:", e);
+        return { text:"[transcription error: " + e.message + "]", chunks:[] };
+      }
+    }
   </script>
 
   <style>
@@ -290,28 +347,10 @@ const study = {
 const caseMedia = {};
 
 /* =====================================================================
-   TRANSCRIBER
+   TRANSCRIBER — worker-based (see whisper-worker.js + inline script above)
+   warmUpTranscriber and transcribeBlob are defined in the inline script.
+   __modelProgress is set by worker progress messages.
    ===================================================================== */
-let __transcriber = null, __transcriberPromise = null, __modelProgress = 0;
-function warmUpTranscriber() {
-  if (__transcriberPromise || !window.__loadTranscriber) return;
-  __transcriberPromise = window.__loadTranscriber(CONFIG.WHISPER_MODEL, (p) => {
-    if (p && p.progress != null) __modelProgress = Math.round(p.progress);
-  }).then(t => { __transcriber = t; }).catch(e => console.error("model load failed", e));
-}
-async function transcribeBlob(blob) {
-  try {
-    if (!window.__loadTranscriber) return { text:"[transcriber unavailable]", chunks:[] };
-    if (!__transcriber) { warmUpTranscriber(); await __transcriberPromise; }
-    if (!__transcriber) return { text:"[model not loaded]", chunks:[] };
-    const ab = await blob.arrayBuffer();
-    const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate:16000 });
-    const buf = await ctx.decodeAudioData(ab);
-    const out = await __transcriber(buf.getChannelData(0),
-      { return_timestamps:true, chunk_length_s:30, stride_length_s:5 });
-    return { text: out.text || "", chunks: Array.isArray(out.chunks) ? out.chunks : [] };
-  } catch (e) { console.error(e); return { text:"[transcription error]", chunks:[] }; }
-}
 
 /* =====================================================================
    SCREEN RECORDING
@@ -502,18 +541,32 @@ timeline.push({
   }
 });
 
-/* model warm-up gate */
+/* model warm-up gate — worker loads Whisper in background while participant reads instructions */
 timeline.push({
   type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
-  stimulus:`<div style="text-align:center;margin-top:18%;color:#cdd9e5;"><h3>Preparing analysis tools…</h3>
-            <p id="model_pct">Loading speech model…</p></div>`,
+  stimulus:`<div style="max-width:580px;margin:12% auto;text-align:center;color:#cdd9e5;font-family:'Segoe UI',Arial,sans-serif;">
+    <h3 style="color:#5ab0f0;margin-bottom:16px;">Preparing speech analysis tools</h3>
+    <p style="color:#8aa0b6;margin-bottom:20px;">Whisper is loading in a background thread. The page will remain responsive.<br>This only happens once.</p>
+    <div style="background:#16263d;border-radius:8px;height:10px;overflow:hidden;max-width:380px;margin:0 auto 10px;">
+      <div id="model_bar" style="background:#2b9fd6;height:100%;width:0%;transition:width .4s;border-radius:8px;"></div>
+    </div>
+    <div id="model_pct" style="font-size:14px;color:#5ab0f0;">0%</div>
+  </div>`,
   on_load: function () {
     warmUpTranscriber();
     const tick = setInterval(() => {
-      const el = document.getElementById("model_pct");
-      if (el) el.textContent = "Loading speech model… " + __modelProgress + "%";
+      const bar = document.getElementById("model_bar");
+      const pct = document.getElementById("model_pct");
+      if (bar) bar.style.width = __modelProgress + "%";
+      if (pct) pct.textContent  = __modelProgress + "%";
+      if (__workerReady) {
+        clearInterval(tick);
+        setTimeout(() => jsPsych.finishTrial(), 400);
+      }
     }, 400);
-    (async () => { await __transcriberPromise; clearInterval(tick); jsPsych.finishTrial(); })();
+
+    /* Safety fallback: if worker never signals ready within 3 minutes, proceed anyway */
+    setTimeout(() => { clearInterval(tick); jsPsych.finishTrial(); }, 180000);
   }
 });
 
@@ -1312,77 +1365,66 @@ function buildBioWorldTrials(c) {
       try { await video.play(); } catch(e){ done.disabled=false; done.style.background="#27ae60"; }
 
       done.addEventListener("click", async () => {
-        done.disabled=true; done.textContent="Processing…";
+        done.disabled=true; done.textContent="Saving…";
         try { video.pause(); } catch(e){}
         const offset=(aStart-vStart)/1000;
 
-        /* Show transcription progress so the screen doesn't appear frozen */
+        /* Progress indicator — worker runs off main thread so UI stays responsive */
         const progressDiv = document.createElement("div");
-        progressDiv.style.cssText = "position:fixed;bottom:80px;right:24px;z-index:20;background:#16263d;color:#cdd9e5;padding:12px 18px;border-radius:8px;border:1px solid #2b9fd6;font-size:14px;font-family:'Segoe UI',Arial,sans-serif;max-width:320px;text-align:center;";
-        progressDiv.innerHTML = `<div style="margin-bottom:6px;">&#127908; Transcribing narration locally…</div>
-          <div style="font-size:12px;color:#8aa0b6;">This may take 30–90 seconds. Do not close the tab.</div>
-          <div id="trans_dots" style="margin-top:6px;letter-spacing:4px;">●○○</div>`;
+        progressDiv.style.cssText = "position:fixed;bottom:80px;right:24px;z-index:20;background:#16263d;color:#cdd9e5;padding:14px 20px;border-radius:8px;border:1px solid #2b9fd6;font-size:14px;font-family:'Segoe UI',Arial,sans-serif;max-width:340px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.4);";
+        progressDiv.innerHTML = `
+          <div style="font-weight:600;margin-bottom:6px;">&#127908; Transcribing narration…</div>
+          <div style="font-size:12px;color:#8aa0b6;margin-bottom:10px;">Running locally. Page stays responsive.</div>
+          <div style="background:#0f1923;border-radius:4px;height:6px;overflow:hidden;">
+            <div id="trans_bar" style="background:#2b9fd6;height:100%;width:0%;transition:width .4s;border-radius:4px;"></div>
+          </div>
+          <div id="trans_pct" style="font-size:12px;color:#5ab0f0;margin-top:6px;">0%</div>`;
         document.body.appendChild(progressDiv);
-        let dotState=0;
-        const dotInterval = setInterval(()=>{
-          const dots=["●○○","○●○","○○●"];
-          dotState=(dotState+1)%3;
-          const el=document.getElementById("trans_dots");
-          if(el) el.textContent=dots[dotState];
-        }, 500);
+
+        /* Poll worker progress into the bar */
+        const barInterval = setInterval(() => {
+          const bar = document.getElementById("trans_bar");
+          const pct = document.getElementById("trans_pct");
+          if (bar) bar.style.width = __modelProgress + "%";
+          if (pct) pct.textContent  = __modelProgress + "%";
+        }, 300);
 
         const finalize = async (blob) => {
-          clearInterval(dotInterval);
-          if(progressDiv.parentNode) progressDiv.parentNode.removeChild(progressDiv);
-          let segs=[];
+          clearInterval(barInterval);
+          if (progressDiv.parentNode) progressDiv.parentNode.removeChild(progressDiv);
+
+          let segs = [];
           if (blob && blob.size) {
             try {
-              const out=await transcribeBlob(blob);
-              segs=(out.chunks||[]).map(ch=>{
-                const [s,e]=ch.timestamp||[null,null];
-                return { start_ms:s==null?null:Math.round((s+offset)*1000),
-                         end_ms:  e==null?null:Math.round((e+offset)*1000),
-                         text:(ch.text||"").trim() };
-              }).filter(x=>x.text);
-              study.cases[c.id].transcript_full=out.text.trim();
+              const out = await transcribeBlob(blob);   /* non-blocking — runs in worker */
+              segs = (out.chunks || []).map(ch => {
+                const [s, e] = ch.timestamp || [null, null];
+                return {
+                  start_ms: s == null ? null : Math.round((s + offset) * 1000),
+                  end_ms:   e == null ? null : Math.round((e + offset) * 1000),
+                  text: (ch.text || "").trim()
+                };
+              }).filter(x => x.text);
+              study.cases[c.id].transcript_full = out.text.trim();
             } catch(transcribeErr) {
               console.error("Transcription failed:", transcribeErr);
-              study.cases[c.id].transcript_full="[transcription error]";
+              study.cases[c.id].transcript_full = "[transcription error]";
             }
           }
-          study.cases[c.id].transcript_segments=segs;
+          study.cases[c.id].transcript_segments = segs;
           delete study.cases[c.id]._gaze_raw;
           uploadCaseInBackground(c.id);
-          if (aStream) try { aStream.getTracks().forEach(t=>t.stop()); } catch(e){}
+          if (aStream) try { aStream.getTracks().forEach(t => t.stop()); } catch(e){}
           if (m.url){ try { URL.revokeObjectURL(m.url); } catch(e){} m.url=null; m.blob=null; }
           jsPsych.finishTrial();
         };
 
-        /* Hard timeout: if Whisper takes >90s or MediaRecorder never fires, proceed anyway */
-        const transcriptionTimeout = setTimeout(()=>{
-          console.warn("Transcription timeout — proceeding without transcript.");
-          study.cases[c.id].transcript_segments=[];
-          study.cases[c.id].transcript_full="[timeout — transcription skipped]";
-          delete study.cases[c.id]._gaze_raw;
-          clearInterval(dotInterval);
-          if(progressDiv.parentNode) progressDiv.parentNode.removeChild(progressDiv);
-          uploadCaseInBackground(c.id);
-          if (aStream) try { aStream.getTracks().forEach(t=>t.stop()); } catch(e){}
-          if (m && m.url){ try { URL.revokeObjectURL(m.url); } catch(e){} m.url=null; m.blob=null; }
-          jsPsych.finishTrial();
-        }, 90000);
-
-        const wrappedFinalize = async (blob) => {
-          clearTimeout(transcriptionTimeout);
-          await finalize(blob);
-        };
-
-        if (aRec && aRec.state!=="inactive") {
-          aRec.onstop = () => wrappedFinalize(new Blob(aChunks,{type:aRec.mimeType||"audio/webm"}));
-          aRec.onerror = () => wrappedFinalize(null);
-          try { aRec.stop(); } catch(e) { wrappedFinalize(null); }
+        if (aRec && aRec.state !== "inactive") {
+          aRec.onstop  = () => finalize(new Blob(aChunks, { type: aRec.mimeType || "audio/webm" }));
+          aRec.onerror = () => finalize(null);
+          try { aRec.stop(); } catch(e) { finalize(null); }
         } else {
-          wrappedFinalize(null);
+          finalize(null);
         }
       });
     }
