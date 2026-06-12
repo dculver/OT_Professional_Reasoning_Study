@@ -32,7 +32,7 @@
 
     function initWhisperWorker() {
       if (__whisperWorker) return;
-      __whisperWorker = new Worker("whisper-worker.js", { type: "module" });
+      __whisperWorker = new Worker("whisper-worker-v2.js", { type: "module" });
       __whisperWorker.onmessage = (e) => {
         const { type, progress, text, chunks, message } = e.data;
         if (type === "progress") {
