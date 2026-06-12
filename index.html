@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Multimodal OT Case Simulation (EHR)</title>
+  <title>Multimodal OT Case Simulation</title>
 
   <script src="js/jspsych.js"></script>
   <link href="js/jspsych.css" rel="stylesheet" type="text/css" />
@@ -19,8 +19,7 @@
   <script src="js/plugin-webgazer-validate.js"></script>
   <script src="js/plugin-initialize-microphone.js"></script>
 
-  <!-- Local Whisper (small.en) via Transformers.js. Audio is transcribed in-browser;
-       only text + timestamps ever leave the machine. -->
+  <!-- Local Whisper (small.en) via Transformers.js -->
   <script type="module">
     import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
     env.allowLocalModels = false;
@@ -30,60 +29,254 @@
   </script>
 
   <style>
-    /* Make jsPsych's default (dark) text readable on the navy background */
+    /* ── jsPsych global overrides ── */
     .jspsych-display-element, .jspsych-content { color:#dbe6f0; }
-    .jspsych-content h1, .jspsych-content h2, .jspsych-content h3,
-    .jspsych-content h4, .jspsych-content p, .jspsych-content label,
-    .jspsych-content span, .jspsych-survey-text-question label { color:#dbe6f0; }
-    /* Inputs stay dark-on-white for legibility while typing */
-    .jspsych-content input[type="text"], .jspsych-content textarea,
+    .jspsych-content h1,.jspsych-content h2,.jspsych-content h3,
+    .jspsych-content h4,.jspsych-content p,.jspsych-content label,
+    .jspsych-content span,.jspsych-survey-text-question label { color:#dbe6f0; }
+    .jspsych-content input[type="text"],.jspsych-content textarea,
     .jspsych-content select { color:#16263d; background:#ffffff; }
-    /* Buttons: dark text on a light button so they stay readable */
     .jspsych-btn { color:#16263d; background:#e8eef5; border:1px solid #b8c6d6; }
     .jspsych-btn:hover { background:#ffffff; }
 
-    /* High-contrast eye-tracking dots during calibration/validation/setup.
-       Several selectors are listed because the calibration point class name
-       varies by plugin version -- the bright fill + outline applies to whichever
-       is present. */
-    .jspsych-webgazer-calibrate-point,
-    .jspsych-webgazer-validate-point,
-    .calibration-point,
-    .validation-point,
-    div[id^="calibration-point"],
-    div[id^="validation-point"],
-    #webgazerGazeDot {
+    /* ── Calibration dots ── */
+    .jspsych-webgazer-calibrate-point,.jspsych-webgazer-validate-point,
+    .calibration-point,.validation-point,
+    div[id^="calibration-point"],div[id^="validation-point"],#webgazerGazeDot {
       background-color:#ffd400 !important;
       border:2px solid #16263d !important;
       box-shadow:0 0 8px 2px rgba(255,212,0,0.8) !important;
       opacity:1 !important;
       transition: top 80ms linear, left 80ms linear !important;
     }
+
+    /* ================================================================
+       BIOWORLD INTERFACE STYLES
+       ================================================================ */
+    * { box-sizing:border-box; }
+
+    .bw-root {
+      width:100vw; height:100vh; display:flex; flex-direction:column;
+      background:#1a2332; color:#e8edf3;
+      font-family:'Segoe UI',system-ui,sans-serif; overflow:hidden;
+    }
+
+    /* Top nav */
+    .bw-topbar {
+      background:#0f1923; border-bottom:1px solid #2a3a4a;
+      padding:0 16px; height:48px; display:flex; align-items:center; gap:0; flex-shrink:0;
+    }
+    .bw-tab {
+      height:48px; padding:0 20px; background:transparent; border:none;
+      border-bottom:3px solid transparent; color:#7a8fa0;
+      font-size:13px; font-weight:500; cursor:pointer;
+      letter-spacing:.04em; text-transform:uppercase;
+      transition:color .15s,border-color .15s;
+    }
+    .bw-tab:hover { color:#c8d8e8; }
+    .bw-tab.active { color:#5ab0f0; border-bottom-color:#5ab0f0; }
+    .bw-patient-label { margin-left:auto; font-size:12px; color:#5a7080; letter-spacing:.06em; }
+
+    /* Main layout */
+    .bw-main { display:flex; flex:1; overflow:hidden; }
+
+    /* Left panel */
+    .bw-left {
+      width:280px; flex-shrink:0; background:#141e2b;
+      border-right:1px solid #2a3a4a; display:flex; flex-direction:column; overflow:hidden;
+    }
+    .bw-panel-section { border-bottom:1px solid #2a3a4a; padding:12px 14px; }
+    .bw-panel-label {
+      font-size:10px; font-weight:600; letter-spacing:.1em;
+      text-transform:uppercase; color:#4a6070; margin-bottom:8px;
+    }
+
+    /* Hypothesis manager */
+    .bw-hyp-list { display:flex; flex-direction:column; gap:6px; }
+    .bw-hyp-row {
+      display:flex; align-items:center; gap:8px;
+      background:#1e2d3d; border:1px solid #2a3a4a;
+      border-radius:6px; padding:7px 10px;
+    }
+    .bw-hyp-name { flex:1; font-size:13px; color:#c8d8e8; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .bw-hyp-rm { width:18px; height:18px; background:transparent; border:none; color:#4a6070; cursor:pointer; font-size:16px; line-height:1; padding:0; flex-shrink:0; }
+    .bw-hyp-rm:hover { color:#e05a5a; }
+    .bw-hyp-input-row { display:flex; gap:6px; margin-top:8px; }
+    .bw-hyp-input {
+      flex:1; background:#1e2d3d; border:1px solid #2a3a4a; border-radius:5px;
+      color:#c8d8e8; font-size:12px; padding:5px 8px;
+    }
+    .bw-hyp-input::placeholder { color:#4a6070; }
+    .bw-hyp-input:focus { outline:none; border-color:#5ab0f0; }
+    .bw-hyp-add {
+      background:#1e4a6e; border:1px solid #2a6090; border-radius:5px;
+      color:#5ab0f0; font-size:12px; padding:5px 10px; cursor:pointer;
+    }
+    .bw-hyp-add:hover { background:#2a5a80; }
+
+    /* Belief meter */
+    .bw-belief-select {
+      width:100%; background:#1e2d3d; border:1px solid #2a3a4a; border-radius:5px;
+      color:#c8d8e8; font-size:12px; padding:5px 8px; margin-bottom:10px;
+    }
+    .bw-belief-select:focus { outline:none; border-color:#5ab0f0; }
+    .bw-belief-slider {
+      width:100%; -webkit-appearance:none; appearance:none; height:4px; border-radius:2px;
+      background:linear-gradient(to right,#e05a5a 0%,#e0a040 35%,#4a9a60 60%,#5ab0f0 100%);
+      outline:none;
+    }
+    .bw-belief-slider::-webkit-slider-thumb {
+      -webkit-appearance:none; width:18px; height:18px; border-radius:50%;
+      background:#c8d8e8; cursor:pointer; border:2px solid #1a2332;
+    }
+    .bw-belief-labels { display:flex; justify-content:space-between; margin-top:4px; }
+    .bw-belief-labels span { font-size:10px; color:#4a6070; }
+    .bw-belief-value { text-align:center; font-size:12px; color:#5ab0f0; margin-top:4px; font-weight:500; }
+
+    /* Evidence table */
+    .bw-evidence-section { flex:1; overflow-y:auto; padding:12px 14px; min-height:0; }
+    .bw-ev-list { display:flex; flex-direction:column; gap:5px; }
+    .bw-ev-item {
+      background:#1e2d3d; border:1px solid #2a3a4a; border-left:3px solid #4a9a60;
+      border-radius:5px; padding:6px 10px; font-size:12px; color:#a0b8c8;
+      display:flex; align-items:flex-start; gap:8px;
+    }
+    .bw-ev-tag {
+      flex-shrink:0; font-size:10px; padding:1px 5px; border-radius:3px;
+      font-weight:600; letter-spacing:.04em; text-transform:uppercase; margin-top:1px;
+    }
+    .tag-patient { background:#1e3d5a; color:#5ab0f0; }
+    .tag-assess  { background:#2a3a1a; color:#7ab040; }
+    .tag-obs     { background:#3a2a1a; color:#e0a040; }
+    .bw-ev-rm { margin-left:auto; background:transparent; border:none; color:#4a6070; cursor:pointer; font-size:14px; line-height:1; flex-shrink:0; }
+    .bw-ev-rm:hover { color:#e05a5a; }
+    .bw-ev-empty { font-size:12px; color:#4a6070; font-style:italic; padding:8px 0; }
+
+    /* Content area */
+    .bw-content { flex:1; overflow-y:auto; padding:24px 28px; min-width:0; }
+    .bw-panel { display:none; }
+    .bw-panel.active { display:block; }
+
+    /* Patient header */
+    .bw-patient-header {
+      display:flex; align-items:flex-start; gap:20px;
+      margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid #2a3a4a;
+    }
+    .bw-avatar {
+      width:56px; height:56px; border-radius:50%; background:#1e3d5a;
+      border:2px solid #2a5070; display:flex; align-items:center;
+      justify-content:center; font-size:20px; font-weight:600; color:#5ab0f0; flex-shrink:0;
+    }
+    .bw-patient-meta h2 { font-size:18px; font-weight:600; color:#e8edf3; margin-bottom:4px; }
+    .bw-meta-row { display:flex; gap:16px; flex-wrap:wrap; }
+    .bw-meta-chip { font-size:12px; color:#7a9ab0; display:flex; align-items:center; gap:4px; }
+    .bw-meta-chip strong { color:#c8d8e8; }
+
+    .bw-section-heading {
+      font-size:11px; font-weight:600; letter-spacing:.08em;
+      text-transform:uppercase; color:#4a6070; margin:20px 0 10px;
+    }
+    .bw-narrative { font-size:14px; line-height:1.75; color:#b8ccd8; }
+    .bw-narrative p { margin-bottom:12px; }
+
+    /* Paragraph evidence buttons */
+    .bw-ev-para {
+      position:relative; padding:10px 12px; border:1px solid transparent;
+      border-radius:6px; margin-bottom:10px; transition:border-color .15s,background .15s;
+    }
+    .bw-ev-para:hover { border-color:#2a4a2a; background:#1a2520; }
+    .bw-ev-para p { margin:0; }
+    .bw-para-btn {
+      display:none; margin-top:8px; background:#1e4a2a; border:1px solid #2a6a3a;
+      color:#5ac070; font-size:11px; padding:3px 10px; border-radius:4px; cursor:pointer;
+    }
+    .bw-ev-para:hover .bw-para-btn { display:inline-block; }
+    .bw-para-btn:hover { background:#2a5a3a; }
+    .bw-ev-para.para-added { border-color:#2a6a3a; background:#1a2d1e; }
+    .bw-ev-para.para-added .bw-para-btn { display:inline-block; background:#0f2a18; border-color:#1a4a28; color:#3a8050; cursor:default; }
+
+    /* Assessment grid */
+    .bw-assess-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; margin-top:4px; }
+    .bw-assess-card {
+      background:#1e2d3d; border:1px solid #2a3a4a; border-radius:8px;
+      padding:14px; cursor:pointer; transition:border-color .15s,background .15s; position:relative;
+    }
+    .bw-assess-card:hover { border-color:#3a5a70; background:#1e3040; }
+    .bw-assess-card.ordered { border-color:#2a6a3a; background:#1a2d1e; }
+    .bw-assess-card.ordered::after { content:'✓ Ordered'; position:absolute; top:8px; right:10px; font-size:10px; color:#5ac070; font-weight:600; }
+    .bw-assess-name { font-size:13px; font-weight:600; color:#c8d8e8; margin-bottom:4px; }
+    .bw-assess-desc { font-size:12px; color:#6a8a9a; line-height:1.5; }
+    .bw-result-area { margin-top:20px; display:none; }
+    .bw-result-area.visible { display:block; }
+    .bw-result-card { background:#1a2d1e; border:1px solid #2a4a2a; border-radius:8px; padding:16px; margin-bottom:10px; }
+    .bw-result-title { font-size:13px; font-weight:600; color:#5ac070; margin-bottom:8px; }
+    .bw-result-body { font-size:13px; color:#a0b8a0; line-height:1.6; }
+    .bw-result-send { margin-top:8px; background:#1e4a2a; border:1px solid #2a6a3a; color:#5ac070; font-size:11px; padding:4px 10px; border-radius:4px; cursor:pointer; }
+    .bw-result-send:hover { background:#2a5a3a; }
+
+    /* Library */
+    .bw-lib-entry { background:#1e2d3d; border:1px solid #2a3a4a; border-radius:8px; padding:14px; margin-bottom:10px; }
+    .bw-lib-entry h4 { font-size:13px; font-weight:600; color:#c8d8e8; margin-bottom:6px; }
+    .bw-lib-entry p { font-size:12px; color:#6a8a9a; line-height:1.5; }
+    .bw-lib-send { margin-top:8px; background:#1e3d5a; border:1px solid #2a5070; color:#5ab0f0; font-size:11px; padding:3px 10px; border-radius:4px; cursor:pointer; }
+    .bw-lib-send:hover { background:#2a5080; }
+
+    /* Plan options */
+    .bw-plan-options { display:flex; flex-direction:column; gap:8px; margin-bottom:20px; }
+    .bw-plan-option {
+      display:flex; align-items:flex-start; gap:10px; background:#1e2d3d;
+      border:1px solid #2a3a4a; border-radius:6px; padding:10px 12px;
+      cursor:pointer; transition:border-color .15s;
+    }
+    .bw-plan-option:hover { border-color:#3a5a70; }
+    .bw-plan-option input { margin-top:2px; flex-shrink:0; accent-color:#5ab0f0; }
+    .bw-plan-option-name { font-size:13px; font-weight:600; color:#c8d8e8; }
+    .bw-plan-option-rationale { font-size:12px; color:#6a8a9a; margin-top:3px; line-height:1.4; }
+    .bw-summary-input {
+      width:100%; min-height:120px; background:#1e2d3d; border:1px solid #2a3a4a;
+      border-radius:6px; color:#c8d8e8; font-size:13px; padding:10px 12px;
+      resize:vertical; line-height:1.6; font-family:inherit;
+    }
+    .bw-summary-input:focus { outline:none; border-color:#5ab0f0; }
+    .bw-summary-input::placeholder { color:#4a6070; }
+
+    /* Bottom bar */
+    .bw-bottom {
+      background:#0f1923; border-top:1px solid #2a3a4a;
+      padding:10px 20px; display:flex; align-items:center; gap:12px; flex-shrink:0;
+    }
+    .bw-elapsed { font-size:11px; color:#4a6070; margin-right:auto; font-family:monospace; }
+    .bw-btn {
+      padding:7px 16px; border-radius:5px; font-size:13px;
+      font-weight:500; cursor:pointer; border:1px solid;
+    }
+    .bw-btn-secondary { background:transparent; border-color:#2a3a4a; color:#7a9ab0; }
+    .bw-btn-secondary:hover { border-color:#3a5a70; color:#c8d8e8; }
+    .bw-btn-submit { background:#1e4a2a; border-color:#2a6a3a; color:#5ac070; }
+    .bw-btn-submit:hover { background:#2a5a3a; }
+
+    ::-webkit-scrollbar { width:6px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:#2a3a4a; border-radius:3px; }
   </style>
 </head>
 
-<body style="margin:0; padding:0; background:#0f1b2d; font-family:'Segoe UI',Arial,sans-serif;">
+<body style="margin:0;padding:0;background:#0f1b2d;font-family:'Segoe UI',Arial,sans-serif;">
 <script>
 /* =====================================================================
    CONFIG
    ===================================================================== */
 const CONFIG = {
   OSF_EXPERIMENT_ID: "7to0EiezFvtE",
-  WHISPER_MODEL: "Xenova/whisper-small.en",  // medical terms; ~240MB first load. medium.en = better/heavier
-  FORCE_CONDITION: "dashboard",              // set to null for true random assignment
-  MIN_DWELL_MS: 150,                         // ignore gaze dwells shorter than this (noise)
+  WHISPER_MODEL: "Xenova/whisper-small.en",
+  FORCE_CONDITION: null,           // set to "dashboard" or "control" to override randomization
+  MIN_DWELL_MS: 150,
   SCREEN_FPS: 15,
   RTA_MAX_SECONDS: 240
 };
 
-const CODE_LABELS = {
-  CUE:"Cue Acquisition", FRAME:"Problem Framing", HYPO:"Hypothesis Generation",
-  PATIENT:"Patient-Centered Reasoning", INTERV:"Intervention Selection",
-  MONITOR:"Metacognitive Monitoring"
-};
-
 /* =====================================================================
-   SESSION STATE (only de-identified text/numbers are ever transmitted)
+   SESSION STATE
    ===================================================================== */
 const study = {
   participant_code: null,
@@ -121,7 +314,7 @@ async function transcribeBlob(blob) {
 }
 
 /* =====================================================================
-   SCREEN RECORDING (retrospective cue source; stays local)
+   SCREEN RECORDING
    ===================================================================== */
 function pickVideoMime() {
   for (const c of ["video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"])
@@ -153,7 +346,7 @@ function stopScreenRecording(id) {
 }
 
 /* =====================================================================
-   OSF / DataPipe upload helpers
+   OSF / DataPipe
    ===================================================================== */
 function uniqueName(tag) {
   const id    = study.participant_code || study.sub_id_from_url || "ANON";
@@ -171,27 +364,24 @@ function postToDataPipe(filename, dataObj) {
     return { ok: resp.ok && !(body && body.error), status: resp.status, body };
   });
 }
-// Fire-and-forget: banks one case as soon as its narration finishes, so a
-// dropout later in the session still preserves the completed case.
 function uploadCaseInBackground(caseId) {
   const payload = {
     participant_code: study.participant_code,
     sub_id_from_url: study.sub_id_from_url,
     experimental_condition: study.experimental_condition,
     calibration: study.calibration,
-    case_id: caseId,
-    partial: true,
+    case_id: caseId, partial: true,
     "case": study.cases[caseId] || {},
     started_at: study.started_at,
     saved_at: new Date().toISOString()
   };
-  postToDataPipe(uniqueName("case" + caseId), payload)
-    .then(r => console.log("Per-case OSF save (case " + caseId + "):", r.ok ? "OK" : "REJECTED", r.status, r.body))
-    .catch(e => console.error("Per-case OSF save (case " + caseId + ") failed:", e));
+  postToDataPipe(uniqueName("case"+caseId), payload)
+    .then(r => console.log("Per-case OSF save (case "+caseId+"):", r.ok?"OK":"REJECTED", r.status, r.body))
+    .catch(e => console.error("Per-case OSF save (case "+caseId+") failed:", e));
 }
 
 /* =====================================================================
-   jsPsych init + final OSF save (consolidated record)
+   jsPsych + final OSF save
    ===================================================================== */
 var jsPsych = initJsPsych({
   extensions: [{ type: jsPsychExtensionWebgazer }],
@@ -214,16 +404,13 @@ var jsPsych = initJsPsych({
       if (r.ok) {
         document.body.innerHTML = `<div style="text-align:center;margin-top:18%;color:#27ae60;"><h3>Sync complete. You may close this tab.</h3></div>`;
       } else {
-        console.error("DataPipe rejected the upload:", r.status, r.body);
         document.body.innerHTML = `<div style="text-align:center;margin-top:14%;color:#e74c3c;max-width:680px;margin-left:auto;margin-right:auto;">
-          <h3>OSF save was rejected.</h3>
-          <p>Status: ${r.status}</p>
-          <p style="font-family:monospace;font-size:13px;background:#1d3450;color:#fff;padding:10px;border-radius:6px;word-break:break-word;">${JSON.stringify(r.body)}</p>
+          <h3>OSF save was rejected.</h3><p>Status: ${r.status}</p>
+          <p style="font-family:monospace;font-size:13px;background:#1d3450;color:#fff;padding:10px;border-radius:6px;">${JSON.stringify(r.body)}</p>
           <p>Open the console for details, then notify the researcher.</p></div>`;
       }
     } catch (e) {
-      console.error("OSF upload network error:", e);
-      document.body.innerHTML = `<div style="text-align:center;margin-top:18%;color:#e74c3c;"><h3>Cloud sync failed (network/CORS): ${e.message}</h3><p>Please notify the researcher.</p></div>`;
+      document.body.innerHTML = `<div style="text-align:center;margin-top:18%;color:#e74c3c;"><h3>Cloud sync failed: ${e.message}</h3><p>Please notify the researcher.</p></div>`;
     }
   }
 });
@@ -252,7 +439,7 @@ timeline.push({
 });
 
 /* =====================================================================
-   MEDIA + CALIBRATION (13 points)
+   CALIBRATION
    ===================================================================== */
 timeline.push({ type: jsPsychInitializeMicrophone, error_message:"<p>Microphone access is required.</p>" });
 timeline.push({
@@ -270,7 +457,7 @@ var calibration_grid = { type: jsPsychWebgazerCalibrate, calibration_mode:"click
 var validation_instructions = {
   type: jsPsychHtmlKeyboardResponse,
   stimulus:`<div style="text-align:center;padding:20px;color:#cdd9e5;">
-      <h3>Calibration complete \u2014 testing accuracy.</h3>
+      <h3>Calibration complete — testing accuracy.</h3>
       <p style="font-size:18px;"><strong>Look</strong> at each dot until it disappears. Do not click.</p>
       <p style="color:#8aa0b6;margin-top:24px;">Press any key to begin.</p></div>`
 };
@@ -289,7 +476,7 @@ timeline.push({
   }
 });
 
-/* ensure the speech model is fully loaded before cases begin */
+/* model warm-up gate */
 timeline.push({
   type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
   stimulus:`<div style="text-align:center;margin-top:18%;color:#cdd9e5;"><h3>Preparing analysis tools…</h3>
@@ -305,196 +492,728 @@ timeline.push({
 });
 
 /* =====================================================================
-   EHR CASE CONTENT
+   BIOWORLD CASE DEFINITIONS
    ===================================================================== */
-const EHR_AOIS = [
-  { id:"aoi_profile", code:"FRAME",   title:"Reason for Referral / Occupational Profile" },
-  { id:"aoi_problem", code:"CUE",     title:"Problem List & Diagnosis" },
-  { id:"aoi_vitals",  code:"CUE",     title:"Vitals & Labs" },
-  { id:"aoi_history", code:"HYPO",    title:"History & Clinical Notes" },
-  { id:"aoi_goals",   code:"PATIENT", title:"Patient Goals & Social History" },
-  { id:"aoi_adl",     code:"PATIENT", title:"ADL / Functional Observation" },
-  { id:"aoi_orders",  code:"INTERV",  title:"Care Plan & Orders" }
-];
-
-const CASES = {
+const BW_CASES = {
   1: {
-    id:1, name:"Evelyn Soto", mrn:"MRN 04417", dob:"DOB 1951-03-08 (74F)", dx:"Ischemic CVA, L MCA",
-    content: {
-      aoi_profile:`Referred to OT for evaluation and treatment following left MCA ischemic stroke. <em>Reason:</em> decline in ability to complete kitchen ADLs; goal of returning to independent meal preparation at home.`,
-      aoi_problem:`<strong>Active problems:</strong><ul><li>Ischemic stroke, L MCA (2 wks ago)</li><li>Right hemiparesis (UE &gt; LE)</li><li>Mild expressive aphasia</li></ul>`,
-      aoi_vitals:`BP 138/84 · HR 76 · O2 98% RA<br><strong>Motor:</strong> R grip 4 kg (L 22 kg); R UE MMT 3/5 distal.<br><strong>Sensation:</strong> intact. <strong>MoCA:</strong> 25/30.`,
-      aoi_history:`Prior level: fully independent, lived alone, cooked daily. Onset sudden R-sided weakness. Imaging: L MCA infarct. No prior CVA. Right-hand dominant.`,
-      aoi_goals:`Patient states she "needs to be able to make her own lunch" and fears losing independence. Lives alone in a single-story home; daughter visits weekly. Values cooking and hosting.`,
-      aoi_adl:`<div style="background:#0b1422;color:#7f93a8;height:170px;display:flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer;" id="vid_1">&#9654; Play: Evelyn stabilizing bread one-handed while spreading peanut butter</div>`,
-      orders_options:[["Rocker knife","rk"],["Dycem non-slip mat","dycem"],["Universal cuff","uc"]]
-    }
+    id: 1,
+    patientName: "Evelyn Soto",
+    patientInitials: "ES",
+    age: 74,
+    diagnosis: "Ischemic Stroke (L MCA)",
+    setting: "Inpatient Rehab",
+    referral: "Neurology",
+
+    /* AOI → code mapping for gaze analysis.
+       These IDs must match the element IDs rendered in the BioWorld template.
+       Emic codes (Schell): SCIENTIFIC, NARRATIVE, PRAGMATIC
+       Etic codes (Winne & Hadwin): TASK-DEF, GOAL-SET, ENACTING, MONITOR        */
+    aoi_map: [
+      { id:"bw_hyp_panel",     emic:"",            etic:"GOAL-SET",  label:"Hypothesis Manager" },
+      { id:"bw_belief_panel",  emic:"",            etic:"GOAL-SET",  label:"Belief Meter" },
+      { id:"bw_ev_panel",      emic:"",            etic:"MONITOR",   label:"Evidence Table" },
+      { id:"bw_para_h1",       emic:"NARRATIVE",   etic:"TASK-DEF",  label:"Patient History Para 1" },
+      { id:"bw_para_h2",       emic:"NARRATIVE",   etic:"TASK-DEF",  label:"Patient History Para 2" },
+      { id:"bw_para_a1",       emic:"SCIENTIFIC",  etic:"TASK-DEF",  label:"ADL Observation Para 1" },
+      { id:"bw_para_a2",       emic:"NARRATIVE",   etic:"TASK-DEF",  label:"ADL Observation Para 2" },
+      { id:"bw_para_f1",       emic:"PRAGMATIC",   etic:"TASK-DEF",  label:"Functional Status" },
+      { id:"bw_panel_chart",   emic:"SCIENTIFIC",  etic:"ENACTING",  label:"Chart / Assessments Tab" },
+      { id:"bw_panel_library", emic:"SCIENTIFIC",  etic:"ENACTING",  label:"Library Tab" },
+      { id:"bw_panel_plan",    emic:"PRAGMATIC",   etic:"ENACTING",  label:"Intervention Plan Tab" }
+    ],
+
+    paragraphs: {
+      bw_para_h1: "Patient History: 74yo retired schoolteacher, ischemic stroke (L MCA), right hemiparesis, mild expressive aphasia, reduced right grip strength. Previously fully independent, lives alone.",
+      bw_para_h2: "Medical History: T2 diabetes, hypertension, bilateral hand osteoarthritis. Right-hand dominant. Widowed, two nearby adult children. Highly motivated to return home.",
+      bw_para_a1: "ADL Observation: Difficulty stabilizing objects during meal prep; unable to open jar without assistance. Right hand functional reach but reduced pinch strength; compensatory left-hand strategy throughout.",
+      bw_para_a2: "ADL Observation: Visible frustration; 'I used to do this every morning.' Fatigue onset ~12 min. Completed task with moderate assistance and verbal cueing.",
+      bw_para_f1: "Functional Status: FIM Self-care 3/7, Transfers 4/7, Locomotion 4/7. Goals: independent meal prep, home management, community mobility. Return home within 3 weeks; resume book club."
+    },
+
+    narrativeHTML: `
+      <div class="bw-section-heading">Presenting Complaint &amp; History</div>
+      <div class="bw-narrative">
+        <div class="bw-ev-para" id="bw_para_h1">
+          <p>Evelyn is a 74-year-old retired schoolteacher admitted five days ago following an ischemic stroke affecting the left middle cerebral artery territory. She presents with right hemiparesis, mild expressive aphasia, and reduced grip strength on the right side. Prior to admission she was fully independent in all activities of daily living and lived alone in a single-story home.</p>
+          <button class="bw-para-btn" data-para="bw_para_h1">+ Evidence</button>
+        </div>
+        <div class="bw-ev-para" id="bw_para_h2">
+          <p>Her medical history is significant for Type 2 diabetes (well-controlled), hypertension, and mild osteoarthritis of both hands. She reports being right-hand dominant. She is widowed, has two adult children who live nearby, and describes herself as highly motivated to return home.</p>
+          <button class="bw-para-btn" data-para="bw_para_h2">+ Evidence</button>
+        </div>
+      </div>
+      <div class="bw-section-heading">ADL Observation Summary</div>
+      <div class="bw-narrative">
+        <div class="bw-ev-para" id="bw_para_a1">
+          <p>During an observed meal preparation task this morning, Evelyn was able to ambulate to the kitchen with supervision using a quad cane. She demonstrated difficulty stabilizing bread on the counter while attempting to spread peanut butter, requiring multiple attempts. She was unable to open a standard jar lid without assistance. Her right hand showed functional reach but significantly reduced pinch strength; she compensated by using her left hand for most fine motor tasks.</p>
+          <button class="bw-para-btn" data-para="bw_para_a1">+ Evidence</button>
+        </div>
+        <div class="bw-ev-para" id="bw_para_a2">
+          <p>She became visibly frustrated after two failed attempts at opening the jar and stated: "I used to do this every morning." Fatigue was noted after approximately 12 minutes of activity. She completed the task with moderate assistance and verbal cueing.</p>
+          <button class="bw-para-btn" data-para="bw_para_a2">+ Evidence</button>
+        </div>
+      </div>
+      <div class="bw-section-heading">Current Functional Status</div>
+      <div class="bw-narrative">
+        <div class="bw-ev-para" id="bw_para_f1">
+          <p>FIM scores on admission: Self-care 3/7, Transfers 4/7, Locomotion 4/7. Occupational profile indicates high priority for independent meal preparation, home management, and community mobility. Evelyn's goal is to return home within three weeks and resume weekly book club meetings.</p>
+          <button class="bw-para-btn" data-para="bw_para_f1">+ Evidence</button>
+        </div>
+      </div>`,
+
+    assessments: [
+      { id:"jthft",  name:"JTHFT",                    fullName:"Jebsen-Taylor Hand Function Test",             desc:"Standardized timed test of hand function across 7 subtasks.",
+        result:"Right hand: significantly impaired. Dominant hand score 3.2× slower than age-matched norms. Left hand within normal limits." },
+      { id:"fim",    name:"FIM (ADL Subscale)",         fullName:"Functional Independence Measure — ADL Subscale", desc:"7-point rating scale across self-care, sphincter, transfer, and locomotion domains.",
+        result:"Self-care: 3/7. Transfers: 4/7. Eating: 4/7. Grooming: 3/7." },
+      { id:"copm",   name:"COPM",                      fullName:"Canadian Occupational Performance Measure",    desc:"Semi-structured interview identifying patient-identified occupational performance issues (1–10).",
+        result:"Top priorities: (1) independent meal prep P:3/S:1, (2) home management P:2/S:1, (3) community mobility P:4/S:3." },
+      { id:"grip",   name:"Grip Strength",              fullName:"Hand Grip Dynamometry (Jamar)",               desc:"Standardized three-trial average grip strength. Compare to normative data.",
+        result:"Right: 8.2 kg (norm 24.1 kg — 34% of expected). Left: 21.4 kg (89%). Significant right-hand deficit confirmed." },
+      { id:"mealobs",name:"Meal Prep Observation",      fullName:"Structured Meal Preparation Observation",     desc:"Naturalistic observation of a standardized meal preparation task.",
+        result:"Moderate assistance required. Right hand stabilization only. Grip insufficient for jar opening. Fatigue onset ~12 min. Compensatory left-hand strategies throughout." },
+      { id:"mmse",   name:"MMSE Screen",                fullName:"Mini-Mental State Examination",               desc:"Brief 30-point cognitive screening instrument.",
+        result:"Score: 26/30. Mild expressive aphasia noted but comprehension intact. No significant memory deficit." }
+    ],
+
+    library: [
+      { id:"stroke-adl", title:"Stroke Rehabilitation: ADL Interventions",
+        body:"Task-specific training (TST) is the most evidence-supported approach for ADL retraining post-stroke. TST involves repeated practice of whole tasks in context with progressive challenge. Compensatory approaches are appropriate for short-term independence goals. Evidence supports early intensive practice. See: Timmermans et al. (2010); Wolf et al. (2006) EXCITE trial." },
+      { id:"adaptive-eq", title:"Adaptive Equipment: Upper Extremity Weakness",
+        body:"Common adaptive equipment for unilateral grip deficits post-stroke: Dycem non-slip matting (stabilization); rocker knife (one-handed cutting); built-up handle utensils (reduces grip requirement); lever-action jar opener; weighted utensils; plate guard. Equipment selection should match the patient's deficit profile and goals." },
+      { id:"occ-profile", title:"Occupational Profile & Client-Centered Practice",
+        body:"The AOTA Occupational Profile (2nd ed.) guides systematic identification of the client's history, patterns, interests, values, and needs. Client-centered OT prioritizes patient-identified goals as elicited through tools such as the COPM. Strong evidence supports goal alignment with pre-morbid roles and routines." },
+      { id:"hemiplegia", title:"Hemiplegia: Compensatory vs. Remedial Approaches",
+        body:"Remedial approaches aim to restore function via neuroplasticity-based interventions (CIMT, bilateral training). Compensatory approaches train the unaffected limb and use adaptive equipment. A combined approach is typically recommended: compensatory for early independence, remedial for long-term recovery." },
+      { id:"fatigue", title:"Post-Stroke Fatigue: Management in ADL Training",
+        body:"Post-stroke fatigue affects 40–70% of patients. Energy conservation principles should be incorporated: activity pacing, task modification, environmental organization. Perform demanding tasks when energy is highest; prioritize patient-valued activities; educate caregivers about fatigue as a neurological symptom." }
+    ],
+
+    planOptions: [
+      { id:"task-specific", name:"Task-Specific Training (Remedial)",       rationale:"Repeated practice of meal prep and self-care tasks to promote neuroplasticity and right UE recovery." },
+      { id:"compensatory",  name:"Compensatory / Adaptive Equipment",       rationale:"Prioritize immediate independence using adaptive equipment and left-hand strategies." },
+      { id:"combined",      name:"Combined Remedial + Compensatory",        rationale:"Adaptive equipment for immediate independence while integrating task-specific training for long-term recovery." },
+      { id:"caregiver",     name:"Caregiver Training & Environmental Mod",  rationale:"Train family in cuing and assistance; modify home environment to reduce demand on impaired hand." }
+    ],
+
+    equipmentOptions: [
+      { id:"dycem",      name:"Dycem Non-Slip Matting",     rationale:"Stabilizes objects during one-handed food preparation." },
+      { id:"rocker",     name:"Rocker Knife",               rationale:"Enables one-handed cutting; reduces bilateral coordination requirement." },
+      { id:"builtup",    name:"Built-Up Handle Utensils",   rationale:"Reduces grip strength requirement for eating and food prep." },
+      { id:"jaropen",    name:"Lever-Action Jar Opener",    rationale:"Enables independent jar opening when bilateral grip is unavailable." },
+      { id:"weighted",   name:"Weighted Utensils",          rationale:"May reduce tremor and improve proprioceptive feedback." },
+      { id:"no-equip",   name:"No adaptive equipment",      rationale:"Focus on remedial training; defer adaptive equipment pending recovery." }
+    ]
   },
+
   2: {
-    id:2, name:"Marcus Tran", mrn:"MRN 07732", dob:"DOB 1998-11-22 (27M)", dx:"C6 SCI, incomplete (AIS D)",
-    content: {
-      aoi_profile:`Referred to OT for upper-extremity ADL retraining after incomplete C6 spinal cord injury. <em>Reason:</em> difficulty with upper-body dressing; goal of independent dressing for return to work.`,
-      aoi_problem:`<strong>Active problems:</strong><ul><li>C6 SCI, incomplete (AIS D), 6 wks post</li><li>Reduced grip strength bilaterally</li><li>Tenodesis grasp intact</li></ul>`,
-      aoi_vitals:`BP 118/72 · HR 68 · O2 99% RA<br><strong>Motor:</strong> wrist extension 4/5; finger flexors 2/5; tenodesis present.<br><strong>Sensation:</strong> impaired below C6.`,
-      aoi_history:`Prior level: independent, active, works as a graphic designer. MVC 6 weeks ago. No TBI. Right-hand dominant. Currently uses wheelchair, transfers independently.`,
-      aoi_goals:`Patient states he "wants to dress himself without help before going back to the office." Lives with partner; values autonomy and returning to work soon.`,
-      aoi_adl:`<div style="background:#0b1422;color:#7f93a8;height:170px;display:flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer;" id="vid_2">&#9654; Play: Marcus attempting to button a dress shirt with limited grip</div>`,
-      orders_options:[["Button hook","bh"],["Dressing stick","ds"],["Velcro shirt conversions","velcro"]]
-    }
+    id: 2,
+    patientName: "Marcus Tran",
+    patientInitials: "MT",
+    age: 27,
+    diagnosis: "C6 SCI, Incomplete (AIS D)",
+    setting: "Inpatient Rehab",
+    referral: "Physiatry",
+
+    aoi_map: [
+      { id:"bw_hyp_panel",     emic:"",            etic:"GOAL-SET",  label:"Hypothesis Manager" },
+      { id:"bw_belief_panel",  emic:"",            etic:"GOAL-SET",  label:"Belief Meter" },
+      { id:"bw_ev_panel",      emic:"",            etic:"MONITOR",   label:"Evidence Table" },
+      { id:"bw_para_h1",       emic:"NARRATIVE",   etic:"TASK-DEF",  label:"Patient History Para 1" },
+      { id:"bw_para_h2",       emic:"NARRATIVE",   etic:"TASK-DEF",  label:"Patient History Para 2" },
+      { id:"bw_para_a1",       emic:"SCIENTIFIC",  etic:"TASK-DEF",  label:"ADL Observation Para 1" },
+      { id:"bw_para_a2",       emic:"NARRATIVE",   etic:"TASK-DEF",  label:"ADL Observation Para 2" },
+      { id:"bw_para_f1",       emic:"PRAGMATIC",   etic:"TASK-DEF",  label:"Functional Status" },
+      { id:"bw_panel_chart",   emic:"SCIENTIFIC",  etic:"ENACTING",  label:"Chart / Assessments Tab" },
+      { id:"bw_panel_library", emic:"SCIENTIFIC",  etic:"ENACTING",  label:"Library Tab" },
+      { id:"bw_panel_plan",    emic:"PRAGMATIC",   etic:"ENACTING",  label:"Intervention Plan Tab" }
+    ],
+
+    paragraphs: {
+      bw_para_h1: "Patient History: 27yo graphic designer, C6 SCI incomplete (AIS D) 6 weeks post-MVC. Reduced bilateral grip strength; tenodesis grasp intact. Currently uses wheelchair, transfers independently.",
+      bw_para_h2: "Medical History: No prior conditions. Right-hand dominant. Lives with partner. Values autonomy and early return to work. No TBI.",
+      bw_para_a1: "ADL Observation: Unable to button dress shirt independently. Tenodesis grasp functional for large objects but insufficient for small fasteners. Required moderate assistance and multiple attempts.",
+      bw_para_a2: "ADL Observation: Patient expressed frustration and stated 'I need to be able to dress myself before I go back to the office.' Fatigue noted after 15 minutes of upper-body dressing tasks.",
+      bw_para_f1: "Functional Status: FIM Self-care 4/7, Upper-body dressing 3/7. COPM: dressing for work P:2/S:1; meal prep P:3/S:2; computer use P:4/S:3. Return to work goal within 6 weeks."
+    },
+
+    narrativeHTML: `
+      <div class="bw-section-heading">Presenting Complaint &amp; History</div>
+      <div class="bw-narrative">
+        <div class="bw-ev-para" id="bw_para_h1">
+          <p>Marcus is a 27-year-old graphic designer admitted six weeks ago following a motor vehicle collision resulting in a C6 incomplete spinal cord injury (AIS D). He presents with reduced bilateral grip strength and impaired finger flexion, though tenodesis grasp is intact. He currently uses a manual wheelchair and is independent with transfers.</p>
+          <button class="bw-para-btn" data-para="bw_para_h1">+ Evidence</button>
+        </div>
+        <div class="bw-ev-para" id="bw_para_h2">
+          <p>Marcus has no prior medical conditions. He is right-hand dominant. He lives with his partner in an accessible apartment. He describes himself as highly motivated and values autonomy. He has no traumatic brain injury and is cognitively intact.</p>
+          <button class="bw-para-btn" data-para="bw_para_h2">+ Evidence</button>
+        </div>
+      </div>
+      <div class="bw-section-heading">ADL Observation Summary</div>
+      <div class="bw-narrative">
+        <div class="bw-ev-para" id="bw_para_a1">
+          <p>During an observed upper-body dressing task this morning, Marcus was unable to button a standard dress shirt independently. Tenodesis grasp was functional for grasping larger objects but insufficient for manipulating small fasteners. He required moderate assistance and multiple attempts before giving up on the top two buttons.</p>
+          <button class="bw-para-btn" data-para="bw_para_a1">+ Evidence</button>
+        </div>
+        <div class="bw-ev-para" id="bw_para_a2">
+          <p>Marcus expressed frustration and stated: "I need to be able to dress myself before I go back to the office." Fatigue was noted after approximately 15 minutes of upper-body dressing tasks. He completed the task with moderate assistance and verbal cueing for compensatory strategies.</p>
+          <button class="bw-para-btn" data-para="bw_para_a2">+ Evidence</button>
+        </div>
+      </div>
+      <div class="bw-section-heading">Current Functional Status</div>
+      <div class="bw-narrative">
+        <div class="bw-ev-para" id="bw_para_f1">
+          <p>FIM scores: Self-care 4/7, Upper-body dressing 3/7. COPM priorities: dressing for work P:2/S:1, meal preparation P:3/S:2, computer use for graphic design P:4/S:3. Marcus's primary goal is to return to work within six weeks.</p>
+          <button class="bw-para-btn" data-para="bw_para_f1">+ Evidence</button>
+        </div>
+      </div>`,
+
+    assessments: [
+      { id:"pinch",    name:"Pinch Strength",            fullName:"Lateral & 3-jaw pinch dynamometry",           desc:"Standardized pinch strength measurement. Critical for tenodesis and fine motor task planning.",
+        result:"Lateral pinch R: 1.2 kg (norm 8.2 kg). Lateral pinch L: 1.0 kg. 3-jaw pinch: insufficient to measure reliably. Tenodesis functional but weak." },
+      { id:"dash",     name:"DASH Questionnaire",         fullName:"Disabilities of Arm, Shoulder & Hand",        desc:"Patient-reported outcome measure for UE disability (0=no disability, 100=most severe).",
+        result:"DASH score: 68/100 (moderate-severe). Work module: 74/100. Dressing subscale: 80/100." },
+      { id:"copm2",    name:"COPM",                       fullName:"Canadian Occupational Performance Measure",    desc:"Semi-structured interview for patient-identified occupational performance issues.",
+        result:"Top priorities: (1) independent dressing P:2/S:1, (2) meal prep P:3/S:2, (3) graphic design work P:4/S:3." },
+      { id:"manfunc",  name:"Manual Function Test",       fullName:"International Standards for Neurological Classification — Motor",
+        desc:"Standardized muscle grading for SCI classification.", result:"C6 AIS D confirmed. Wrist extensors 4/5. Finger flexors 2/5. Intrinsics trace. Tenodesis present and functional." },
+      { id:"dressobs", name:"Dressing Observation",       fullName:"Structured Upper-Body Dressing Observation",   desc:"Naturalistic observation of shirt buttoning and upper-body dressing task.",
+        result:"Unable to complete shirt buttoning independently. Tenodesis grasp insufficient for small fasteners. Moderate assistance required. 15 min to fatigue." }
+    ],
+
+    library: [
+      { id:"sci-adl", title:"SCI Rehabilitation: Upper-Body Dressing",
+        body:"Compensatory dressing techniques for C6 SCI include: dressing hooks, button hooks, loops sewn onto zippers, and Velcro fastener conversions. Tenodesis-based grasp can be trained for larger fasteners. Adaptive equipment selection should match the residual function and the patient's occupational goals. Return-to-work goals should drive prioritization of relevant ADLs." },
+      { id:"tenodesis", title:"Tenodesis Grasp: Function and Training",
+        body:"Tenodesis grasp uses passive wrist extension to approximate thumb and index finger. Functional for grasping cups, phones, and some clothing but typically insufficient for small fasteners. Training focuses on wrist extensor strengthening and object manipulation practice. Wrist extensor strength of 3+/5 is generally the minimum for functional tenodesis." },
+      { id:"sci-equip", title:"Adaptive Equipment: C6 SCI Dressing",
+        body:"Button hook: extends reach and reduces fine pinch requirement for shirt buttons. Dressing stick: assists with lower-body dressing and sock donning. Velcro conversions: replace buttons/snaps with hook-and-loop fasteners eliminating fine motor demand. Loop scissors and adapted writing tools for work-related tasks. Equipment should be trialed in context before prescription." },
+      { id:"return-work", title:"Return to Work: OT Role in SCI",
+        body:"OT supports return to work following SCI through worksite assessment, adaptive technology evaluation, and simulation of work tasks. For desk-based workers, priorities include computer access (keyguards, voice recognition, adaptive mouse), seating and positioning, and environmental modification. Early return-to-work planning correlates with improved long-term employment outcomes." },
+      { id:"sci-fatigue", title:"Fatigue Management in SCI Rehabilitation",
+        body:"Fatigue in SCI results from increased metabolic cost of upper-extremity compensation for lost trunk/lower-extremity function. Energy conservation strategies are essential: work simplification, rest breaks, task sequencing, environmental organization. ADL training should be sequenced to prioritize highest-value tasks when energy is greatest." }
+    ],
+
+    planOptions: [
+      { id:"compensatory2", name:"Compensatory / Adaptive Equipment",       rationale:"Prioritize immediate independence in dressing using button hook, Velcro conversions, and dressing strategies." },
+      { id:"remedial2",     name:"Remedial: Tenodesis Strengthening",       rationale:"Strengthen wrist extensors and train tenodesis grasp for improved functional reach and object manipulation." },
+      { id:"combined2",     name:"Combined Compensatory + Remedial",        rationale:"Adaptive equipment for immediate dressing independence while training tenodesis for long-term fine motor gains." },
+      { id:"worksim2",      name:"Work Simulation + Dressing Integration",  rationale:"Simulate graphic design workstation tasks alongside dressing training to align with patient's return-to-work goal." }
+    ],
+
+    equipmentOptions: [
+      { id:"buttonhook",  name:"Button Hook",              rationale:"Reduces fine pinch requirement for standard shirt buttons." },
+      { id:"velcro2",     name:"Velcro Shirt Conversions", rationale:"Eliminates fine motor demand for fastening entirely." },
+      { id:"dressstick",  name:"Dressing Stick",           rationale:"Assists with lower-body dressing and clothing management." },
+      { id:"loopdress",   name:"Loop Dressing Aids",       rationale:"Loops attached to clothing items reduce grip requirement." },
+      { id:"no-equip2",   name:"No adaptive equipment",   rationale:"Focus on remedial tenodesis training first." }
+    ]
   }
 };
 
-function ehrPanel(aoi, bodyHtml) {
-  return `<div class="ehr-panel" id="${aoi.id}" data-aoi="${aoi.id}" data-code="${aoi.code}">
-    <div class="ehr-h">${aoi.title}<span class="aoi-tag">${aoi.code}</span></div>
-    <div class="ehr-body">${bodyHtml}</div></div>`;
-}
+/* =====================================================================
+   BIOWORLD UI BUILDER
+   ===================================================================== */
+function buildBioWorldUI(c) {
+  const assessHTML = c.assessments.map(a =>
+    `<div class="bw-assess-card" id="bw_assess_${a.id}" data-assess-id="${a.id}">
+       <div class="bw-assess-name">${a.name}</div>
+       <div class="bw-assess-desc">${a.desc}</div>
+     </div>`).join("");
 
-function ehrTemplate(c) {
-  const C = c.content;
-  const orders = C.orders_options.map(o =>
-    `<label style="display:block;margin:6px 0;"><input type="radio" name="ae_${c.id}" value="${o[0]}"> ${o[0]}</label>`).join("");
-  const byId = id => EHR_AOIS.find(a => a.id === id);
+  const libHTML = c.library.map(e =>
+    `<div class="bw-lib-entry" id="bw_lib_${e.id}">
+       <h4>${e.title}</h4>
+       <p>${e.body}</p>
+       <button class="bw-lib-send" data-lib-id="${e.id}">+ Send to Evidence</button>
+     </div>`).join("");
+
+  const planHTML = c.planOptions.map(p =>
+    `<label class="bw-plan-option">
+       <input type="radio" name="bw_plan_${c.id}" value="${p.id}">
+       <div><div class="bw-plan-option-name">${p.name}</div>
+            <div class="bw-plan-option-rationale">${p.rationale}</div></div>
+     </label>`).join("");
+
+  const equipHTML = c.equipmentOptions.map(p =>
+    `<label class="bw-plan-option">
+       <input type="checkbox" value="${p.id}">
+       <div><div class="bw-plan-option-name">${p.name}</div>
+            <div class="bw-plan-option-rationale">${p.rationale}</div></div>
+     </label>`).join("");
+
   return `
-  <div id="ehr_${c.id}" class="ehr-root">
-    <div class="ehr-banner">
-      <div><strong>${c.name}</strong> &nbsp; ${c.dob} &nbsp; ${c.mrn}</div>
-      <div>${c.dx}</div>
+  <div class="bw-root" id="bw_root_${c.id}">
+
+    <!-- TOP NAV -->
+    <div class="bw-topbar">
+      <button class="bw-tab active" data-tab="problem" data-case="${c.id}">Problem</button>
+      <button class="bw-tab" data-tab="chart"   data-case="${c.id}">Chart</button>
+      <button class="bw-tab" data-tab="library" data-case="${c.id}">Library</button>
+      <button class="bw-tab" data-tab="plan"    data-case="${c.id}">Intervention Plan</button>
+      <span class="bw-patient-label">${c.patientName.toUpperCase()} — ${c.diagnosis.toUpperCase()}</span>
     </div>
-    <div class="ehr-grid">
-      <div class="ehr-col">
-        ${ehrPanel(byId("aoi_profile"), C.aoi_profile)}
-        ${ehrPanel(byId("aoi_problem"), C.aoi_problem)}
-        ${ehrPanel(byId("aoi_vitals"),  C.aoi_vitals)}
+
+    <!-- MAIN -->
+    <div class="bw-main">
+
+      <!-- LEFT PANEL -->
+      <div class="bw-left">
+
+        <!-- Hypothesis Manager -->
+        <div class="bw-panel-section" id="bw_hyp_panel">
+          <div class="bw-panel-label">Hypothesis Manager</div>
+          <div class="bw-hyp-list" id="bw_hyp_list_${c.id}"></div>
+          <div class="bw-hyp-input-row">
+            <input type="text" class="bw-hyp-input" id="bw_hyp_input_${c.id}" placeholder="Add a hypothesis…" maxlength="80" />
+            <button class="bw-hyp-add" data-case="${c.id}">+ Add</button>
+          </div>
+        </div>
+
+        <!-- Belief Meter -->
+        <div class="bw-panel-section" id="bw_belief_panel">
+          <div class="bw-panel-label">Belief Meter</div>
+          <select class="bw-belief-select" id="bw_belief_sel_${c.id}">
+            <option value="">— Select hypothesis —</option>
+          </select>
+          <input type="range" class="bw-belief-slider" id="bw_belief_slider_${c.id}" min="0" max="100" value="50">
+          <div class="bw-belief-labels"><span>Not confident</span><span>Very confident</span></div>
+          <div class="bw-belief-value" id="bw_belief_val_${c.id}">Confidence: 50%</div>
+        </div>
+
+        <!-- Evidence Table -->
+        <div class="bw-evidence-section" id="bw_ev_panel">
+          <div class="bw-panel-label">Evidence Table</div>
+          <div class="bw-ev-list" id="bw_ev_list_${c.id}">
+            <div class="bw-ev-empty" id="bw_ev_empty_${c.id}">No evidence collected yet. Hover over paragraphs in the Problem tab to add items.</div>
+          </div>
+        </div>
+
       </div>
-      <div class="ehr-col">
-        ${ehrPanel(byId("aoi_history"), C.aoi_history)}
-        ${ehrPanel(byId("aoi_goals"),   C.aoi_goals)}
-      </div>
-      <div class="ehr-col">
-        ${ehrPanel(byId("aoi_adl"),     C.aoi_adl)}
-        ${ehrPanel(byId("aoi_orders"),
-          `<p style="margin-top:0;">Select an adaptive-equipment intervention:</p>${orders}
-           <button id="btn_submit_${c.id}" class="ehr-submit">Sign Orders &amp; Complete</button>`)}
+
+      <!-- CENTER CONTENT -->
+      <div class="bw-content">
+
+        <!-- PROBLEM -->
+        <div class="bw-panel active" id="bw_panel_problem_${c.id}">
+          <div class="bw-patient-header">
+            <div class="bw-avatar">${c.patientInitials}</div>
+            <div class="bw-patient-meta">
+              <h2>${c.patientName}</h2>
+              <div class="bw-meta-row">
+                <div class="bw-meta-chip">Age <strong>${c.age}</strong></div>
+                <div class="bw-meta-chip">Dx <strong>${c.diagnosis}</strong></div>
+                <div class="bw-meta-chip">Setting <strong>${c.setting}</strong></div>
+                <div class="bw-meta-chip">Referred by <strong>${c.referral}</strong></div>
+              </div>
+            </div>
+          </div>
+          ${c.narrativeHTML}
+        </div>
+
+        <!-- CHART -->
+        <div class="bw-panel" id="bw_panel_chart_${c.id}">
+          <div class="bw-section-heading">Order Standardized Assessments</div>
+          <p style="font-size:13px;color:#6a8a9a;margin-bottom:16px;">Select assessments to order. Results appear below once ordered.</p>
+          <div class="bw-assess-grid">${assessHTML}</div>
+          <div class="bw-result-area" id="bw_result_area_${c.id}">
+            <div class="bw-section-heading" style="margin-top:24px;">Assessment Results</div>
+            <div id="bw_result_list_${c.id}"></div>
+          </div>
+        </div>
+
+        <!-- LIBRARY -->
+        <div class="bw-panel" id="bw_panel_library_${c.id}">
+          <div class="bw-section-heading">OT Reference Library</div>
+          <p style="font-size:13px;color:#6a8a9a;margin-bottom:16px;">Use the Send to Evidence button to tag library content.</p>
+          ${libHTML}
+        </div>
+
+        <!-- INTERVENTION PLAN -->
+        <div class="bw-panel" id="bw_panel_plan_${c.id}">
+          <div class="bw-section-heading">Select Primary Intervention Approach</div>
+          <div class="bw-plan-options">${planHTML}</div>
+          <div class="bw-section-heading">Identify Adaptive Equipment / Strategies</div>
+          <div class="bw-plan-options">${equipHTML}</div>
+          <div class="bw-section-heading">Clinical Reasoning Summary</div>
+          <textarea class="bw-summary-input" id="bw_summary_${c.id}" placeholder="Summarize your clinical reasoning. What evidence informed your intervention selection? How does your plan address this patient's goals?"></textarea>
+          <div style="margin-top:16px;display:flex;justify-content:flex-end;">
+            <button class="bw-btn bw-btn-submit" id="bw_submit_${c.id}">Sign Orders &amp; Complete &#8594;</button>
+          </div>
+        </div>
+
       </div>
     </div>
-  </div>
-  <style>
-    .ehr-root{width:100vw;height:100vh;box-sizing:border-box;background:#0f1b2d;color:#dbe6f0;overflow:hidden;display:flex;flex-direction:column;}
-    .ehr-banner{background:#16263d;padding:12px 22px;display:flex;justify-content:space-between;border-bottom:2px solid #2b9fd6;font-size:15px;}
-    .ehr-grid{flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:14px;overflow:hidden;}
-    .ehr-col{display:flex;flex-direction:column;gap:12px;min-height:0;}
-    .ehr-panel{background:#16263d;border:1px solid #24405f;border-radius:8px;overflow:auto;flex:1;min-height:0;}
-    .ehr-h{background:#1d3450;padding:9px 14px;font-weight:600;font-size:14px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;}
-    .aoi-tag{font-size:10px;color:#0f1b2d;background:#5fb0e0;border-radius:4px;padding:1px 6px;}
-    .ehr-body{padding:12px 16px;font-size:14px;line-height:1.5;}
-    .ehr-body ul{margin:6px 0;padding-left:18px;}
-    .ehr-submit{margin-top:14px;padding:12px 22px;background:#27ae60;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;width:100%;}
-  </style>`;
+
+    <!-- BOTTOM BAR -->
+    <div class="bw-bottom">
+      <span class="bw-elapsed" id="bw_elapsed_${c.id}">00:00</span>
+      <button class="bw-btn bw-btn-secondary" id="bw_clear_ev_${c.id}">Clear Evidence Table</button>
+    </div>
+
+  </div>`;
 }
 
+/* =====================================================================
+   AOI RECT SNAPSHOT  — called at trial start and on each tab switch
+   ===================================================================== */
+function snapshotAOIRects(caseConfig, caseStart) {
+  const rects = [];
+  caseConfig.aoi_map.forEach(aoi => {
+    const el = document.getElementById(aoi.id) ||
+               document.getElementById("bw_panel_" + aoi.id.replace("bw_panel_","") + "_" + caseConfig.id);
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) return;
+    rects.push({
+      id: aoi.id, emic: aoi.emic, etic: aoi.etic, label: aoi.label,
+      left:r.left, right:r.right, top:r.top, bottom:r.bottom,
+      snapshot_t: Math.round(performance.now() - caseStart)
+    });
+  });
+  return rects;
+}
+
+/* =====================================================================
+   GAZE → DWELL EVENTS  (identical logic to original index.html)
+   ===================================================================== */
 function pointToAOI(x, y, rects) {
   for (const r of rects) if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return r;
   return null;
 }
-
 function gazeToDwells(samples, rects) {
   const out = [];
   let cur = null, curStart = null, lastT = null;
-  const sorted = (samples || []).filter(s => s && s.x != null).sort((a,b) => a.t - b.t);
+  const sorted = (samples||[]).filter(s => s && s.x != null).sort((a,b)=>a.t-b.t);
   for (const s of sorted) {
     const hit = pointToAOI(s.x, s.y, rects);
     const aoi = hit ? hit.id : null;
     if (aoi !== cur) {
       if (cur && (lastT - curStart) >= CONFIG.MIN_DWELL_MS) {
         const r = rects.find(rr => rr.id === cur);
-        out.push({ t: Math.round(curStart), aoi: cur, code: r ? r.code : null, source:"gaze" });
+        out.push({ t:Math.round(curStart), aoi:cur, emic: r?r.emic:null, etic: r?r.etic:null, source:"gaze" });
       }
       cur = aoi; curStart = s.t;
     }
     lastT = s.t;
   }
-  if (cur && lastT != null && (lastT - curStart) >= CONFIG.MIN_DWELL_MS) {
+  if (cur && lastT!=null && (lastT-curStart) >= CONFIG.MIN_DWELL_MS) {
     const r = rects.find(rr => rr.id === cur);
-    out.push({ t: Math.round(curStart), aoi: cur, code: r ? r.code : null, source:"gaze" });
+    out.push({ t:Math.round(curStart), aoi:cur, emic: r?r.emic:null, etic: r?r.etic:null, source:"gaze" });
   }
-  return out.filter(e => e.code);
+  return out.filter(e => e.emic || e.etic);
 }
 
 /* =====================================================================
-   CASE TRIAL FACTORY
+   BIOWORLD TRIAL FACTORY
    ===================================================================== */
-function buildCaseTrials(c) {
+function buildBioWorldTrials(c) {
+
+  /* ── Screen-share consent + recording start ── */
   const startRec = {
     type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
     stimulus:`<div style="max-width:660px;margin:11% auto;text-align:left;color:#dbe6f0;">
-        <h2>Case ${c.id}: ${c.name}</h2>
-        <p style="font-size:17px;">We will record this browser tab while you review the chart, so you can narrate over it afterward. The recording stays on your computer.</p>
+        <h2>Case ${c.id}: ${c.patientName}</h2>
+        <p style="font-size:17px;">We will record this browser tab while you review the chart, so you can narrate over it afterward. The recording stays on your computer — only transcribed text is uploaded.</p>
         <p style="font-size:17px;background:#1d3450;padding:12px;border-left:4px solid #5fb0e0;">When prompted, choose <strong>"This Tab"</strong> and click <strong>Share</strong>.</p>
         <button id="rec_${c.id}" style="margin-top:12px;padding:14px 28px;background:#2b9fd6;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;">Open Case ${c.id}</button>
-        <p id="err_${c.id}" style="color:#e74c3c;"></p></div>`,
+        <p id="err_${c.id}" style="color:#e74c3c;margin-top:10px;"></p></div>`,
     on_load: function () {
-      const b = document.getElementById("rec_"+c.id);
-      b.addEventListener("click", async () => {
-        b.disabled = true;
+      document.getElementById("rec_"+c.id).addEventListener("click", async () => {
+        const btn = document.getElementById("rec_"+c.id);
+        btn.disabled = true;
         try {
           const s = await startScreenRecording(c.id);
           s.getVideoTracks()[0].addEventListener("ended", () => {
-            const sub = document.getElementById("btn_submit_"+c.id); if (sub) sub.click();
+            const sub = document.getElementById("bw_submit_"+c.id); if (sub) sub.click();
           });
           jsPsych.finishTrial();
-        } catch (e) { b.disabled = false; document.getElementById("err_"+c.id).textContent = "Screen share cancelled \u2014 click again and choose 'This Tab'."; }
+        } catch (e) {
+          btn.disabled = false;
+          document.getElementById("err_"+c.id).textContent = "Screen share cancelled — click again and choose 'This Tab'.";
+        }
       });
     }
   };
 
+  /* ── Main BioWorld EHR trial ── */
   const ehrTrial = {
     type: jsPsychHtmlKeyboardResponse,
-    stimulus: ehrTemplate(c),
-    choices:"NO_KEYS",
-    extensions: [{ type: jsPsychExtensionWebgazer, params:{ targets:["#ehr_"+c.id] } }],
-    data: { trial_tag:"ehr_case", case_id:c.id },
+    stimulus: buildBioWorldUI(c),
+    choices: "NO_KEYS",
+    extensions: [{ type: jsPsychExtensionWebgazer, params:{ targets:["#bw_root_"+c.id] } }],
+    data: { trial_tag:"bw_ehr_case", case_id:c.id },
+
     on_load: function () {
-      try { webgazer.showVideo(false); webgazer.showPredictionPoints(false); } catch (e) {}
-      const dot = document.getElementById("webgazerGazeDot"); if (dot) dot.style.display = "none";
+      /* hide live gaze dot */
+      try { webgazer.showVideo(false); webgazer.showPredictionPoints(false); } catch(e) {}
+      const dot = document.getElementById("webgazerGazeDot"); if (dot) dot.style.display="none";
 
       const caseStart = performance.now();
       const clickEvents = [];
+      const hypState    = [];   // { id, text, belief }
+      const evState     = [];   // { id, text, tag }
+      const orderedAssessments = [];
+      let   currentTab  = "problem";
+      let   aoiRects    = snapshotAOIRects(c, caseStart);
+      let   timerInterval;
 
-      EHR_AOIS.forEach(a => {
-        const el = document.getElementById(a.id);
-        if (el) el.addEventListener("click", () => {
-          clickEvents.push({ t: Math.round(performance.now() - caseStart), aoi:a.id, code:a.code, source:"click", action:"view" });
+      /* timer */
+      timerInterval = setInterval(() => {
+        const el = document.getElementById("bw_elapsed_"+c.id);
+        if (!el) return;
+        const sec = Math.floor((performance.now()-caseStart)/1000);
+        el.textContent = String(Math.floor(sec/60)).padStart(2,"0")+":"+String(sec%60).padStart(2,"0");
+      }, 1000);
+
+      /* ── helpers ── */
+      function logClick(aoi, emic, etic, action, detail) {
+        clickEvents.push({ t:Math.round(performance.now()-caseStart), aoi, emic, etic, source:"click", action, detail:detail||null });
+      }
+
+      function renderHypotheses() {
+        const list = document.getElementById("bw_hyp_list_"+c.id);
+        const sel  = document.getElementById("bw_belief_sel_"+c.id);
+        if (!list || !sel) return;
+        list.innerHTML = hypState.map(h =>
+          `<div class="bw-hyp-row">
+             <span class="bw-hyp-name" title="${h.text}">${h.text}</span>
+             <button class="bw-hyp-rm" data-hyp-id="${h.id}">&times;</button>
+           </div>`).join("");
+        const curSel = sel.value;
+        sel.innerHTML = '<option value="">— Select hypothesis —</option>' +
+          hypState.map(h => `<option value="${h.id}" ${h.id==curSel?"selected":""}>${h.text}</option>`).join("");
+        /* rebind remove buttons */
+        list.querySelectorAll(".bw-hyp-rm").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const id = btn.dataset.hypId;
+            const h = hypState.find(x=>x.id===id);
+            hypState.splice(hypState.findIndex(x=>x.id===id),1);
+            logClick("bw_hyp_panel","","GOAL-SET","hypothesis_removed", h?h.text:id);
+            renderHypotheses();
+          });
+        });
+      }
+
+      function renderEvidence() {
+        const list  = document.getElementById("bw_ev_list_"+c.id);
+        const empty = document.getElementById("bw_ev_empty_"+c.id);
+        if (!list) return;
+        if (evState.length === 0) { list.innerHTML=""; if(empty) empty.style.display="block"; return; }
+        if (empty) empty.style.display="none";
+        list.innerHTML = evState.map(e =>
+          `<div class="bw-ev-item">
+             <span class="bw-ev-tag tag-${e.tag}">${e.tag}</span>
+             <span style="flex:1;font-size:12px;line-height:1.4;">${e.text}</span>
+             <button class="bw-ev-rm" data-ev-id="${e.id}">&times;</button>
+           </div>`).join("");
+        list.querySelectorAll(".bw-ev-rm").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const id = parseInt(btn.dataset.evId);
+            const item = evState.find(x=>x.id===id);
+            evState.splice(evState.findIndex(x=>x.id===id),1);
+            logClick("bw_ev_panel","","MONITOR","evidence_removed", item?item.text.substring(0,40):id);
+            renderEvidence();
+          });
+        });
+      }
+
+      function addEvidence(text, tag, aoiId, emic, etic) {
+        if (evState.some(e=>e.text===text)) return;
+        const item = { id:Date.now(), text, tag };
+        evState.push(item);
+        logClick(aoiId||"bw_ev_panel", emic||"", etic||"MONITOR", "evidence_added", text.substring(0,60));
+        renderEvidence();
+      }
+
+      /* ── Tab switching ── */
+      document.querySelectorAll(".bw-tab[data-case='"+c.id+"']").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const tab = btn.dataset.tab;
+          document.querySelectorAll(".bw-tab[data-case='"+c.id+"']").forEach(b=>b.classList.remove("active"));
+          btn.classList.add("active");
+          document.querySelectorAll("#bw_root_"+c.id+" .bw-panel").forEach(p=>p.classList.remove("active"));
+          document.getElementById("bw_panel_"+tab+"_"+c.id).classList.add("active");
+          currentTab = tab;
+          aoiRects = snapshotAOIRects(c, caseStart);   // re-snapshot on tab change
+          const aoiMap = { problem:"bw_panel_problem", chart:"bw_panel_chart", library:"bw_panel_library", plan:"bw_panel_plan" };
+          const emicMap = { problem:"NARRATIVE", chart:"SCIENTIFIC", library:"SCIENTIFIC", plan:"PRAGMATIC" };
+          const eticMap = { problem:"TASK-DEF", chart:"ENACTING", library:"ENACTING", plan:"ENACTING" };
+          logClick(aoiMap[tab]+"_"+c.id, emicMap[tab]||"", eticMap[tab]||"ENACTING", "tab_switch", tab);
         });
       });
-      document.querySelectorAll(`input[name="ae_${c.id}"]`).forEach(r => {
+
+      /* ── Hypothesis add ── */
+      const hypAddBtn = document.querySelector(".bw-hyp-add[data-case='"+c.id+"']");
+      const hypInput  = document.getElementById("bw_hyp_input_"+c.id);
+      function doAddHyp() {
+        const text = hypInput.value.trim(); if (!text) return;
+        const h = { id: String(Date.now()), text, belief:50 };
+        hypState.push(h);
+        hypInput.value = "";
+        logClick("bw_hyp_panel","","GOAL-SET","hypothesis_added",text);
+        renderHypotheses();
+      }
+      if (hypAddBtn) hypAddBtn.addEventListener("click", doAddHyp);
+      if (hypInput)  hypInput.addEventListener("keydown", e => { if(e.key==="Enter") doAddHyp(); });
+
+      /* ── Belief meter ── */
+      const beliefSel    = document.getElementById("bw_belief_sel_"+c.id);
+      const beliefSlider = document.getElementById("bw_belief_slider_"+c.id);
+      const beliefVal    = document.getElementById("bw_belief_val_"+c.id);
+      if (beliefSlider) {
+        beliefSlider.addEventListener("input", () => {
+          const val = parseInt(beliefSlider.value);
+          if (beliefVal) beliefVal.textContent = "Confidence: "+val+"%";
+          if (beliefSel && beliefSel.value) {
+            const h = hypState.find(x=>x.id===beliefSel.value);
+            if (h) {
+              h.belief = val;
+              logClick("bw_belief_panel","","GOAL-SET","belief_updated", beliefSel.options[beliefSel.selectedIndex]?.text+":"+val+"%");
+            }
+          }
+        });
+        if (beliefSel) beliefSel.addEventListener("change", () => {
+          const h = hypState.find(x=>x.id===beliefSel.value);
+          if (h && beliefSlider) { beliefSlider.value=h.belief; if(beliefVal) beliefVal.textContent="Confidence: "+h.belief+"%"; }
+        });
+      }
+
+      /* ── Paragraph evidence buttons ── */
+      document.querySelectorAll("#bw_root_"+c.id+" .bw-para-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const paraId = btn.dataset.para;
+          const text   = c.paragraphs[paraId];
+          const aoi    = c.aoi_map.find(a=>a.id===paraId);
+          if (!text) return;
+          addEvidence(text, "patient", paraId, aoi?aoi.emic:"NARRATIVE", aoi?aoi.etic:"TASK-DEF");
+          const para = document.getElementById(paraId);
+          if (para) para.classList.add("para-added");
+          btn.textContent = "✓ Added";
+        });
+      });
+
+      /* ── Clear evidence ── */
+      const clearBtn = document.getElementById("bw_clear_ev_"+c.id);
+      if (clearBtn) clearBtn.addEventListener("click", () => {
+        evState.length = 0;
+        logClick("bw_ev_panel","","MONITOR","evidence_cleared",null);
+        renderEvidence();
+        document.querySelectorAll("#bw_root_"+c.id+" .bw-ev-para").forEach(p=>p.classList.remove("para-added"));
+        document.querySelectorAll("#bw_root_"+c.id+" .bw-para-btn").forEach(b=>b.textContent="+ Evidence");
+      });
+
+      /* ── Assessment cards ── */
+      document.querySelectorAll("#bw_root_"+c.id+" .bw-assess-card").forEach(card => {
+        card.addEventListener("click", () => {
+          if (card.classList.contains("ordered")) return;
+          card.classList.add("ordered");
+          const assessId = card.dataset.assessId;
+          const assess   = c.assessments.find(a=>a.id===assessId);
+          orderedAssessments.push(assessId);
+          logClick("bw_panel_chart_"+c.id,"SCIENTIFIC","ENACTING","assessment_ordered", assess?assess.name:assessId);
+
+          const area = document.getElementById("bw_result_area_"+c.id);
+          const list = document.getElementById("bw_result_list_"+c.id);
+          if (!area || !list || !assess) return;
+          area.classList.add("visible");
+          const card2 = document.createElement("div");
+          card2.className = "bw-result-card";
+          card2.innerHTML = `<div class="bw-result-title">${assess.fullName}</div>
+            <div class="bw-result-body">${assess.result}</div>`;
+          const sendBtn = document.createElement("button");
+          sendBtn.className = "bw-result-send";
+          sendBtn.textContent = "+ Send to Evidence";
+          sendBtn._evidenceText = assess.name+": "+assess.result;
+          sendBtn.addEventListener("click", () => {
+            addEvidence(sendBtn._evidenceText, "assess", "bw_panel_chart_"+c.id, "SCIENTIFIC","ENACTING");
+            sendBtn.textContent = "✓ Added";
+            sendBtn.disabled = true;
+          });
+          card2.appendChild(sendBtn);
+          list.appendChild(card2);
+          logClick("bw_panel_chart_"+c.id,"SCIENTIFIC","ENACTING","assessment_result_shown", assess.name);
+        });
+      });
+
+      /* ── Library send buttons ── */
+      c.library.forEach(entry => {
+        const btn = document.querySelector(`#bw_root_${c.id} [data-lib-id="${entry.id}"]`);
+        if (!btn) return;
+        btn._evidenceText = entry.title+": "+entry.body.substring(0,120)+"...";
+        btn.addEventListener("click", () => {
+          addEvidence(btn._evidenceText, "obs", "bw_panel_library_"+c.id, "SCIENTIFIC","ENACTING");
+          btn.textContent = "✓ Added";
+          btn.disabled = true;
+          logClick("bw_panel_library_"+c.id,"SCIENTIFIC","ENACTING","library_sent", entry.title);
+        });
+      });
+
+      /* ── Intervention plan radio + checkboxes ── */
+      document.querySelectorAll(`input[name="bw_plan_${c.id}"]`).forEach(r => {
         r.addEventListener("change", () => {
-          clickEvents.push({ t: Math.round(performance.now() - caseStart), aoi:"aoi_orders", code:"INTERV", source:"click", action:"select:"+r.value });
+          logClick("bw_panel_plan_"+c.id,"PRAGMATIC","ENACTING","plan_selected",r.value);
+        });
+      });
+      document.querySelectorAll("#bw_panel_plan_"+c.id+" input[type='checkbox']").forEach(cb => {
+        cb.addEventListener("change", () => {
+          logClick("bw_panel_plan_"+c.id,"PRAGMATIC","ENACTING",cb.checked?"equip_selected":"equip_deselected",cb.value);
         });
       });
 
-      document.getElementById("btn_submit_"+c.id).addEventListener("click", async () => {
-        const rects = EHR_AOIS.map(a => {
-          const el = document.getElementById(a.id);
-          const r = el ? el.getBoundingClientRect() : null;
-          return r ? { id:a.id, code:a.code, left:r.left, right:r.right, top:r.top, bottom:r.bottom } : null;
-        }).filter(Boolean);
-        const picked = document.querySelector(`input[name="ae_${c.id}"]:checked`);
-        await stopScreenRecording(c.id);
-        jsPsych.finishTrial({ click_events:clickEvents, aoi_rects:rects, choice: picked ? picked.value : null });
+      /* ── AOI click logging on left panel regions ── */
+      ["bw_hyp_panel","bw_belief_panel","bw_ev_panel"].forEach(panelId => {
+        const el = document.getElementById(panelId);
+        if (!el) return;
+        const aoi = c.aoi_map.find(a=>a.id===panelId);
+        el.addEventListener("click", () => {
+          logClick(panelId, aoi?aoi.emic:"", aoi?aoi.etic:"GOAL-SET","panel_click",panelId);
+        });
       });
+
+      /* ── Submit ── */
+      const submitBtn = document.getElementById("bw_submit_"+c.id);
+      if (submitBtn) submitBtn.addEventListener("click", async () => {
+        clearInterval(timerInterval);
+        const pickedPlan  = document.querySelector(`input[name="bw_plan_${c.id}"]:checked`);
+        const pickedEquip = [...document.querySelectorAll("#bw_panel_plan_"+c.id+" input[type='checkbox']:checked")].map(cb=>cb.value);
+        const summary     = document.getElementById("bw_summary_"+c.id).value.trim();
+        logClick("bw_panel_plan_"+c.id,"PRAGMATIC","ENACTING","case_submitted",pickedPlan?pickedPlan.value:"none");
+        await stopScreenRecording(c.id);
+        jsPsych.finishTrial({
+          click_events:        clickEvents,
+          aoi_rects:           aoiRects,
+          hypotheses:          hypState,
+          evidence_table:      evState,
+          assessments_ordered: orderedAssessments,
+          selected_plan:       pickedPlan ? pickedPlan.value : null,
+          selected_equipment:  pickedEquip,
+          case_summary:        summary
+        });
+      });
+
+      /* initial AOI snapshot after DOM settles */
+      setTimeout(() => { aoiRects = snapshotAOIRects(c, caseStart); }, 300);
     },
+
     on_finish: function (data) {
       study.cases[c.id] = study.cases[c.id] || {};
-      study.cases[c.id].click_events = data.click_events || [];
-      study.cases[c.id].choice = data.choice;
-      study.cases[c.id].aoi_map = EHR_AOIS.map(a => ({ aoi:a.id, code:a.code, label:a.title }));
-      study.cases[c.id].gaze_events = gazeToDwells(data.webgazer_data || [], data.aoi_rects || []);
-      study.cases[c.id]._gaze_raw  = (data.webgazer_data || []);
-      study.cases[c.id].aoi_rects  = data.aoi_rects || [];
+      study.cases[c.id].click_events        = data.click_events        || [];
+      study.cases[c.id].hypotheses          = data.hypotheses          || [];
+      study.cases[c.id].evidence_table      = data.evidence_table      || [];
+      study.cases[c.id].assessments_ordered = data.assessments_ordered || [];
+      study.cases[c.id].selected_plan       = data.selected_plan;
+      study.cases[c.id].selected_equipment  = data.selected_equipment  || [];
+      study.cases[c.id].case_summary        = data.case_summary        || "";
+      study.cases[c.id].choice              = data.selected_plan;      // dashboard compat
+      study.cases[c.id].aoi_map             = c.aoi_map;
+      study.cases[c.id].aoi_rects           = data.aoi_rects           || [];
+      study.cases[c.id].gaze_events         = gazeToDwells(data.webgazer_data||[], data.aoi_rects||[]);
+      study.cases[c.id]._gaze_raw           = data.webgazer_data       || [];
     }
   };
 
+  /* ── RTA (retrospective think-aloud) — identical pattern to original ── */
   const rtaTrial = {
     type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
     stimulus:`<div style="position:fixed;inset:0;background:#000;">
@@ -506,99 +1225,90 @@ function buildCaseTrials(c) {
       </div>`,
     data: { trial_tag:"rta", case_id:c.id },
     on_load: async function () {
-      const m = caseMedia[c.id];
-      const video = document.getElementById("rv_"+c.id);
+      const m      = caseMedia[c.id];
+      const video  = document.getElementById("rv_"+c.id);
       const canvas = document.getElementById("ro_"+c.id);
-      const done = document.getElementById("rd_"+c.id);
-      const ctx      = canvas.getContext("2d");
-      const gaze     = (study.cases[c.id] && study.cases[c.id]._gaze_raw)  || [];
+      const done   = document.getElementById("rd_"+c.id);
+      const ctx    = canvas.getContext("2d");
+      const gaze     = (study.cases[c.id] && study.cases[c.id]._gaze_raw) || [];
       const aoiRects = (study.cases[c.id] && study.cases[c.id].aoi_rects) || [];
 
-      // per-code overlay colours (semi-transparent fill on the dark EHR bg)
-      const AOI_COLORS = { CUE:'91,176,224', FRAME:'155,89,182', HYPO:'26,188,156',
-                           PATIENT:'39,174,96', INTERV:'241,196,15', MONITOR:'231,76,60' };
+      const AOI_COLORS = {
+        "TASK-DEF":"91,176,224", "GOAL-SET":"155,89,182",
+        "ENACTING":"26,188,156", "MONITOR":"231,76,60",
+        "SCIENTIFIC":"39,174,96", "NARRATIVE":"241,196,15", "PRAGMATIC":"231,76,60"
+      };
 
-      if (!m || !m.url) { study.cases[c.id].transcript_segments = []; return jsPsych.finishTrial(); }
+      if (!m || !m.url) { study.cases[c.id].transcript_segments=[]; return jsPsych.finishTrial(); }
       video.src = m.url;
 
       let aStream=null, aRec=null, aChunks=[], aStart=0, vStart=0;
       try {
         aStream = await navigator.mediaDevices.getUserMedia({ audio:true });
         aRec = new MediaRecorder(aStream);
-        aRec.ondataavailable = e => { if (e.data && e.data.size) aChunks.push(e.data); };
-      } catch (e) { console.error("mic failed", e); }
+        aRec.ondataavailable = e => { if(e.data && e.data.size) aChunks.push(e.data); };
+      } catch(e) { console.error("mic failed",e); }
 
       function loop() {
         if (video.paused || video.ended) return;
-        canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const tMs = video.currentTime * 1000;
-        const sx = canvas.width / window.innerWidth;
-        const sy = canvas.height / window.innerHeight;
-
-        // Rolling average over the last 200ms of samples (smoothing)
-        const recent = gaze.filter(p => p.t <= tMs && (tMs - p.t) < 200);
+        canvas.width=canvas.clientWidth; canvas.height=canvas.clientHeight;
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        const tMs=video.currentTime*1000;
+        const sx=canvas.width/window.innerWidth;
+        const sy=canvas.height/window.innerHeight;
+        const recent=gaze.filter(p=>p.t<=tMs&&(tMs-p.t)<200);
         if (!recent.length) return requestAnimationFrame(loop);
-        const ax  = recent.reduce((s,p) => s+p.x, 0) / recent.length;
-        const ay  = recent.reduce((s,p) => s+p.y, 0) / recent.length;
-        const age = tMs - recent[recent.length-1].t;
-        if (age > 500) return requestAnimationFrame(loop);  // stale — skip frame
+        const ax=recent.reduce((s,p)=>s+p.x,0)/recent.length;
+        const ay=recent.reduce((s,p)=>s+p.y,0)/recent.length;
+        const age=tMs-recent[recent.length-1].t;
+        if (age>500) return requestAnimationFrame(loop);
 
-        // AOI highlight: semi-transparent colour fill over the whole panel
-        const hit = aoiRects.find(r => ax>=r.left && ax<=r.right && ay>=r.top && ay<=r.bottom);
+        /* highlight the AOI region with etic code colour */
+        const hit=aoiRects.find(r=>ax>=r.left&&ax<=r.right&&ay>=r.top&&ay<=r.bottom);
         if (hit) {
-          const rgb = AOI_COLORS[hit.code] || '255,255,255';
-          const rx = hit.left*sx, ry = hit.top*sy,
-                rw = (hit.right-hit.left)*sx, rh = (hit.bottom-hit.top)*sy;
-          ctx.fillStyle   = `rgba(${rgb},0.22)`;
-          ctx.strokeStyle = `rgba(${rgb},0.85)`;
-          ctx.lineWidth   = 3;
-          ctx.fillRect(rx, ry, rw, rh);
-          ctx.strokeRect(rx, ry, rw, rh);
-          ctx.fillStyle = `rgba(${rgb},1)`;
-          ctx.font      = "bold 13px 'Segoe UI',Arial,sans-serif";
-          ctx.fillText(hit.code, rx+10, ry+20);
+          const codeKey = hit.etic || hit.emic || "";
+          const rgb=AOI_COLORS[codeKey]||"255,255,255";
+          const rx=hit.left*sx,ry=hit.top*sy,rw=(hit.right-hit.left)*sx,rh=(hit.bottom-hit.top)*sy;
+          ctx.fillStyle=`rgba(${rgb},0.22)`; ctx.strokeStyle=`rgba(${rgb},0.85)`; ctx.lineWidth=3;
+          ctx.fillRect(rx,ry,rw,rh); ctx.strokeRect(rx,ry,rw,rh);
+          ctx.fillStyle=`rgba(${rgb},1)`; ctx.font="bold 13px 'Segoe UI',Arial,sans-serif";
+          ctx.fillText((hit.etic||hit.emic||""), rx+10, ry+20);
         }
-
-        // Small smoothed dot — secondary fine-grained indicator
-        ctx.beginPath();
-        ctx.arc(ax*sx, ay*sy, 10, 0, 2*Math.PI);
-        ctx.fillStyle   = "rgba(255,212,0,0.75)";
-        ctx.strokeStyle = "rgba(0,0,0,0.4)";
-        ctx.lineWidth   = 1.5;
+        ctx.beginPath(); ctx.arc(ax*sx,ay*sy,10,0,2*Math.PI);
+        ctx.fillStyle="rgba(255,212,0,0.75)"; ctx.strokeStyle="rgba(0,0,0,0.4)"; ctx.lineWidth=1.5;
         ctx.fill(); ctx.stroke();
-
         requestAnimationFrame(loop);
       }
-      video.addEventListener("play", () => { vStart=performance.now(); if (aRec && aRec.state==="inactive"){ aRec.start(); aStart=performance.now(); } requestAnimationFrame(loop); });
-      video.addEventListener("ended", () => { done.disabled=false; done.style.background="#27ae60"; });
-      setTimeout(() => { if (done.disabled){ done.disabled=false; done.style.background="#27ae60"; } }, CONFIG.RTA_MAX_SECONDS*1000);
-      try { await video.play(); } catch (e) { done.disabled=false; done.style.background="#27ae60"; }
+
+      video.addEventListener("play",()=>{ vStart=performance.now(); if(aRec&&aRec.state==="inactive"){aRec.start();aStart=performance.now();} requestAnimationFrame(loop); });
+      video.addEventListener("ended",()=>{ done.disabled=false; done.style.background="#27ae60"; });
+      setTimeout(()=>{ if(done.disabled){done.disabled=false;done.style.background="#27ae60";} }, CONFIG.RTA_MAX_SECONDS*1000);
+      try { await video.play(); } catch(e){ done.disabled=false; done.style.background="#27ae60"; }
 
       done.addEventListener("click", async () => {
         done.disabled=true; done.textContent="Transcribing locally…";
         try { video.pause(); } catch(e){}
-        const offset = (aStart - vStart)/1000;
+        const offset=(aStart-vStart)/1000;
         const finalize = async (blob) => {
-          let segs = [];
+          let segs=[];
           if (blob && blob.size) {
-            const out = await transcribeBlob(blob);
-            segs = (out.chunks||[]).map(ch => {
-              const [s,e] = ch.timestamp || [null,null];
-              return { start_ms: s==null?null:Math.round((s+offset)*1000),
-                       end_ms:   e==null?null:Math.round((e+offset)*1000),
-                       text: (ch.text||"").trim() };
-            }).filter(x => x.text);
-            study.cases[c.id].transcript_full = out.text.trim();
+            const out=await transcribeBlob(blob);
+            segs=(out.chunks||[]).map(ch=>{
+              const [s,e]=ch.timestamp||[null,null];
+              return { start_ms:s==null?null:Math.round((s+offset)*1000),
+                       end_ms:  e==null?null:Math.round((e+offset)*1000),
+                       text:(ch.text||"").trim() };
+            }).filter(x=>x.text);
+            study.cases[c.id].transcript_full=out.text.trim();
           }
-          study.cases[c.id].transcript_segments = segs;
+          study.cases[c.id].transcript_segments=segs;
           delete study.cases[c.id]._gaze_raw;
-          uploadCaseInBackground(c.id);   // bank this case now (survives later dropout)
-          if (aStream) aStream.getTracks().forEach(t => t.stop());
+          uploadCaseInBackground(c.id);
+          if (aStream) aStream.getTracks().forEach(t=>t.stop());
           if (m.url){ URL.revokeObjectURL(m.url); m.url=null; m.blob=null; }
           jsPsych.finishTrial();
         };
-        if (aRec && aRec.state!=="inactive"){ aRec.onstop = () => finalize(new Blob(aChunks,{type:aRec.mimeType||"audio/webm"})); aRec.stop(); }
+        if (aRec&&aRec.state!=="inactive"){ aRec.onstop=()=>finalize(new Blob(aChunks,{type:aRec.mimeType||"audio/webm"})); aRec.stop(); }
         else finalize(null);
       });
     }
@@ -610,29 +1320,39 @@ function buildCaseTrials(c) {
 /* =====================================================================
    ASSEMBLE TIMELINE
    ===================================================================== */
-buildCaseTrials(CASES[1]).forEach(t => timeline.push(t));
 
+/* Case 1 */
+buildBioWorldTrials(BW_CASES[1]).forEach(t => timeline.push(t));
+
+/* IDB handoff to dashboard */
 timeline.push({
   type: jsPsychCallFunction, async:true,
   func: function (done) {
     const c1 = study.cases[1] || {};
     const handoff = {
       case_id:1, condition: study.experimental_condition,
-      aoi_map: c1.aoi_map || [],
-      gaze_events: c1.gaze_events || [],
-      click_events: c1.click_events || [],
-      transcript_segments: c1.transcript_segments || [],
-      choice: c1.choice || null
+      aoi_map:            c1.aoi_map             || [],
+      gaze_events:        c1.gaze_events          || [],
+      click_events:       c1.click_events         || [],
+      transcript_segments:c1.transcript_segments  || [],
+      hypotheses:         c1.hypotheses           || [],
+      evidence_table:     c1.evidence_table       || [],
+      assessments_ordered:c1.assessments_ordered  || [],
+      selected_plan:      c1.selected_plan        || null,
+      selected_equipment: c1.selected_equipment   || [],
+      case_summary:       c1.case_summary         || "",
+      choice:             c1.choice               || null
     };
     try {
-      const req = indexedDB.open("OT_Simulation_DB", 1);
+      const req = indexedDB.open("OT_Simulation_DB",1);
       req.onupgradeneeded = e => { const db=e.target.result; if(!db.objectStoreNames.contains("sessions")) db.createObjectStore("sessions",{keyPath:"id"}); };
       req.onsuccess = e => { try { const db=e.target.result; const tx=db.transaction("sessions","readwrite"); tx.objectStore("sessions").put({id:"active_session",data:JSON.stringify(handoff)}); tx.oncomplete=()=>done(); tx.onerror=()=>done(); } catch(err){ done(); } };
       req.onerror = () => done();
-    } catch (e) { done(); }
+    } catch(e){ done(); }
   }
 });
 
+/* Dashboard (experimental group only) */
 timeline.push({
   timeline: [{
     type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
@@ -646,7 +1366,8 @@ timeline.push({
   conditional_function: () => study.experimental_condition === "dashboard"
 });
 
-buildCaseTrials(CASES[2]).forEach(t => timeline.push(t));
+/* Case 2 */
+buildBioWorldTrials(BW_CASES[2]).forEach(t => timeline.push(t));
 
 jsPsych.run(timeline);
 </script>
