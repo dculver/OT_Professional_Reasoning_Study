@@ -404,6 +404,13 @@ const CONFIG = {
 /* =====================================================================
    SESSION STATE
    ===================================================================== */
+// Detect OS for platform-appropriate fullscreen shortcut
+const IS_MAC    = /Mac/.test(navigator.platform) || /Mac/.test(navigator.userAgent);
+const FS_KEY    = IS_MAC ? '⌃⌘F' : 'F11';           // display label for kbd tag
+const FS_LABEL  = IS_MAC ? 'Ctrl+Command+F' : 'F11'; // plain-text fallback
+const FS_TIP    = IS_MAC
+  ? 'On Mac, press <kbd style="background:#0f1923;border:1px solid #3a5a70;border-radius:4px;padding:2px 8px;font-size:14px;color:#c8d8e8;">Ctrl+Command+F</kbd> — or go to View &rsaquo; Enter Full Screen.'
+  : 'Press <kbd style="background:#0f1923;border:1px solid #3a5a70;border-radius:4px;padding:2px 8px;font-size:14px;color:#c8d8e8;">F11</kbd> on your keyboard.';
 const study = {
   participant_code: null,
   sub_id_from_url: new URLSearchParams(location.search).get("sub_id"),
@@ -1106,28 +1113,53 @@ function buildBioWorldTrials(c) {
   /* ── Screen-share consent + recording start ── */
   const startRec = {
     type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
-    stimulus:`<div style="max-width:660px;margin:11% auto;text-align:left;color:#c8d8e8;font-family:'Segoe UI',Arial,sans-serif;">
+    stimulus:`<div style="max-width:680px;margin:9% auto;text-align:left;color:#c8d8e8;font-family:'Segoe UI',Arial,sans-serif;">
         <h2 style="color:#5ab0f0;">Case ${c.id}: ${c.patientName}</h2>
         <p style="font-size:17px;line-height:1.7;">We will record this browser tab while you review the chart, so you can narrate over it afterward. The recording stays on your computer — only transcribed text is uploaded.</p>
-        <p style="font-size:17px;background:#1d3450;padding:14px 16px;border-left:4px solid #5fb0e0;border-radius:4px;">
-          Clicking <strong>Open Case ${c.id}</strong> will do two things automatically:
-          <ol style="margin:10px 0 0;padding-left:22px;">
-            <li>The browser will go <strong>fullscreen</strong> (so the recording captures only the case, without browser chrome).</li>
-            <li>A screen-share dialog will appear — stay on the <strong>Microsoft Edge Tab / Chrome Tab</strong> option, select this experiment's tab, and click <strong>Share</strong>.</li>
-          </ol>
-        </p>
-        <button id="rec_${c.id}" style="margin-top:16px;padding:14px 28px;background:#2b9fd6;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:15px;">Open Case ${c.id}</button>
-        <p id="err_${c.id}" style="color:#e05a5a;margin-top:10px;"></p></div>`,
+
+        <div style="background:#1d3450;border-left:4px solid #5ab0f0;padding:16px 20px;border-radius:6px;margin:18px 0;">
+          <p style="margin:0 0 14px;font-size:16px;"><strong style="color:#5ab0f0;">Step 1 —</strong> Go fullscreen: ${FS_TIP} The browser toolbar will disappear.</p>
+          <p style="margin:0;font-size:16px;color:#7a9ab0;" id="fs_waiting_${c.id}"><strong style="color:#5ab0f0;">Step 2 —</strong> Once fullscreen, the button below will activate. Click it, then select <strong>this experiment's tab</strong> from the share dialog.</p>
+          <p style="margin:10px 0 0;font-size:13px;color:#7a9ab0;">In Edge or Chrome: stay on the <em>Tab</em> panel (not Window or Entire Screen), find the tab showing the BioWorld interface, click it, then click <strong>Share</strong>.</p>
+        </div>
+
+        <button id="rec_${c.id}"
+          style="margin-top:6px;padding:14px 30px;background:#3a5a70;color:#7a9ab0;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:not-allowed;transition:background .3s,color .3s;"
+          disabled>
+          Waiting for fullscreen (${IS_MAC ? 'Ctrl+Command+F' : 'F11'})…
+        </button>
+        <p id="err_${c.id}" style="color:#e05a5a;margin-top:10px;"></p>
+      </div>`,
     on_load: function () {
-      document.getElementById("rec_"+c.id).addEventListener("click", async () => {
-        const btn = document.getElementById("rec_"+c.id);
+      const btn = document.getElementById("rec_"+c.id);
+
+      function checkFullscreen() {
+        const isFS = !!document.fullscreenElement || !!document.webkitFullscreenElement || !!document.msFullscreenElement;
+        if (isFS) {
+          btn.disabled = false;
+          btn.style.background = "#2b9fd6";
+          btn.style.color = "#fff";
+          btn.style.cursor = "pointer";
+          btn.textContent = "Open Case " + c.id + " — Start Recording";
+        } else {
+          btn.disabled = true;
+          btn.style.background = "#3a5a70";
+          btn.style.color = "#7a9ab0";
+          btn.style.cursor = "not-allowed";
+          btn.textContent = "Waiting for fullscreen (" + FS_LABEL + ")…";
+        }
+      }
+
+      // Check immediately (in case they are already fullscreen)
+      checkFullscreen();
+      document.addEventListener("fullscreenchange", checkFullscreen);
+      document.addEventListener("webkitfullscreenchange", checkFullscreen);
+      document.addEventListener("msfullscreenchange", checkFullscreen);
+
+      btn.addEventListener("click", async () => {
+        if (btn.disabled) return;
         btn.disabled = true;
         try {
-          // Fullscreen FIRST (same user-gesture tick) — removes browser chrome
-          // so getBoundingClientRect() coords align with the video frame.
-          try { await document.documentElement.requestFullscreen(); } catch(fe) {
-            console.warn("Fullscreen request failed (non-fatal):", fe);
-          }
           const s = await startScreenRecording(c.id);
           s.getVideoTracks()[0].addEventListener("ended", () => {
             const sub = document.getElementById("bw_submit_"+c.id); if (sub) sub.click();
@@ -1135,7 +1167,7 @@ function buildBioWorldTrials(c) {
           jsPsych.finishTrial();
         } catch (e) {
           btn.disabled = false;
-          document.getElementById("err_"+c.id).textContent = "Screen share cancelled — click again and follow the two steps above.";
+          document.getElementById("err_"+c.id).textContent = "Screen share cancelled — click again and select this experiment's tab from the list.";
         }
       });
     }
@@ -1617,25 +1649,39 @@ const PR_PARAGRAPHS = {
 };
 const practiceStartRec = {
   type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
-  stimulus:`<div style="max-width:660px;margin:11% auto;text-align:left;color:#c8d8e8;font-family:'Segoe UI',Arial,sans-serif;">
+  stimulus:`<div style="max-width:680px;margin:11% auto;text-align:left;color:#c8d8e8;font-family:'Segoe UI',Arial,sans-serif;">
       <h2 style="color:#5ab0f0;">Practice Run</h2>
       <p style="font-size:17px;line-height:1.7;">This is a short practice — <strong>not</strong> a real OT case. It is just to help you get comfortable with the process.</p>
-      <p style="font-size:17px;background:#1d3450;padding:14px 16px;border-left:4px solid #5fb0e0;border-radius:4px;">
-        Clicking <strong>Start Practice</strong> will go fullscreen and then ask you to share this tab.
-      </p>
-      <button id="rec_pr" style="margin-top:16px;padding:14px 28px;background:#2b9fd6;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:15px;">Start Practice</button>
+      <div style="background:#1d3450;border-left:4px solid #5fb0e0;padding:16px 20px;border-radius:6px;margin:16px 0;">
+        <p style="margin:0 0 14px;font-size:16px;"><strong style="color:#5ab0f0;">Step 1 —</strong> Go fullscreen: ${FS_TIP}</p>
+        <p style="margin:0;font-size:16px;color:#7a9ab0;"><strong style="color:#5ab0f0;">Step 2 —</strong> Click the button below, then select this experiment's tab from the share dialog.</p>
+      </div>
+      <button id="rec_pr"
+        style="margin-top:6px;padding:14px 28px;background:#3a5a70;color:#7a9ab0;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:not-allowed;transition:background .3s,color .3s;"
+        disabled>Waiting for fullscreen (${FS_LABEL})…</button>
       <p id="err_pr" style="color:#e05a5a;margin-top:10px;"></p></div>`,
   on_load: function () {
-    document.getElementById("rec_pr").addEventListener("click", async () => {
-      const btn = document.getElementById("rec_pr"); btn.disabled=true;
+    const btn = document.getElementById("rec_pr");
+    function checkFS(){
+      const isFS=!!document.fullscreenElement||!!document.webkitFullscreenElement||!!document.msFullscreenElement;
+      btn.disabled=!isFS; btn.style.background=isFS?"#2b9fd6":"#3a5a70";
+      btn.style.color=isFS?"#fff":"#7a9ab0"; btn.style.cursor=isFS?"pointer":"not-allowed";
+      btn.textContent=isFS?"Start Practice — Click Here":"Waiting for fullscreen ("+FS_LABEL+")…";
+    }
+    checkFS();
+    document.addEventListener("fullscreenchange",checkFS);
+    document.addEventListener("webkitfullscreenchange",checkFS);
+    document.addEventListener("msfullscreenchange",checkFS);
+    btn.addEventListener("click", async () => {
+      if(btn.disabled) return;
+      btn.disabled=true;
       try {
-        try { await document.documentElement.requestFullscreen(); } catch(fe){}
         const s = await startScreenRecording("practice");
         s.getVideoTracks()[0].addEventListener("ended", () => {
           const sub = document.getElementById("pr_submit"); if(sub) sub.click();
         });
         jsPsych.finishTrial();
-      } catch(e) { btn.disabled=false; document.getElementById("err_pr").textContent="Screen share cancelled — try again."; }
+      } catch(e) { btn.disabled=false; document.getElementById("err_pr").textContent="Screen share cancelled — try again and select the Tab option."; }
     });
   }
 };
