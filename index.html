@@ -548,15 +548,15 @@ timeline.push({
       <p style="color:#8aa0b6;margin-bottom:24px;">Links your data across phases without your name. Answer the same way each time.</p>
       <form id="code_form" autocomplete="off">
         <div style="margin-bottom:16px;">
-          <label style="display:block;margin-bottom:6px;font-size:14px;">First TWO letters of the street you grew up on:</label>
+          <label for="cf_street" style="display:block;margin-bottom:6px;font-size:14px;">First TWO letters of the street you grew up on:</label>
           <input id="cf_street" type="text" maxlength="10" required style="background:#1d2d3d;border:1px solid #2a4a6a;border-radius:5px;color:#cdd9e5;padding:8px 12px;font-size:15px;width:100%;box-sizing:border-box;" />
         </div>
         <div style="margin-bottom:16px;">
-          <label style="display:block;margin-bottom:6px;font-size:14px;">First TWO letters of your first pet's name:</label>
+          <label for="cf_pet" style="display:block;margin-bottom:6px;font-size:14px;">First TWO letters of your first pet's name:</label>
           <input id="cf_pet" type="text" maxlength="10" required style="background:#1d2d3d;border:1px solid #2a4a6a;border-radius:5px;color:#cdd9e5;padding:8px 12px;font-size:15px;width:100%;box-sizing:border-box;" />
         </div>
         <div style="margin-bottom:24px;">
-          <label style="display:block;margin-bottom:6px;font-size:14px;">Two-digit birth month (e.g., 03):</label>
+          <label for="cf_month" style="display:block;margin-bottom:6px;font-size:14px;">Two-digit birth month (e.g., 03):</label>
           <input id="cf_month" type="text" maxlength="4" required style="background:#1d2d3d;border:1px solid #2a4a6a;border-radius:5px;color:#cdd9e5;padding:8px 12px;font-size:15px;width:100%;box-sizing:border-box;" />
         </div>
         <p id="cf_err" style="color:#e74c3c;margin-bottom:12px;display:none;">Please fill in all three fields.</p>
@@ -584,7 +584,38 @@ timeline.push({
 /* =====================================================================
    CALIBRATION
    ===================================================================== */
-timeline.push({ type: jsPsychInitializeMicrophone, error_message:"<p>Microphone access is required.</p>" });
+timeline.push({
+  type: jsPsychHtmlKeyboardResponse,
+  choices: "NO_KEYS",
+  stimulus: `<div style="max-width:580px;margin:12% auto;text-align:center;color:#cdd9e5;font-family:'Segoe UI',Arial,sans-serif;">
+    <h3 style="color:#5ab0f0;margin-bottom:16px;">Microphone Access Required</h3>
+    <p style="font-size:16px;line-height:1.7;margin-bottom:24px;">This study records your think-aloud narration after each case. Your audio never leaves your computer — only the transcribed text is uploaded.</p>
+    <button id="mic_allow_btn" style="background:#2b9fd6;color:#fff;border:none;border-radius:6px;padding:14px 32px;font-size:15px;font-weight:700;cursor:pointer;">Allow Microphone Access</button>
+    <p id="mic_err" style="color:#e74c3c;margin-top:18px;font-size:14px;display:none;"></p>
+  </div>`,
+  on_load: function () {
+    document.getElementById("mic_allow_btn").addEventListener("click", async function () {
+      const btn = document.getElementById("mic_allow_btn");
+      const err = document.getElementById("mic_err");
+      btn.disabled = true;
+      btn.textContent = "Requesting access…";
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        jsPsych.pluginAPI.initializeMicrophoneRecorder(stream);
+        jsPsych.finishTrial();
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = "Allow Microphone Access";
+        err.style.display = "block";
+        if (e.name === "NotAllowedError") {
+          err.textContent = "Microphone access was denied. Click the camera/mic icon in your browser's address bar to allow access, then try again.";
+        } else {
+          err.textContent = "Could not access microphone: " + e.message + ". Please check your browser settings.";
+        }
+      }
+    });
+  }
+});
 timeline.push({
   type: jsPsychWebgazerInitCamera,
   instructions:"<p>Center your face in the webcam window. Sit ~50cm away, ensure even lighting, and keep your head still during the study.</p>",
