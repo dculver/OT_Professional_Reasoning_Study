@@ -542,16 +542,42 @@ study.experimental_condition = CONFIG.FORCE_CONDITION ||
    ===================================================================== */
 timeline.push({
   timeline: [{
-    type: jsPsychSurveyText,
-    preamble: `<div style="max-width:640px;margin:auto;text-align:left;color:#cdd9e5;">
-        <h3>Create your anonymous study code</h3>
-        <p>Links your data across phases without your name. Answer the same way each time.</p></div>`,
-    questions: [
-      { prompt:"First TWO letters of the street you grew up on:", required:true, name:"street" },
-      { prompt:"First TWO letters of your first pet's name:", required:true, name:"pet" },
-      { prompt:"Two-digit birth month (e.g., 03):", required:true, name:"month" }
-    ],
-    on_finish: d => { study.participant_code = (d.response.street + d.response.pet + d.response.month).toUpperCase().replace(/\s+/g,""); }
+    type: jsPsychHtmlKeyboardResponse,
+    choices: "NO_KEYS",
+    stimulus: `<div style="max-width:580px;margin:10% auto;text-align:left;color:#cdd9e5;font-family:'Segoe UI',Arial,sans-serif;">
+      <h3 style="color:#5ab0f0;margin-bottom:8px;">Create your anonymous study code</h3>
+      <p style="color:#8aa0b6;margin-bottom:24px;">Links your data across phases without your name. Answer the same way each time.</p>
+      <form id="code_form" autocomplete="off">
+        <div style="margin-bottom:16px;">
+          <label style="display:block;margin-bottom:6px;font-size:14px;">First TWO letters of the street you grew up on:</label>
+          <input id="cf_street" type="text" maxlength="10" required style="background:#1d2d3d;border:1px solid #2a4a6a;border-radius:5px;color:#cdd9e5;padding:8px 12px;font-size:15px;width:100%;box-sizing:border-box;" />
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="display:block;margin-bottom:6px;font-size:14px;">First TWO letters of your first pet's name:</label>
+          <input id="cf_pet" type="text" maxlength="10" required style="background:#1d2d3d;border:1px solid #2a4a6a;border-radius:5px;color:#cdd9e5;padding:8px 12px;font-size:15px;width:100%;box-sizing:border-box;" />
+        </div>
+        <div style="margin-bottom:24px;">
+          <label style="display:block;margin-bottom:6px;font-size:14px;">Two-digit birth month (e.g., 03):</label>
+          <input id="cf_month" type="text" maxlength="4" required style="background:#1d2d3d;border:1px solid #2a4a6a;border-radius:5px;color:#cdd9e5;padding:8px 12px;font-size:15px;width:100%;box-sizing:border-box;" />
+        </div>
+        <p id="cf_err" style="color:#e74c3c;margin-bottom:12px;display:none;">Please fill in all three fields.</p>
+        <button type="submit" style="background:#2b9fd6;color:#fff;border:none;border-radius:6px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;">Continue</button>
+      </form>
+    </div>`,
+    on_load: function () {
+      document.getElementById("code_form").addEventListener("submit", function(e) {
+        e.preventDefault();
+        const street = document.getElementById("cf_street").value.trim();
+        const pet    = document.getElementById("cf_pet").value.trim();
+        const month  = document.getElementById("cf_month").value.trim();
+        if (!street || !pet || !month) {
+          document.getElementById("cf_err").style.display = "block";
+          return;
+        }
+        study.participant_code = (street + pet + month).toUpperCase().replace(/\s+/g, "");
+        jsPsych.finishTrial();
+      });
+    }
   }],
   conditional_function: () => !study.sub_id_from_url
 });
