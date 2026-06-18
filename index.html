@@ -1105,17 +1105,6 @@ function buildBioWorldTrials(c) {
         <p style="font-size:17px;line-height:1.7;">We will record this browser tab while you review the chart, so you can narrate over it afterward. The recording stays on your computer — only transcribed text is uploaded.</p>
 
         <div style="background:#1d3450;border-left:4px solid #5ab0f0;padding:16px 20px;border-radius:6px;margin:18px 0;">
-<<<<<<< Updated upstream
-          <p style="margin:0 0 14px;font-size:16px;"><strong style="color:#5ab0f0;">Step 1 —</strong> Go fullscreen: ${FS_TIP} The browser toolbar will disappear.</p>
-          <p style="margin:0;font-size:16px;color:#7a9ab0;" id="fs_waiting_${c.id}"><strong style="color:#5ab0f0;">Step 2 —</strong> Once fullscreen, the button below will activate. Click it, then select <strong>this experiment's tab</strong> from the share dialog.</p>
-          <p style="margin:10px 0 0;font-size:13px;color:#7a9ab0;">In Edge or Chrome: stay on the <em>Tab</em> panel (not Window or Entire Screen), find the tab showing the BioWorld interface, click it, then click <strong>Share</strong>.</p>
-        </div>
-
-        <button id="rec_${c.id}"
-          style="margin-top:6px;padding:14px 30px;background:#3a5a70;color:#7a9ab0;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:not-allowed;transition:background .3s,color .3s;"
-          disabled>
-          Waiting for fullscreen (${IS_MAC ? 'Ctrl+Command+F' : 'F11'})…
-=======
           <p style="margin:0 0 16px;font-size:16px;"><strong style="color:#5ab0f0;">Step 1 —</strong> Click the button to go fullscreen so browser chrome does not appear in the recording.</p>
           <p style="margin:0;font-size:16px;color:#7a9ab0;"><strong style="color:#5ab0f0;">Step 2 —</strong> A second button will appear. Click it, then select <strong>this experiment's tab</strong> from the share dialog (not Window or Entire Screen).</p>
         </div>
@@ -1127,67 +1116,31 @@ function buildBioWorldTrials(c) {
         <button id="rec_${c.id}"
           style="margin-top:10px;padding:14px 30px;background:#27ae60;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;display:none;">
           Step 2: Start Recording &amp; Open Case ${c.id}
->>>>>>> Stashed changes
         </button>
         <p id="err_${c.id}" style="color:#e05a5a;margin-top:10px;"></p>
       </div>`,
     on_load: function () {
-<<<<<<< Updated upstream
-      const btn = document.getElementById("rec_"+c.id);
-
-      function checkFullscreen() {
-        const isFS = !!document.fullscreenElement || !!document.webkitFullscreenElement || !!document.msFullscreenElement;
-        if (isFS) {
-          btn.disabled = false;
-          btn.style.background = "#2b9fd6";
-          btn.style.color = "#fff";
-          btn.style.cursor = "pointer";
-          btn.textContent = "Open Case " + c.id + " — Start Recording";
-        } else {
-          btn.disabled = true;
-          btn.style.background = "#3a5a70";
-          btn.style.color = "#7a9ab0";
-          btn.style.cursor = "not-allowed";
-          btn.textContent = "Waiting for fullscreen (" + FS_LABEL + ")…";
-        }
-      }
-
-      // Check immediately (in case they are already fullscreen)
-      checkFullscreen();
-      document.addEventListener("fullscreenchange", checkFullscreen);
-      document.addEventListener("webkitfullscreenchange", checkFullscreen);
-      document.addEventListener("msfullscreenchange", checkFullscreen);
-
-      btn.addEventListener("click", async () => {
-        if (btn.disabled) return;
-        btn.disabled = true;
-=======
       const fsBtn  = document.getElementById("go_fs_"+c.id);
       const recBtn = document.getElementById("rec_"+c.id);
       const errEl  = document.getElementById("err_"+c.id);
 
-      // Step 1: Go fullscreen via the Fullscreen API (click = user gesture = works reliably)
       fsBtn.addEventListener("click", async () => {
         fsBtn.disabled = true;
         try {
           await document.documentElement.requestFullscreen();
-          // fullscreenchange will fire and reveal the recording button
         } catch(fe) {
           console.warn("requestFullscreen failed:", fe);
           fsBtn.disabled = false;
           errEl.textContent = "Fullscreen request was blocked. Try View → Enter Full Screen in your browser menu, then click Step 2 below.";
-          // Show Step 2 anyway so they are not stuck
           recBtn.style.display = "block";
         }
       });
 
-      // fullscreenchange fires reliably when requestFullscreen() is used
       function onFSChange() {
         if (document.fullscreenElement) {
           fsBtn.style.display = "none";
           recBtn.style.display = "block";
         } else {
-          // Exited fullscreen (e.g., Esc) — put Step 1 back
           fsBtn.style.display = "block";
           fsBtn.disabled = false;
           recBtn.style.display = "none";
@@ -1196,10 +1149,8 @@ function buildBioWorldTrials(c) {
       document.addEventListener("fullscreenchange", onFSChange);
       document.addEventListener("webkitfullscreenchange", onFSChange);
 
-      // Step 2: Start recording (separate click = fresh user gesture for getDisplayMedia)
       recBtn.addEventListener("click", async () => {
         recBtn.disabled = true;
->>>>>>> Stashed changes
         try {
           const s = await startScreenRecording(c.id);
           s.getVideoTracks()[0].addEventListener("ended", () => {
@@ -1207,13 +1158,8 @@ function buildBioWorldTrials(c) {
           });
           jsPsych.finishTrial();
         } catch (e) {
-<<<<<<< Updated upstream
-          btn.disabled = false;
-          document.getElementById("err_"+c.id).textContent = "Screen share cancelled — click again and select this experiment's tab from the list.";
-=======
           recBtn.disabled = false;
           errEl.textContent = "Screen share cancelled — click Step 2 again and select this experiment's tab from the list.";
->>>>>>> Stashed changes
         }
       });
     }
@@ -1720,43 +1666,12 @@ timeline.push({
    Uses BioWorld visual style. No hypothesis manager, no assessments,
    no library — just 2 evidence paragraphs + submit so participants
    learn the mechanics without rehearsing OT clinical reasoning. */
-<<<<<<< Updated upstream
-const PR_PARAGRAPHS = {
-  pr_h1:"Patient Background: Alex Chen, referred for initial OT intake. Flexible schedule, no urgent concerns.",
-  pr_h2:"Patient Preferences: Alex reports preferring morning appointments due to afternoon fatigue. Transportation available daily."
-};
-=======
->>>>>>> Stashed changes
 const practiceStartRec = {
   type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
   stimulus:`<div style="max-width:680px;margin:11% auto;text-align:left;color:#c8d8e8;font-family:'Segoe UI',Arial,sans-serif;">
       <h2 style="color:#5ab0f0;">Practice Run</h2>
       <p style="font-size:17px;line-height:1.7;">This is a short practice — <strong>not</strong> a real OT case. It is just to help you get comfortable with the process.</p>
       <div style="background:#1d3450;border-left:4px solid #5fb0e0;padding:16px 20px;border-radius:6px;margin:16px 0;">
-<<<<<<< Updated upstream
-        <p style="margin:0 0 14px;font-size:16px;"><strong style="color:#5ab0f0;">Step 1 —</strong> Go fullscreen: ${FS_TIP}</p>
-        <p style="margin:0;font-size:16px;color:#7a9ab0;"><strong style="color:#5ab0f0;">Step 2 —</strong> Click the button below, then select this experiment's tab from the share dialog.</p>
-      </div>
-      <button id="rec_pr"
-        style="margin-top:6px;padding:14px 28px;background:#3a5a70;color:#7a9ab0;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:not-allowed;transition:background .3s,color .3s;"
-        disabled>Waiting for fullscreen (${FS_LABEL})…</button>
-      <p id="err_pr" style="color:#e05a5a;margin-top:10px;"></p></div>`,
-  on_load: function () {
-    const btn = document.getElementById("rec_pr");
-    function checkFS(){
-      const isFS=!!document.fullscreenElement||!!document.webkitFullscreenElement||!!document.msFullscreenElement;
-      btn.disabled=!isFS; btn.style.background=isFS?"#2b9fd6":"#3a5a70";
-      btn.style.color=isFS?"#fff":"#7a9ab0"; btn.style.cursor=isFS?"pointer":"not-allowed";
-      btn.textContent=isFS?"Start Practice — Click Here":"Waiting for fullscreen ("+FS_LABEL+")…";
-    }
-    checkFS();
-    document.addEventListener("fullscreenchange",checkFS);
-    document.addEventListener("webkitfullscreenchange",checkFS);
-    document.addEventListener("msfullscreenchange",checkFS);
-    btn.addEventListener("click", async () => {
-      if(btn.disabled) return;
-      btn.disabled=true;
-=======
         <p style="margin:0 0 14px;font-size:16px;"><strong style="color:#5ab0f0;">Step 1 —</strong> Click to go fullscreen so browser chrome does not appear in the recording.</p>
         <p style="margin:0;font-size:16px;color:#7a9ab0;"><strong style="color:#5ab0f0;">Step 2 —</strong> A second button will appear. Click it, then select this experiment's tab from the share dialog.</p>
       </div>
@@ -1796,21 +1711,16 @@ const practiceStartRec = {
 
     recBtn.addEventListener("click", async () => {
       recBtn.disabled = true;
->>>>>>> Stashed changes
       try {
         const s = await startScreenRecording("practice");
         s.getVideoTracks()[0].addEventListener("ended", () => {
           const sub = document.getElementById("pr_submit"); if(sub) sub.click();
         });
         jsPsych.finishTrial();
-<<<<<<< Updated upstream
-      } catch(e) { btn.disabled=false; document.getElementById("err_pr").textContent="Screen share cancelled — try again and select the Tab option."; }
-=======
       } catch(e) {
         recBtn.disabled = false;
         errEl.textContent = "Screen share cancelled — try again and select the Tab option.";
       }
->>>>>>> Stashed changes
     });
   }
 };
@@ -1828,11 +1738,7 @@ const practiceCase = {
           <div class="bw-evidence-section" id="bw_ev_panel">
             <div class="bw-panel-label">Evidence Table</div>
             <div class="bw-ev-list" id="pr_ev_list">
-<<<<<<< Updated upstream
-              <div class="bw-ev-empty" id="pr_ev_empty">No evidence yet. Hover over paragraphs to add items.</div>
-=======
               <div class="bw-ev-empty" id="pr_ev_empty">No evidence yet. Select any text to add it as evidence.</div>
->>>>>>> Stashed changes
             </div>
           </div>
         </div>
@@ -1850,17 +1756,9 @@ const practiceCase = {
           <div class="bw-narrative">
             <div class="bw-ev-para" id="pr_h1">
               <p>Alex Chen has been referred for an initial OT intake appointment. The referral notes a flexible schedule and no urgent concerns. The clinic has two available appointment slots: 9:00 AM and 2:00 PM.</p>
-<<<<<<< Updated upstream
-              <button class="bw-para-btn" data-para="pr_h1">+ Evidence</button>
             </div>
             <div class="bw-ev-para" id="pr_h2">
               <p>Alex reports preferring morning appointments due to fatigue in the afternoon. Transportation is available every day, and no caregiver is needed.</p>
-              <button class="bw-para-btn" data-para="pr_h2">+ Evidence</button>
-=======
-            </div>
-            <div class="bw-ev-para" id="pr_h2">
-              <p>Alex reports preferring morning appointments due to fatigue in the afternoon. Transportation is available every day, and no caregiver is needed.</p>
->>>>>>> Stashed changes
             </div>
           </div>
           <div class="bw-section-heading" style="margin-top:28px;">Scheduling Decision</div>
@@ -1901,16 +1799,6 @@ const practiceCase = {
         prEv.splice(prEv.findIndex(x=>x.id===parseInt(b.dataset.evid)),1); renderPrEv();
       }));
     }
-<<<<<<< Updated upstream
-    document.querySelectorAll("#bw_root_pr .bw-para-btn").forEach(btn=>{
-      btn.addEventListener("click",()=>{
-        const text=PR_PARAGRAPHS[btn.dataset.para]; if(!text) return;
-        if(prEv.some(e=>e.text===text)) return;
-        prEv.push({id:prEvCounter++,text});
-        const para=document.getElementById(btn.dataset.para); if(para) para.classList.add("para-added");
-        btn.textContent="✓ Added"; renderPrEv();
-      });
-=======
     /* ── Practice: text-highlight evidence tooltip ── */
     let prTooltip = document.getElementById("bw-highlight-tooltip");
     if (!prTooltip) {
@@ -1947,7 +1835,6 @@ const practiceCase = {
       window.getSelection().removeAllRanges();
       prTooltip.style.display = "none";
       _prPendingSel = null;
->>>>>>> Stashed changes
     });
     document.getElementById("pr_submit").addEventListener("click", async()=>{
       clearInterval(tick);
