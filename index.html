@@ -8,6 +8,7 @@
   <script src="js/jspsych.js"></script>
   <link href="js/jspsych.css" rel="stylesheet" type="text/css" />
   <script src="js/plugin-html-keyboard-response.js"></script>
+  <script src="js/plugin-survey-text.js"></script>
   <script src="js/plugin-preload.js"></script>
   <script src="js/plugin-call-function.js"></script>
 
@@ -276,18 +277,21 @@
     .bw-narrative { font-size:14px; line-height:1.75; color:#b8ccd8; }
     .bw-narrative p { margin-bottom:12px; }
 
-    /* Text-highlight evidence tooltip */
-    .bw-ev-para { margin-bottom:10px; }
-    .bw-ev-para p { margin:0; }
-    #bw-highlight-tooltip {
-      position:fixed; z-index:9999; display:none;
-      background:#1e4a2a; border:1px solid #2a6a3a; border-radius:5px;
-      padding:5px 12px; color:#5ac070; font-size:12px; font-weight:600;
-      cursor:pointer; white-space:nowrap; box-shadow:0 2px 8px rgba(0,0,0,.5);
-      pointer-events:auto;
+    /* Paragraph evidence buttons */
+    .bw-ev-para {
+      position:relative; padding:10px 12px; border:1px solid transparent;
+      border-radius:6px; margin-bottom:10px; transition:border-color .15s,background .15s;
     }
-    #bw-highlight-tooltip:hover { background:#2a5a3a; }
-    .bw-highlighted-ev { background:rgba(90,192,112,.18); border-radius:2px; }
+    .bw-ev-para:hover { border-color:#2a4a2a; background:#1a2520; }
+    .bw-ev-para p { margin:0; }
+    .bw-para-btn {
+      display:none; margin-top:8px; background:#1e4a2a; border:1px solid #2a6a3a;
+      color:#5ac070; font-size:11px; padding:3px 10px; border-radius:4px; cursor:pointer;
+    }
+    .bw-ev-para:hover .bw-para-btn { display:inline-block; }
+    .bw-para-btn:hover { background:#2a5a3a; }
+    .bw-ev-para.para-added { border-color:#2a6a3a; background:#1a2d1e; }
+    .bw-ev-para.para-added .bw-para-btn { display:inline-block; background:#0f2a18; border-color:#1a4a28; color:#3a8050; cursor:default; }
 
     /* Assessment grid */
     .bw-assess-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; margin-top:4px; }
@@ -541,42 +545,16 @@ study.experimental_condition = CONFIG.FORCE_CONDITION ||
    ===================================================================== */
 timeline.push({
   timeline: [{
-    type: jsPsychHtmlKeyboardResponse,
-    choices: "NO_KEYS",
-    stimulus: `<div style="max-width:580px;margin:10% auto;text-align:left;color:#cdd9e5;font-family:'Segoe UI',Arial,sans-serif;">
-      <h3 style="color:#5ab0f0;margin-bottom:8px;">Create your anonymous study code</h3>
-      <p style="color:#8aa0b6;margin-bottom:24px;">Links your data across phases without your name. Answer the same way each time.</p>
-      <form id="code_form" autocomplete="off">
-        <div style="margin-bottom:16px;">
-          <label for="cf_street" style="display:block;margin-bottom:6px;font-size:14px;">First TWO letters of the street you grew up on:</label>
-          <input id="cf_street" type="text" maxlength="10" required style="background:#1d2d3d;border:1px solid #2a4a6a;border-radius:5px;color:#cdd9e5;padding:8px 12px;font-size:15px;width:100%;box-sizing:border-box;" />
-        </div>
-        <div style="margin-bottom:16px;">
-          <label for="cf_pet" style="display:block;margin-bottom:6px;font-size:14px;">First TWO letters of your first pet's name:</label>
-          <input id="cf_pet" type="text" maxlength="10" required style="background:#1d2d3d;border:1px solid #2a4a6a;border-radius:5px;color:#cdd9e5;padding:8px 12px;font-size:15px;width:100%;box-sizing:border-box;" />
-        </div>
-        <div style="margin-bottom:24px;">
-          <label for="cf_month" style="display:block;margin-bottom:6px;font-size:14px;">Two-digit birth month (e.g., 03):</label>
-          <input id="cf_month" type="text" maxlength="4" required style="background:#1d2d3d;border:1px solid #2a4a6a;border-radius:5px;color:#cdd9e5;padding:8px 12px;font-size:15px;width:100%;box-sizing:border-box;" />
-        </div>
-        <p id="cf_err" style="color:#e74c3c;margin-bottom:12px;display:none;">Please fill in all three fields.</p>
-        <button type="submit" style="background:#2b9fd6;color:#fff;border:none;border-radius:6px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;">Continue</button>
-      </form>
-    </div>`,
-    on_load: function () {
-      document.getElementById("code_form").addEventListener("submit", function(e) {
-        e.preventDefault();
-        const street = document.getElementById("cf_street").value.trim();
-        const pet    = document.getElementById("cf_pet").value.trim();
-        const month  = document.getElementById("cf_month").value.trim();
-        if (!street || !pet || !month) {
-          document.getElementById("cf_err").style.display = "block";
-          return;
-        }
-        study.participant_code = (street + pet + month).toUpperCase().replace(/\s+/g, "");
-        jsPsych.finishTrial();
-      });
-    }
+    type: jsPsychSurveyText,
+    preamble: `<div style="max-width:640px;margin:auto;text-align:left;color:#cdd9e5;">
+        <h3>Create your anonymous study code</h3>
+        <p>Links your data across phases without your name. Answer the same way each time.</p></div>`,
+    questions: [
+      { prompt:"First TWO letters of the street you grew up on:", required:true, name:"street" },
+      { prompt:"First TWO letters of your first pet's name:", required:true, name:"pet" },
+      { prompt:"Two-digit birth month (e.g., 03):", required:true, name:"month" }
+    ],
+    on_finish: d => { study.participant_code = (d.response.street + d.response.pet + d.response.month).toUpperCase().replace(/\s+/g,""); }
   }],
   conditional_function: () => !study.sub_id_from_url
 });
@@ -584,38 +562,7 @@ timeline.push({
 /* =====================================================================
    CALIBRATION
    ===================================================================== */
-timeline.push({
-  type: jsPsychHtmlKeyboardResponse,
-  choices: "NO_KEYS",
-  stimulus: `<div style="max-width:580px;margin:12% auto;text-align:center;color:#cdd9e5;font-family:'Segoe UI',Arial,sans-serif;">
-    <h3 style="color:#5ab0f0;margin-bottom:16px;">Microphone Access Required</h3>
-    <p style="font-size:16px;line-height:1.7;margin-bottom:24px;">This study records your think-aloud narration after each case. Your audio never leaves your computer — only the transcribed text is uploaded.</p>
-    <button id="mic_allow_btn" style="background:#2b9fd6;color:#fff;border:none;border-radius:6px;padding:14px 32px;font-size:15px;font-weight:700;cursor:pointer;">Allow Microphone Access</button>
-    <p id="mic_err" style="color:#e74c3c;margin-top:18px;font-size:14px;display:none;"></p>
-  </div>`,
-  on_load: function () {
-    document.getElementById("mic_allow_btn").addEventListener("click", async function () {
-      const btn = document.getElementById("mic_allow_btn");
-      const err = document.getElementById("mic_err");
-      btn.disabled = true;
-      btn.textContent = "Requesting access…";
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        jsPsych.pluginAPI.initializeMicrophoneRecorder(stream);
-        jsPsych.finishTrial();
-      } catch (e) {
-        btn.disabled = false;
-        btn.textContent = "Allow Microphone Access";
-        err.style.display = "block";
-        if (e.name === "NotAllowedError") {
-          err.textContent = "Microphone access was denied. Click the camera/mic icon in your browser's address bar to allow access, then try again.";
-        } else {
-          err.textContent = "Could not access microphone: " + e.message + ". Please check your browser settings.";
-        }
-      }
-    });
-  }
-});
+timeline.push({ type: jsPsychInitializeMicrophone, error_message:"<p>Microphone access is required.</p>" });
 timeline.push({
   type: jsPsychWebgazerInitCamera,
   instructions:"<p>Center your face in the webcam window. Sit ~50cm away, ensure even lighting, and keep your head still during the study.</p>",
@@ -789,24 +736,29 @@ const BW_CASES = {
       <div class="bw-narrative">
         <div class="bw-ev-para" id="bw_para_h1">
           <p>Evelyn is a 74-year-old retired schoolteacher admitted five days ago following an ischemic stroke affecting the left middle cerebral artery territory. She presents with right hemiparesis, mild expressive aphasia, and reduced grip strength on the right side. Prior to admission she was fully independent in all activities of daily living and lived alone in a single-story home.</p>
+          <button class="bw-para-btn" data-para="bw_para_h1">+ Evidence</button>
         </div>
         <div class="bw-ev-para" id="bw_para_h2">
           <p>Her medical history is significant for Type 2 diabetes (well-controlled), hypertension, and mild osteoarthritis of both hands. She reports being right-hand dominant. She is widowed, has two adult children who live nearby, and describes herself as highly motivated to return home.</p>
+          <button class="bw-para-btn" data-para="bw_para_h2">+ Evidence</button>
         </div>
       </div>
       <div class="bw-section-heading">ADL Observation Summary</div>
       <div class="bw-narrative">
         <div class="bw-ev-para" id="bw_para_a1">
           <p>During an observed meal preparation task this morning, Evelyn was able to ambulate to the kitchen with supervision using a quad cane. She demonstrated difficulty stabilizing bread on the counter while attempting to spread peanut butter, requiring multiple attempts. She was unable to open a standard jar lid without assistance. Her right hand showed functional reach but significantly reduced pinch strength; she compensated by using her left hand for most fine motor tasks.</p>
+          <button class="bw-para-btn" data-para="bw_para_a1">+ Evidence</button>
         </div>
         <div class="bw-ev-para" id="bw_para_a2">
           <p>She became visibly frustrated after two failed attempts at opening the jar and stated: "I used to do this every morning." Fatigue was noted after approximately 12 minutes of activity. She completed the task with moderate assistance and verbal cueing.</p>
+          <button class="bw-para-btn" data-para="bw_para_a2">+ Evidence</button>
         </div>
       </div>
       <div class="bw-section-heading">Current Functional Status</div>
       <div class="bw-narrative">
         <div class="bw-ev-para" id="bw_para_f1">
           <p>FIM scores on admission: Self-care 3/7, Transfers 4/7, Locomotion 4/7. Occupational profile indicates high priority for independent meal preparation, home management, and community mobility. Evelyn's goal is to return home within three weeks and resume weekly book club meetings.</p>
+          <button class="bw-para-btn" data-para="bw_para_f1">+ Evidence</button>
         </div>
       </div>`,
 
@@ -891,24 +843,29 @@ const BW_CASES = {
       <div class="bw-narrative">
         <div class="bw-ev-para" id="bw_para_h1">
           <p>Marcus is a 27-year-old graphic designer admitted six weeks ago following a motor vehicle collision resulting in a C6 incomplete spinal cord injury (AIS D). He presents with reduced bilateral grip strength and impaired finger flexion, though tenodesis grasp is intact. He currently uses a manual wheelchair and is independent with transfers.</p>
+          <button class="bw-para-btn" data-para="bw_para_h1">+ Evidence</button>
         </div>
         <div class="bw-ev-para" id="bw_para_h2">
           <p>Marcus has no prior medical conditions. He is right-hand dominant. He lives with his partner in an accessible apartment. He describes himself as highly motivated and values autonomy. He has no traumatic brain injury and is cognitively intact.</p>
+          <button class="bw-para-btn" data-para="bw_para_h2">+ Evidence</button>
         </div>
       </div>
       <div class="bw-section-heading">ADL Observation Summary</div>
       <div class="bw-narrative">
         <div class="bw-ev-para" id="bw_para_a1">
           <p>During an observed upper-body dressing task this morning, Marcus was unable to button a standard dress shirt independently. Tenodesis grasp was functional for grasping larger objects but insufficient for manipulating small fasteners. He required moderate assistance and multiple attempts before giving up on the top two buttons.</p>
+          <button class="bw-para-btn" data-para="bw_para_a1">+ Evidence</button>
         </div>
         <div class="bw-ev-para" id="bw_para_a2">
           <p>Marcus expressed frustration and stated: "I need to be able to dress myself before I go back to the office." Fatigue was noted after approximately 15 minutes of upper-body dressing tasks. He completed the task with moderate assistance and verbal cueing for compensatory strategies.</p>
+          <button class="bw-para-btn" data-para="bw_para_a2">+ Evidence</button>
         </div>
       </div>
       <div class="bw-section-heading">Current Functional Status</div>
       <div class="bw-narrative">
         <div class="bw-ev-para" id="bw_para_f1">
           <p>FIM scores: Self-care 4/7, Upper-body dressing 3/7. COPM priorities: dressing for work P:2/S:1, meal preparation P:3/S:2, computer use for graphic design P:4/S:3. Marcus's primary goal is to return to work within six weeks.</p>
+          <button class="bw-para-btn" data-para="bw_para_f1">+ Evidence</button>
         </div>
       </div>`,
 
@@ -1029,7 +986,7 @@ function buildBioWorldUI(c) {
         <div class="bw-evidence-section" id="bw_ev_panel">
           <div class="bw-panel-label">Evidence Table</div>
           <div class="bw-ev-list" id="bw_ev_list_${c.id}">
-            <div class="bw-ev-empty" id="bw_ev_empty_${c.id}">No evidence collected yet. Select any text in the chart to add it as evidence.</div>
+            <div class="bw-ev-empty" id="bw_ev_empty_${c.id}">No evidence collected yet. Hover over paragraphs in the Problem tab to add items.</div>
           </div>
         </div>
 
@@ -1180,23 +1137,28 @@ function buildBioWorldTrials(c) {
       const recBtn = document.getElementById("rec_"+c.id);
       const errEl  = document.getElementById("err_"+c.id);
 
+      // Step 1: Go fullscreen via the Fullscreen API (click = user gesture = works reliably)
       fsBtn.addEventListener("click", async () => {
         fsBtn.disabled = true;
         try {
           await document.documentElement.requestFullscreen();
+          // fullscreenchange will fire and reveal the recording button
         } catch(fe) {
           console.warn("requestFullscreen failed:", fe);
           fsBtn.disabled = false;
           errEl.textContent = "Fullscreen request was blocked. Try View → Enter Full Screen in your browser menu, then click Step 2 below.";
+          // Show Step 2 anyway so they are not stuck
           recBtn.style.display = "block";
         }
       });
 
+      // fullscreenchange fires reliably when requestFullscreen() is used
       function onFSChange() {
         if (document.fullscreenElement) {
           fsBtn.style.display = "none";
           recBtn.style.display = "block";
         } else {
+          // Exited fullscreen (e.g., Esc) — put Step 1 back
           fsBtn.style.display = "block";
           fsBtn.disabled = false;
           recBtn.style.display = "none";
@@ -1205,6 +1167,7 @@ function buildBioWorldTrials(c) {
       document.addEventListener("fullscreenchange", onFSChange);
       document.addEventListener("webkitfullscreenchange", onFSChange);
 
+      // Step 2: Start recording (separate click = fresh user gesture for getDisplayMedia)
       recBtn.addEventListener("click", async () => {
         recBtn.disabled = true;
         try {
@@ -1364,48 +1327,18 @@ function buildBioWorldTrials(c) {
         });
       }
 
-      /* ── Text-highlight evidence tooltip ── */
-      let tooltip = document.getElementById("bw-highlight-tooltip");
-      if (!tooltip) {
-        tooltip = document.createElement("button");
-        tooltip.id = "bw-highlight-tooltip";
-        tooltip.textContent = "+ Add to Evidence";
-        document.body.appendChild(tooltip);
-      }
-      let _pendingSel = null;
-      document.addEventListener("mouseup", function onMouseUp(e) {
-        const root = document.getElementById("bw_root_"+c.id);
-        if (!root || !root.contains(e.target)) { tooltip.style.display="none"; return; }
-        const sel = window.getSelection();
-        const text = sel ? sel.toString().trim() : "";
-        if (!text) { tooltip.style.display="none"; return; }
-        /* find nearest ancestor with a known AOI id */
-        let node = e.target;
-        let aoi = null;
-        while (node && node !== root) {
-          aoi = c.aoi_map.find(a => a.id === node.id);
-          if (aoi) break;
-          node = node.parentElement;
-        }
-        _pendingSel = { text, aoi: aoi||null, range: sel.getRangeAt(0).cloneRange() };
-        tooltip.style.display = "block";
-        tooltip.style.left = Math.min(e.clientX, window.innerWidth-160) + "px";
-        tooltip.style.top  = (e.clientY - 38) + "px";
-      });
-      tooltip.addEventListener("mousedown", function(e) { e.preventDefault(); });
-      tooltip.addEventListener("click", function() {
-        if (!_pendingSel) return;
-        const { text, aoi, range } = _pendingSel;
-        addEvidence(text, "patient", aoi?aoi.id:"bw_problem", aoi?aoi.emic:"NARRATIVE", aoi?aoi.etic:"TASK-DEF");
-        /* wrap selected text in a highlight span */
-        try {
-          const mark = document.createElement("mark");
-          mark.className = "bw-highlighted-ev";
-          range.surroundContents(mark);
-        } catch(e) { /* selection spans multiple nodes — skip visual wrap */ }
-        window.getSelection().removeAllRanges();
-        tooltip.style.display = "none";
-        _pendingSel = null;
+      /* ── Paragraph evidence buttons ── */
+      document.querySelectorAll("#bw_root_"+c.id+" .bw-para-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const paraId = btn.dataset.para;
+          const text   = c.paragraphs[paraId];
+          const aoi    = c.aoi_map.find(a=>a.id===paraId);
+          if (!text) return;
+          addEvidence(text, "patient", paraId, aoi?aoi.emic:"NARRATIVE", aoi?aoi.etic:"TASK-DEF");
+          const para = document.getElementById(paraId);
+          if (para) para.classList.add("para-added");
+          btn.textContent = "✓ Added";
+        });
       });
 
       /* ── Clear evidence ── */
@@ -1413,10 +1346,9 @@ function buildBioWorldTrials(c) {
       if (clearBtn) clearBtn.addEventListener("click", () => {
         evState.length = 0;
         logClick("bw_ev_panel","","MONITOR","evidence_cleared",null);
-        document.querySelectorAll("#bw_root_"+c.id+" .bw-highlighted-ev").forEach(mark => {
-          mark.replaceWith(...mark.childNodes);
-        });
         renderEvidence();
+        document.querySelectorAll("#bw_root_"+c.id+" .bw-ev-para").forEach(p=>p.classList.remove("para-added"));
+        document.querySelectorAll("#bw_root_"+c.id+" .bw-para-btn").forEach(b=>b.textContent="+ Evidence");
       });
 
       /* ── Assessment cards ── */
@@ -1722,6 +1654,10 @@ timeline.push({
    Uses BioWorld visual style. No hypothesis manager, no assessments,
    no library — just 2 evidence paragraphs + submit so participants
    learn the mechanics without rehearsing OT clinical reasoning. */
+const PR_PARAGRAPHS = {
+  pr_h1:"Patient Background: Alex Chen, referred for initial OT intake. Flexible schedule, no urgent concerns.",
+  pr_h2:"Patient Preferences: Alex reports preferring morning appointments due to afternoon fatigue. Transportation available daily."
+};
 const practiceStartRec = {
   type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
   stimulus:`<div style="max-width:680px;margin:11% auto;text-align:left;color:#c8d8e8;font-family:'Segoe UI',Arial,sans-serif;">
@@ -1794,7 +1730,7 @@ const practiceCase = {
           <div class="bw-evidence-section" id="bw_ev_panel">
             <div class="bw-panel-label">Evidence Table</div>
             <div class="bw-ev-list" id="pr_ev_list">
-              <div class="bw-ev-empty" id="pr_ev_empty">No evidence yet. Select any text to add it as evidence.</div>
+              <div class="bw-ev-empty" id="pr_ev_empty">No evidence yet. Hover over paragraphs to add items.</div>
             </div>
           </div>
         </div>
@@ -1812,9 +1748,11 @@ const practiceCase = {
           <div class="bw-narrative">
             <div class="bw-ev-para" id="pr_h1">
               <p>Alex Chen has been referred for an initial OT intake appointment. The referral notes a flexible schedule and no urgent concerns. The clinic has two available appointment slots: 9:00 AM and 2:00 PM.</p>
+              <button class="bw-para-btn" data-para="pr_h1">+ Evidence</button>
             </div>
             <div class="bw-ev-para" id="pr_h2">
               <p>Alex reports preferring morning appointments due to fatigue in the afternoon. Transportation is available every day, and no caregiver is needed.</p>
+              <button class="bw-para-btn" data-para="pr_h2">+ Evidence</button>
             </div>
           </div>
           <div class="bw-section-heading" style="margin-top:28px;">Scheduling Decision</div>
@@ -1855,42 +1793,14 @@ const practiceCase = {
         prEv.splice(prEv.findIndex(x=>x.id===parseInt(b.dataset.evid)),1); renderPrEv();
       }));
     }
-    /* ── Practice: text-highlight evidence tooltip ── */
-    let prTooltip = document.getElementById("bw-highlight-tooltip");
-    if (!prTooltip) {
-      prTooltip = document.createElement("button");
-      prTooltip.id = "bw-highlight-tooltip";
-      prTooltip.textContent = "+ Add to Evidence";
-      document.body.appendChild(prTooltip);
-    }
-    let _prPendingSel = null;
-    const prRoot = document.getElementById("bw_root_pr");
-    document.addEventListener("mouseup", function prMouseUp(e) {
-      if (!prRoot || !prRoot.contains(e.target)) { prTooltip.style.display="none"; return; }
-      const sel = window.getSelection();
-      const text = sel ? sel.toString().trim() : "";
-      if (!text) { prTooltip.style.display="none"; return; }
-      _prPendingSel = { text, range: sel.getRangeAt(0).cloneRange() };
-      prTooltip.style.display = "block";
-      prTooltip.style.left = Math.min(e.clientX, window.innerWidth-160) + "px";
-      prTooltip.style.top  = (e.clientY - 38) + "px";
-    });
-    prTooltip.addEventListener("mousedown", function(e) { e.preventDefault(); });
-    prTooltip.addEventListener("click", function() {
-      if (!_prPendingSel) return;
-      const { text, range } = _prPendingSel;
-      if (!prEv.some(e=>e.text===text)) {
-        prEv.push({id:prEvCounter++, text});
-        try {
-          const mark = document.createElement("mark");
-          mark.className = "bw-highlighted-ev";
-          range.surroundContents(mark);
-        } catch(e) {}
-        renderPrEv();
-      }
-      window.getSelection().removeAllRanges();
-      prTooltip.style.display = "none";
-      _prPendingSel = null;
+    document.querySelectorAll("#bw_root_pr .bw-para-btn").forEach(btn=>{
+      btn.addEventListener("click",()=>{
+        const text=PR_PARAGRAPHS[btn.dataset.para]; if(!text) return;
+        if(prEv.some(e=>e.text===text)) return;
+        prEv.push({id:prEvCounter++,text});
+        const para=document.getElementById(btn.dataset.para); if(para) para.classList.add("para-added");
+        btn.textContent="✓ Added"; renderPrEv();
+      });
     });
     document.getElementById("pr_submit").addEventListener("click", async()=>{
       clearInterval(tick);
