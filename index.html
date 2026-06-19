@@ -131,6 +131,20 @@
           audioData = resampled.getChannelData(0);
         }
 
+        /* Normalize amplitude — if the recording is very quiet (peak < 0.1),
+           scale it up so Whisper receives a usable signal rather than
+           near-silence which causes hallucinations like "you you you". */
+        const peak = audioData.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+        if (peak > 0 && peak < 0.1) {
+          const scale = Math.min(0.95 / peak, 10);  // cap at 10× to avoid amplifying pure noise
+          const normalized = new Float32Array(audioData.length);
+          for (let i = 0; i < audioData.length; i++) normalized[i] = audioData[i] * scale;
+          audioData = normalized;
+        } else if (peak === 0) {
+          /* Completely silent — return empty result rather than hallucinating */
+          return { text: "", chunks: [] };
+        }
+
         return new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
             __pendingResolve = null; __pendingReject = null;
@@ -744,9 +758,38 @@ var validation_instructions = {
 /* Calibration: single pass — calibrate once, validate once, proceed regardless.
    Accuracy is recorded in study.calibration for analytical exclusion in R.
    No retry loops, no alert dialogs — participant frustration and dropout
-   are a greater threat to sample size than imperfect gaze data on some participants. */
+   are a greater threat to sample size than imperfect gaze data on some participants.
+
+   Note: a 1500ms stabilisation pause is inserted between calibration_grid and
+   validation_instructions. Without it, the weightedRidge regression model may
+   not have produced stable predictions yet when validation begins, causing
+   percent_in_roi to return null even when tracking is working. */
+
+/* Offset-based fallback quality scorer — used when percent_in_roi is null.
+   Computes a synthetic score from the mean offset radius relative to the ROI. */
+function gazeQualityFromOffsets(offsets, roiRadius) {
+  if (!offsets || !offsets.length) return { pct: null, quality: "unknown" };
+  const mean = offsets.reduce((s, o) => s + (o.r || 0), 0) / offsets.length;
+  /* Proportion of mean offset within ROI, clamped 0–100 */
+  const syntheticPct = Math.max(0, Math.min(100, Math.round((1 - mean / roiRadius) * 100)));
+  const quality = syntheticPct >= 75 ? "good" : syntheticPct >= 55 ? "acceptable" : "poor";
+  return { pct: syntheticPct, quality };
+}
+
+/* 1500ms stabilisation pause — inserted between calibration_grid and
+   validation so the weightedRidge model has time to converge. */
+var calibration_stabilise = {
+  type: jsPsychHtmlKeyboardResponse,
+  choices: "NO_KEYS",
+  trial_duration: 1500,
+  stimulus: `<div style="max-width:620px;margin:10% auto;text-align:center;color:#cdd9e5;
+      font-family:'Segoe UI',Arial,sans-serif;">
+    <p style="font-size:17px;color:#5ab0f0;">Calibrating…</p>
+  </div>`
+};
+
 timeline.push({
-  timeline: [calibration_instructions, calibration_grid, validation_instructions, {
+  timeline: [calibration_instructions, calibration_grid, calibration_stabilise, validation_instructions, {
     type: jsPsychWebgazerValidate,
     validation_points: calib_points,
     roi_radius: 150,
@@ -754,11 +797,18 @@ timeline.push({
     show_validation_data: false,
     on_finish: function(data) {
       const pct = data.percent_in_roi;
+      const offsets = data.average_offset;
+      /* Use offset-based fallback when percent_in_roi is null */
+      const scored = (pct != null)
+        ? { pct: Math.round(pct), quality: pct >= 75 ? "good" : pct >= 55 ? "acceptable" : "poor" }
+        : gazeQualityFromOffsets(offsets, 150);
       study.calibration = {
-        calibration_pct:  Math.round(pct),
-        average_offset:   data.average_offset,
-        roi_radius_used:  150,
-        gaze_quality:     pct >= 75 ? "good" : pct >= 55 ? "acceptable" : "poor"
+        calibration_pct:      scored.pct,
+        calibration_pct_raw:  pct,          // preserve raw value (may be null)
+        average_offset:       offsets,
+        roi_radius_used:      150,
+        gaze_quality:         scored.quality,
+        score_method:         pct != null ? "percent_in_roi" : "offset_fallback"
       };
     }
   }]
@@ -1388,7 +1438,7 @@ function buildBioWorldTrials(c) {
               warn.remove();
               if (sub && sub.dataset.submitted !== "true") sub.click();
             });
-            document.getElementById("bw_warn_dismiss_${c.id}").addEventListener("click", () => {
+            document.getElementById(`bw_warn_dismiss_${c.id}`).addEventListener("click", () => {
               warn.remove();
               /* Participant continues without a recording for the remainder.
                  Partial gaze and click data collected before the drop is preserved. */
@@ -1415,6 +1465,27 @@ function buildBioWorldTrials(c) {
       /* hide live gaze dot */
       try { webgazer.showVideo(false); webgazer.showPredictionPoints(false); } catch(e) {}
       const dot = document.getElementById("webgazerGazeDot"); if (dot) dot.style.display="none";
+
+      /* ── WebGazer heartbeat ──
+         Explicitly resume the prediction loop at trial start — it can stall
+         after the calibration/validation sequence or if the tab was backgrounded.
+         Then poll every 3 seconds; if no prediction has arrived in that window,
+         resume() again to restart the internal rAF loop. */
+      try { webgazer.resume(); } catch(e) {}
+      let _lastGazePrediction = performance.now();
+      webgazer.setGazeListener((data) => {
+        if (data) _lastGazePrediction = performance.now();
+      });
+      const _gazeHeartbeat = setInterval(() => {
+        const stalledMs = performance.now() - _lastGazePrediction;
+        if (stalledMs > 3000) {
+          try { webgazer.resume(); } catch(e) {}
+        }
+      }, 3000);
+      /* Heartbeat is cleared in the on_finish of the EHR trial (see below)
+         via the timerInterval cleanup — stored on the closure so on_finish
+         can reach it. */
+      const _clearHeartbeat = () => { clearInterval(_gazeHeartbeat); try { webgazer.clearGazeListener(); } catch(e) {} };
 
       const caseStart = performance.now();
       const clickEvents = [];
@@ -1864,6 +1935,7 @@ function buildBioWorldTrials(c) {
       if (submitBtn) submitBtn.addEventListener("click", async () => {
         submitBtn.dataset.submitted = "true";   // prevents stream-ended handler from re-triggering
         clearInterval(timerInterval);
+        _clearHeartbeat();   // stop WebGazer heartbeat
         const pickedPlan  = document.querySelector(`input[name="bw_plan_${c.id}"]:checked`);
         const pickedEquip = [...document.querySelectorAll("#bw_panel_plan_"+c.id+" input[type='checkbox']:checked")].map(cb=>cb.value);
         const summary     = document.getElementById("bw_summary_"+c.id).value.trim();
@@ -1941,6 +2013,13 @@ function buildBioWorldTrials(c) {
             <span id="rta_dur_${c.id}" style="font-size:13px;color:#8aa0b6;font-family:'Segoe UI',monospace;min-width:38px;">-:--</span>
           </div>
         </div>
+        <!-- Mic level meter — shows participant mic is active and picking up voice -->
+        <div style="position:fixed;bottom:60px;left:24px;z-index:11;display:flex;align-items:center;gap:8px;">
+          <span style="font-size:11px;color:#8aa0b6;font-family:'Segoe UI',Arial,sans-serif;">&#127908;</span>
+          <div style="width:80px;height:5px;background:rgba(255,255,255,0.15);border-radius:3px;overflow:hidden;">
+            <div id="rta_mic_bar_${c.id}" style="height:100%;width:0%;background:#27ae60;border-radius:3px;transition:width 0.08s;"></div>
+          </div>
+        </div>
         <button id="rd_${c.id}" disabled style="position:fixed;bottom:36px;right:24px;z-index:11;padding:14px 28px;background:#7f8c8d;color:#fff;border:none;border-radius:6px;font-weight:700;">Done narrating</button>
       </div>`,
     data: { trial_tag:"rta", case_id:c.id },
@@ -1989,7 +2068,20 @@ function buildBioWorldTrials(c) {
 
       let aStream=null, aRec=null, aChunks=[], aStart=0, vStart=0;
       try {
-        aStream = await navigator.mediaDevices.getUserMedia({ audio:true });
+        aStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            /* Disable voice-call processing — these are designed for WebRTC
+               calls, not transcription. echoCancellation and noiseSuppression
+               in particular actively suppress or distort speech in ways that
+               cause Whisper to hallucinate rather than transcribe. */
+            echoCancellation:   false,
+            noiseSuppression:   false,
+            autoGainControl:    false,
+            /* Prefer high sample rate — we resample to 16kHz in transcribeBlob
+               via OfflineAudioContext, so native quality is better raw input. */
+            sampleRate:         { ideal: 48000 }
+          }
+        });
         aRec    = new MediaRecorder(aStream);
         /* Collect chunks every second — more resilient than waiting for a single
            ondataavailable event on stop() in case of unexpected interruption. */
@@ -2000,6 +2092,32 @@ function buildBioWorldTrials(c) {
            Leading silence before the video plays is trimmed by Whisper. */
         aRec.start(1000);
         aStart = performance.now();
+
+        /* Live mic level meter — visual confirmation mic is active.
+           Uses an AnalyserNode on the stream; no audio is played back. */
+        try {
+          const meterCtx  = new (window.AudioContext || window.webkitAudioContext)();
+          const analyser  = meterCtx.createAnalyser();
+          analyser.fftSize = 256;
+          meterCtx.createMediaStreamSource(aStream).connect(analyser);
+          const meterBuf  = new Uint8Array(analyser.frequencyBinCount);
+          const micBar    = document.getElementById("rta_mic_bar_"+c.id);
+          const meterTick = setInterval(() => {
+            if (!micBar) { clearInterval(meterTick); return; }
+            analyser.getByteFrequencyData(meterBuf);
+            const avg = meterBuf.reduce((s, v) => s + v, 0) / meterBuf.length;
+            micBar.style.width = Math.min(100, avg * 2.5).toFixed(1) + "%";
+          }, 80);
+          /* Clean up meter when Done is clicked */
+          done.addEventListener("click", () => {
+            clearInterval(meterTick);
+            try { meterCtx.close(); } catch(e) {}
+          }, { once: true });
+        } catch(meterErr) {
+          /* Non-critical — meter failure doesn't affect recording */
+          console.warn("mic meter failed:", meterErr);
+        }
+
       } catch(e) {
         console.error("mic failed", e);
         /* Non-blocking banner — participant must know their narration isn't being captured */
@@ -2146,9 +2264,30 @@ function buildBioWorldTrials(c) {
         activeFlashes.length = 0;
         requestAnimationFrame(loop);
       });
-      video.addEventListener("ended",()=>{ done.disabled=false; done.style.background="#27ae60"; });
-      setTimeout(()=>{ if(done.disabled){done.disabled=false;done.style.background="#27ae60";} }, CONFIG.RTA_MAX_SECONDS*1000);
-      try { await video.play(); } catch(e){ done.disabled=false; done.style.background="#27ae60"; }
+      let videoHasPlayed = false;
+      video.addEventListener("play",    () => { videoHasPlayed = true; });
+      video.addEventListener("ended",   () => {
+        if (videoHasPlayed) { done.disabled=false; done.style.background="#27ae60"; }
+      });
+      /* Safety unlock: after RTA_MAX_SECONDS, enable Done regardless —
+         but only if the video actually started playing at some point. */
+      setTimeout(() => {
+        if (videoHasPlayed && done.disabled) {
+          done.disabled=false; done.style.background="#27ae60";
+        }
+      }, CONFIG.RTA_MAX_SECONDS*1000);
+      try {
+        await video.play();
+      } catch(e) {
+        /* video.play() rejected — blob may have failed to load.
+           Show an error rather than silently enabling Done with no video. */
+        console.error("RTA video.play() failed:", e);
+        const errDiv = document.createElement("div");
+        errDiv.style.cssText = "position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:20;background:#3a1010;border:2px solid #e05a5a;border-radius:8px;padding:14px 22px;color:#f0b0b0;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;text-align:center;max-width:500px;";
+        errDiv.innerHTML = "<strong>Recording could not be loaded for playback.</strong><br>Click Done to continue — your typed responses and interaction data are still saved.";
+        document.body.appendChild(errDiv);
+        done.disabled=false; done.style.background="#e07030";
+      }
 
       done.addEventListener("click", async () => {
         done.disabled=true; done.textContent="Saving…";
@@ -2603,17 +2742,24 @@ timeline.push({
   choices:"ALL_KEYS"
 });
 timeline.push({
-  timeline: [calibration_grid, validation_instructions, {
+  timeline: [calibration_grid, calibration_stabilise, validation_instructions, {
     type: jsPsychWebgazerValidate,
     validation_points: calib_points,
     roi_radius: 150,
     time_limit: 2200,
     show_validation_data: false,
     on_finish: function(data) {
+      const pct     = data.percent_in_roi;
+      const offsets = data.average_offset;
+      const scored  = (pct != null)
+        ? { pct: Math.round(pct), quality: pct >= 75 ? "good" : pct >= 55 ? "acceptable" : "poor" }
+        : gazeQualityFromOffsets(offsets, 150);
       study.calibration.mid_session = {
-        calibration_pct: Math.round(data.percent_in_roi),
-        average_offset:  data.average_offset,
-        gaze_quality:    data.percent_in_roi >= 75 ? "good" : data.percent_in_roi >= 55 ? "acceptable" : "poor"
+        calibration_pct:      scored.pct,
+        calibration_pct_raw:  pct,
+        average_offset:       offsets,
+        gaze_quality:         scored.quality,
+        score_method:         pct != null ? "percent_in_roi" : "offset_fallback"
       };
     }
   }]
