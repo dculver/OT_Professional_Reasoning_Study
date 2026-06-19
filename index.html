@@ -127,6 +127,12 @@
   </script>
 
   <style>
+    /* Screen-reader-only utility — visually hidden but available to AT */
+    .sr-only {
+      position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+      overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+    }
+
     /* ── jsPsych global overrides ── */
     .jspsych-display-element, .jspsych-content { color:#dbe6f0; }
     .jspsych-content h1,.jspsych-content h2,.jspsych-content h3,
@@ -173,7 +179,7 @@
     }
     .bw-tab:hover { color:#c8d8e8; }
     .bw-tab.active { color:#5ab0f0; border-bottom-color:#5ab0f0; }
-    .bw-patient-label { margin-left:auto; font-size:12px; color:#5a7080; letter-spacing:.06em; }
+    .bw-patient-label { margin-left:auto; font-size:12px; color:#8aaabb; letter-spacing:.06em; }
 
     /* Main layout */
     .bw-main { display:flex; flex:1; overflow:hidden; }
@@ -185,8 +191,8 @@
     }
     .bw-panel-section { border-bottom:1px solid #2a3a4a; padding:12px 14px; }
     .bw-panel-label {
-      font-size:10px; font-weight:600; letter-spacing:.1em;
-      text-transform:uppercase; color:#4a6070; margin-bottom:8px;
+      font-size:11px; font-weight:600; letter-spacing:.1em;
+      text-transform:uppercase; color:#7a9ab0; margin-bottom:8px;
     }
 
     /* Hypothesis manager */
@@ -197,7 +203,7 @@
       border-radius:6px; padding:7px 10px;
     }
     .bw-hyp-name { flex:1; font-size:13px; color:#c8d8e8; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .bw-hyp-rm { width:18px; height:18px; background:transparent; border:none; color:#4a6070; cursor:pointer; font-size:16px; line-height:1; padding:0; flex-shrink:0; }
+    .bw-hyp-rm { width:24px; height:24px; background:transparent; border:none; color:#7a9ab0; cursor:pointer; font-size:16px; line-height:1; padding:0; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
     .bw-hyp-rm:hover { color:#e05a5a; }
     .bw-hyp-input-row { display:flex; gap:6px; margin-top:8px; }
     .bw-hyp-input {
@@ -205,7 +211,7 @@
       color:#c8d8e8; font-size:12px; padding:5px 8px;
     }
     .bw-hyp-input::placeholder { color:#4a6070; }
-    .bw-hyp-input:focus { outline:none; border-color:#5ab0f0; }
+    .bw-hyp-input:focus { border-color:#5ab0f0; }
     .bw-hyp-add {
       background:#1e4a6e; border:1px solid #2a6090; border-radius:5px;
       color:#5ab0f0; font-size:12px; padding:5px 10px; cursor:pointer;
@@ -217,18 +223,17 @@
       width:100%; background:#1e2d3d; border:1px solid #2a3a4a; border-radius:5px;
       color:#c8d8e8; font-size:12px; padding:5px 8px; margin-bottom:10px;
     }
-    .bw-belief-select:focus { outline:none; border-color:#5ab0f0; }
+    .bw-belief-select:focus { border-color:#5ab0f0; }
     .bw-belief-slider {
       width:100%; -webkit-appearance:none; appearance:none; height:4px; border-radius:2px;
       background:linear-gradient(to right,#e05a5a 0%,#e0a040 35%,#4a9a60 60%,#5ab0f0 100%);
-      outline:none;
     }
     .bw-belief-slider::-webkit-slider-thumb {
       -webkit-appearance:none; width:18px; height:18px; border-radius:50%;
       background:#c8d8e8; cursor:pointer; border:2px solid #1a2332;
     }
     .bw-belief-labels { display:flex; justify-content:space-between; margin-top:4px; }
-    .bw-belief-labels span { font-size:10px; color:#4a6070; }
+    .bw-belief-labels span { font-size:11px; color:#7a9ab0; }
     .bw-belief-value { text-align:center; font-size:12px; color:#5ab0f0; margin-top:4px; font-weight:500; }
 
     /* Evidence table */
@@ -243,17 +248,19 @@
       flex-shrink:0; font-size:10px; padding:1px 5px; border-radius:3px;
       font-weight:600; letter-spacing:.04em; text-transform:uppercase; margin-top:1px;
     }
-    .tag-patient { background:#1e3d5a; color:#5ab0f0; }
-    .tag-assess  { background:#2a3a1a; color:#7ab040; }
-    .tag-obs     { background:#3a2a1a; color:#e0a040; }
-    .bw-ev-rm { margin-left:auto; background:transparent; border:none; color:#4a6070; cursor:pointer; font-size:14px; line-height:1; flex-shrink:0; }
+    .tag-patient { background:#1e3d5a; color:#8acfff; }
+    .tag-assess  { background:#2a3a1a; color:#a0d060; }
+    .tag-obs     { background:#3a2a1a; color:#f0c060; }
+    .bw-ev-rm { margin-left:auto; background:transparent; border:none; color:#7a9ab0; cursor:pointer; font-size:14px; line-height:1; flex-shrink:0; min-width:24px; min-height:24px; display:flex; align-items:center; justify-content:center; }
     .bw-ev-rm:hover { color:#e05a5a; }
-    .bw-ev-empty { font-size:12px; color:#4a6070; font-style:italic; padding:8px 0; }
+    .bw-ev-empty { font-size:12px; color:#7a9ab0; font-style:italic; padding:8px 0; }
 
     /* Content area */
     .bw-content { flex:1; overflow-y:auto; padding:24px 28px; min-width:0; }
     .bw-panel { display:none; }
     .bw-panel.active { display:block; }
+    /* hidden attribute on tabpanels is managed by JS; .active overrides it */
+    .bw-panel[hidden].active { display:block; }
 
     /* Patient header */
     .bw-patient-header {
@@ -272,7 +279,7 @@
 
     .bw-section-heading {
       font-size:11px; font-weight:600; letter-spacing:.08em;
-      text-transform:uppercase; color:#4a6070; margin:20px 0 10px;
+      text-transform:uppercase; color:#7a9ab0; margin:20px 0 10px;
     }
     .bw-narrative { font-size:14px; line-height:1.75; color:#b8ccd8; }
     .bw-narrative p { margin-bottom:12px; }
@@ -298,7 +305,7 @@
     @keyframes bw-pop-in { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
     #bw-sel-popover button {
       background:#2a6a3a; border:1px solid #3a8a50; border-radius:4px;
-      color:#7ad090; font-size:11px; font-weight:600; padding:4px 10px; cursor:pointer;
+      color:#a0e8b0; font-size:11px; font-weight:600; padding:4px 10px; cursor:pointer;
       white-space:nowrap;
     }
     #bw-sel-popover button:hover { background:#3a7a48; color:#9ae0a8; }
@@ -318,7 +325,7 @@
     .bw-assess-card.ordered { border-color:#2a6a3a; background:#1a2d1e; }
     .bw-assess-card.ordered::after { content:'✓ Ordered'; position:absolute; top:8px; right:10px; font-size:10px; color:#5ac070; font-weight:600; }
     .bw-assess-name { font-size:13px; font-weight:600; color:#c8d8e8; margin-bottom:4px; }
-    .bw-assess-desc { font-size:12px; color:#6a8a9a; line-height:1.5; }
+    .bw-assess-desc { font-size:12px; color:#8aaabb; line-height:1.5; }
     .bw-result-area { margin-top:20px; display:none; }
     .bw-result-area.visible { display:block; }
     .bw-result-card { background:#1a2d1e; border:1px solid #2a4a2a; border-radius:8px; padding:16px; margin-bottom:10px; }
@@ -330,7 +337,7 @@
     /* Library */
     .bw-lib-entry { background:#1e2d3d; border:1px solid #2a3a4a; border-radius:8px; padding:14px; margin-bottom:10px; }
     .bw-lib-entry h4 { font-size:13px; font-weight:600; color:#c8d8e8; margin-bottom:6px; }
-    .bw-lib-entry p { font-size:12px; color:#6a8a9a; line-height:1.5; }
+    .bw-lib-entry p { font-size:12px; color:#8aaabb; line-height:1.5; }
     .bw-lib-send { margin-top:8px; background:#1e3d5a; border:1px solid #2a5070; color:#5ab0f0; font-size:11px; padding:3px 10px; border-radius:4px; cursor:pointer; }
     .bw-lib-send:hover { background:#2a5080; }
 
@@ -344,13 +351,13 @@
     .bw-plan-option:hover { border-color:#3a5a70; }
     .bw-plan-option input { margin-top:2px; flex-shrink:0; accent-color:#5ab0f0; }
     .bw-plan-option-name { font-size:13px; font-weight:600; color:#c8d8e8; }
-    .bw-plan-option-rationale { font-size:12px; color:#6a8a9a; margin-top:3px; line-height:1.4; }
+    .bw-plan-option-rationale { font-size:12px; color:#8aaabb; margin-top:3px; line-height:1.4; }
     .bw-summary-input {
       width:100%; min-height:120px; background:#1e2d3d; border:1px solid #2a3a4a;
       border-radius:6px; color:#c8d8e8; font-size:13px; padding:10px 12px;
       resize:vertical; line-height:1.6; font-family:inherit;
     }
-    .bw-summary-input:focus { outline:none; border-color:#5ab0f0; }
+    .bw-summary-input:focus { border-color:#5ab0f0; }
     .bw-summary-input::placeholder { color:#4a6070; }
 
     /* Bottom bar */
@@ -358,7 +365,7 @@
       background:#0f1923; border-top:1px solid #2a3a4a;
       padding:10px 20px; display:flex; align-items:center; gap:12px; flex-shrink:0;
     }
-    .bw-elapsed { font-size:11px; color:#4a6070; margin-right:auto; font-family:monospace; }
+    .bw-elapsed { font-size:11px; color:#6a8a9a; margin-right:auto; font-family:monospace; }
     .bw-btn {
       padding:7px 16px; border-radius:5px; font-size:13px;
       font-weight:500; cursor:pointer; border:1px solid;
@@ -381,10 +388,39 @@
     }
     .bw-btn-submit.unlocked { animation:bw-submit-pulse 0.8s ease-out 1; }
     .bw-submit-hint {
-      font-size:11px; color:#4a6070; margin-right:8px; font-style:italic;
+      font-size:11px; color:#7a9ab0; margin-right:8px; font-style:italic;
     }
     .bw-submit-hint.ready { color:#5ac070; font-style:normal; font-weight:500; }
     .bw-tab-final::after { content:" ★"; color:#5ac070; font-size:10px; }
+
+    /* ── Focus indicators (WCAG 2.4.7, 2.4.11) ──
+       Using :focus-visible so keyboard users get clear indicators
+       without affecting mouse users.  outline:none is removed from
+       inputs/selects/textarea in favour of a visible ring. */
+    .bw-tab:focus-visible,
+    .bw-hyp-add:focus-visible,
+    .bw-hyp-rm:focus-visible,
+    .bw-ev-rm:focus-visible,
+    .bw-btn:focus-visible,
+    .bw-lib-send:focus-visible,
+    .bw-result-send:focus-visible,
+    .bw-assess-card:focus-visible,
+    #bw-sel-popover button:focus-visible {
+      outline:3px solid #5ab0f0;
+      outline-offset:2px;
+    }
+    .bw-hyp-input:focus-visible,
+    .bw-belief-select:focus-visible,
+    .bw-summary-input:focus-visible,
+    .bw-belief-slider:focus-visible {
+      outline:3px solid #5ab0f0;
+      outline-offset:1px;
+      border-color:#5ab0f0;
+    }
+
+    .bw-hyp-input:focus { border-color:#5ab0f0; }
+    .bw-belief-select:focus { border-color:#5ab0f0; }
+    .bw-summary-input:focus { border-color:#5ab0f0; }
 
     ::-webkit-scrollbar { width:6px; }
     ::-webkit-scrollbar-track { background:transparent; }
@@ -695,6 +731,23 @@ timeline.push({
 
 /* =====================================================================
    BIOWORLD CASE DEFINITIONS
+
+   The EHR interface design (hypothesis manager, belief meter, evidence
+   table, assessment ordering, and structured case narrative) is adapted
+   from the BioWorld intelligent tutoring system:
+
+     Lajoie, S. P., Naismith, L., Poitras, E., Hong, Y. J., Cruz-Panesso,
+     I., Ranellucci, J., Mamane, S., & Wiseman, J. (2013). Multimedia and
+     problem-solving environments for medical problem solving. In
+     R. Azevedo & V. Aleven (Eds.), International handbook of
+     metacognition and learning technologies (pp. 343–355). Springer.
+
+   BioWorld was originally developed to support medical diagnostic
+   reasoning via hypothesis-driven case simulation. Its core architecture
+   — presenting clinical vignettes alongside a structured workspace for
+   hypothesis generation and evidence tagging — has been adapted here
+   for occupational therapy clinical reasoning in an inpatient
+   rehabilitation context.
    ===================================================================== */
 const BW_CASES = {
   1: {
@@ -908,7 +961,9 @@ const BW_CASES = {
    ===================================================================== */
 function buildBioWorldUI(c) {
   const assessHTML = c.assessments.map(a =>
-    `<div class="bw-assess-card" id="bw_assess_${a.id}" data-assess-id="${a.id}">
+    `<div class="bw-assess-card" id="bw_assess_${a.id}" data-assess-id="${a.id}"
+          role="button" tabindex="0"
+          aria-label="${a.name}: ${a.desc}. Click to order this assessment.">
        <div class="bw-assess-name">${a.name}</div>
        <div class="bw-assess-desc">${a.desc}</div>
      </div>`).join("");
@@ -938,12 +993,12 @@ function buildBioWorldUI(c) {
   <div class="bw-root" id="bw_root_${c.id}">
 
     <!-- TOP NAV -->
-    <div class="bw-topbar">
-      <button class="bw-tab active" data-tab="problem" data-case="${c.id}">Problem</button>
-      <button class="bw-tab" data-tab="chart"   data-case="${c.id}">Chart</button>
-      <button class="bw-tab" data-tab="library" data-case="${c.id}">Library</button>
-      <button class="bw-tab bw-tab-final" data-tab="plan" data-case="${c.id}">Intervention Plan</button>
-      <span class="bw-patient-label">${c.patientName.toUpperCase()} — ${c.diagnosis.toUpperCase()}</span>
+    <div class="bw-topbar" role="tablist" aria-label="Case sections">
+      <button class="bw-tab active" role="tab" aria-selected="true"  aria-controls="bw_panel_problem_${c.id}"  data-tab="problem" data-case="${c.id}">Problem</button>
+      <button class="bw-tab"        role="tab" aria-selected="false" aria-controls="bw_panel_chart_${c.id}"    data-tab="chart"   data-case="${c.id}">Chart</button>
+      <button class="bw-tab"        role="tab" aria-selected="false" aria-controls="bw_panel_library_${c.id}"  data-tab="library" data-case="${c.id}">Library</button>
+      <button class="bw-tab bw-tab-final" role="tab" aria-selected="false" aria-controls="bw_panel_plan_${c.id}" data-tab="plan" data-case="${c.id}">Intervention Plan</button>
+      <span class="bw-patient-label" aria-label="${c.patientName}, ${c.diagnosis}">${c.patientName.toUpperCase()} — ${c.diagnosis.toUpperCase()}</span>
     </div>
 
     <!-- MAIN -->
@@ -953,30 +1008,33 @@ function buildBioWorldUI(c) {
       <div class="bw-left">
 
         <!-- Hypothesis Manager -->
-        <div class="bw-panel-section" id="bw_hyp_panel">
-          <div class="bw-panel-label">Hypothesis Manager</div>
-          <div class="bw-hyp-list" id="bw_hyp_list_${c.id}"></div>
+        <div class="bw-panel-section" id="bw_hyp_panel" role="region" aria-label="Hypothesis Manager">
+          <div class="bw-panel-label" aria-hidden="true">Hypothesis Manager</div>
+          <div class="bw-hyp-list" id="bw_hyp_list_${c.id}" role="list" aria-label="Your hypotheses" aria-live="polite"></div>
           <div class="bw-hyp-input-row">
-            <input type="text" class="bw-hyp-input" id="bw_hyp_input_${c.id}" placeholder="Add a hypothesis…" maxlength="80" />
-            <button class="bw-hyp-add" data-case="${c.id}">+ Add</button>
+            <label for="bw_hyp_input_${c.id}" class="sr-only">New hypothesis</label>
+            <input type="text" class="bw-hyp-input" id="bw_hyp_input_${c.id}" placeholder="Add a hypothesis…" maxlength="80" aria-label="New hypothesis" />
+            <button class="bw-hyp-add" data-case="${c.id}" aria-label="Add hypothesis">+ Add</button>
           </div>
         </div>
 
         <!-- Belief Meter -->
-        <div class="bw-panel-section" id="bw_belief_panel">
-          <div class="bw-panel-label">Belief Meter</div>
-          <select class="bw-belief-select" id="bw_belief_sel_${c.id}">
+        <div class="bw-panel-section" id="bw_belief_panel" role="region" aria-label="Belief Meter">
+          <div class="bw-panel-label" aria-hidden="true">Belief Meter</div>
+          <label for="bw_belief_sel_${c.id}" class="sr-only">Select hypothesis to rate</label>
+          <select class="bw-belief-select" id="bw_belief_sel_${c.id}" aria-label="Select hypothesis to rate">
             <option value="">— Select hypothesis —</option>
           </select>
-          <input type="range" class="bw-belief-slider" id="bw_belief_slider_${c.id}" min="0" max="100" value="50">
-          <div class="bw-belief-labels"><span>Not confident</span><span>Very confident</span></div>
-          <div class="bw-belief-value" id="bw_belief_val_${c.id}">Confidence: 50%</div>
+          <label for="bw_belief_slider_${c.id}" class="sr-only">Confidence level</label>
+          <input type="range" class="bw-belief-slider" id="bw_belief_slider_${c.id}" min="0" max="100" value="50" aria-label="Confidence level" aria-valuetext="50% — moderate confidence">
+          <div class="bw-belief-labels" aria-hidden="true"><span>Not confident</span><span>Very confident</span></div>
+          <div class="bw-belief-value" id="bw_belief_val_${c.id}" aria-live="polite" aria-atomic="true">Confidence: 50%</div>
         </div>
 
         <!-- Evidence Table -->
-        <div class="bw-evidence-section" id="bw_ev_panel">
-          <div class="bw-panel-label">Evidence Table</div>
-          <div class="bw-ev-list" id="bw_ev_list_${c.id}">
+        <div class="bw-evidence-section" id="bw_ev_panel" role="region" aria-label="Evidence Table">
+          <div class="bw-panel-label" aria-hidden="true">Evidence Table</div>
+          <div class="bw-ev-list" id="bw_ev_list_${c.id}" role="list" aria-label="Collected evidence" aria-live="polite">
             <div class="bw-ev-empty" id="bw_ev_empty_${c.id}">No evidence collected yet. Select and highlight text in the Problem tab to add excerpts.</div>
           </div>
         </div>
@@ -987,7 +1045,7 @@ function buildBioWorldUI(c) {
       <div class="bw-content">
 
         <!-- PROBLEM -->
-        <div class="bw-panel active" id="bw_panel_problem_${c.id}">
+        <div class="bw-panel active" id="bw_panel_problem_${c.id}" role="tabpanel" aria-label="Problem">
           <div class="bw-patient-header">
             <div class="bw-avatar">${c.patientInitials}</div>
             <div class="bw-patient-meta">
@@ -1004,7 +1062,7 @@ function buildBioWorldUI(c) {
         </div>
 
         <!-- CHART -->
-        <div class="bw-panel" id="bw_panel_chart_${c.id}">
+        <div class="bw-panel" id="bw_panel_chart_${c.id}" role="tabpanel" aria-label="Chart" hidden>
           <div class="bw-section-heading">Order Standardized Assessments</div>
           <p style="font-size:13px;color:#6a8a9a;margin-bottom:16px;">Select assessments to order. Results appear below once ordered.</p>
           <div class="bw-assess-grid">${assessHTML}</div>
@@ -1015,20 +1073,21 @@ function buildBioWorldUI(c) {
         </div>
 
         <!-- LIBRARY -->
-        <div class="bw-panel" id="bw_panel_library_${c.id}">
+        <div class="bw-panel" id="bw_panel_library_${c.id}" role="tabpanel" aria-label="Library" hidden>
           <div class="bw-section-heading">OT Reference Library</div>
           <p style="font-size:13px;color:#6a8a9a;margin-bottom:16px;">Use the Send to Evidence button to tag library content.</p>
           ${libHTML}
         </div>
 
         <!-- INTERVENTION PLAN -->
-        <div class="bw-panel" id="bw_panel_plan_${c.id}">
+        <div class="bw-panel" id="bw_panel_plan_${c.id}" role="tabpanel" aria-label="Intervention Plan" hidden>
           <div class="bw-section-heading">Select Primary Intervention Approach</div>
           <div class="bw-plan-options">${planHTML}</div>
           <div class="bw-section-heading">Identify Adaptive Equipment / Strategies</div>
           <div class="bw-plan-options">${equipHTML}</div>
-          <div class="bw-section-heading">Clinical Reasoning Summary</div>
-          <textarea class="bw-summary-input" id="bw_summary_${c.id}" placeholder="Summarize your clinical reasoning. What evidence informed your intervention selection? How does your plan address this patient's goals?"></textarea>
+          <label for="bw_summary_${c.id}" class="bw-section-heading">Clinical Reasoning Summary</label>
+          <textarea class="bw-summary-input" id="bw_summary_${c.id}" placeholder="Summarize your clinical reasoning. What evidence informed your intervention selection? How does your plan address this patient's goals?" aria-describedby="bw_summary_hint_${c.id}"></textarea>
+          <p id="bw_summary_hint_${c.id}" class="sr-only">Optional. Describe what evidence informed your intervention selection and how your plan addresses this patient's goals.</p>
 
         </div>
 
@@ -1039,8 +1098,8 @@ function buildBioWorldUI(c) {
     <div class="bw-bottom">
       <span class="bw-elapsed" id="bw_elapsed_${c.id}">00:00</span>
       <button class="bw-btn bw-btn-secondary" id="bw_clear_ev_${c.id}">Clear Evidence Table</button>
-      <span class="bw-submit-hint" id="bw_submit_hint_${c.id}">Visit all tabs &amp; select a plan to submit</span>
-      <button class="bw-btn bw-btn-submit" id="bw_submit_${c.id}" disabled>Sign Orders &amp; Complete &#8594;</button>
+      <span class="bw-submit-hint" id="bw_submit_hint_${c.id}" role="status" aria-live="polite" aria-atomic="true">Visit all tabs &amp; select a plan to submit</span>
+      <button class="bw-btn bw-btn-submit" id="bw_submit_${c.id}" disabled aria-disabled="true">Sign Orders &amp; Complete &#8594;</button>
     </div>
 
   </div>`;
@@ -1303,11 +1362,13 @@ function buildBioWorldTrials(c) {
         if (ready && submitBtn.disabled) {
           /* First time unlocking — enable and pulse once to draw attention */
           submitBtn.disabled = false;
+          submitBtn.removeAttribute("aria-disabled");
           submitBtn.classList.add("unlocked");
           submitBtn.addEventListener("animationend", () => submitBtn.classList.remove("unlocked"), { once:true });
           if (hintEl) { hintEl.textContent = "Ready to submit"; hintEl.classList.add("ready"); }
         } else if (!ready) {
           submitBtn.disabled = true;
+          submitBtn.setAttribute("aria-disabled","true");
           submitBtn.classList.remove("unlocked");
           if (hintEl) {
             if (!allVisited) {
@@ -1332,9 +1393,9 @@ function buildBioWorldTrials(c) {
         const sel  = document.getElementById("bw_belief_sel_"+c.id);
         if (!list || !sel) return;
         list.innerHTML = hypState.map(h =>
-          `<div class="bw-hyp-row">
+          `<div class="bw-hyp-row" role="listitem">
              <span class="bw-hyp-name" title="${h.text}">${h.text}</span>
-             <button class="bw-hyp-rm" data-hyp-id="${h.id}">&times;</button>
+             <button class="bw-hyp-rm" data-hyp-id="${h.id}" aria-label="Remove hypothesis: ${h.text}">&times;</button>
            </div>`).join("");
         const curSel = sel.value;
         sel.innerHTML = '<option value="">— Select hypothesis —</option>' +
@@ -1358,10 +1419,10 @@ function buildBioWorldTrials(c) {
         if (evState.length === 0) { list.innerHTML=""; if(empty) empty.style.display="block"; return; }
         if (empty) empty.style.display="none";
         list.innerHTML = evState.map(e =>
-          `<div class="bw-ev-item">
-             <span class="bw-ev-tag tag-${e.tag}">${e.tag}</span>
+          `<div class="bw-ev-item" role="listitem">
+             <span class="bw-ev-tag tag-${e.tag}" aria-label="Source: ${e.tag}">${e.tag}</span>
              <span style="flex:1;font-size:12px;line-height:1.4;">${e.text}</span>
-             <button class="bw-ev-rm" data-ev-id="${e.id}">&times;</button>
+             <button class="bw-ev-rm" data-ev-id="${e.id}" aria-label="Remove evidence: ${e.text.substring(0,40)}">&times;</button>
            </div>`).join("");
         list.querySelectorAll(".bw-ev-rm").forEach(btn => {
           btn.addEventListener("click", () => {
@@ -1386,10 +1447,20 @@ function buildBioWorldTrials(c) {
       document.querySelectorAll(".bw-tab[data-case='"+c.id+"']").forEach(btn => {
         btn.addEventListener("click", () => {
           const tab = btn.dataset.tab;
-          document.querySelectorAll(".bw-tab[data-case='"+c.id+"']").forEach(b=>b.classList.remove("active"));
+          /* Visual + ARIA state */
+          document.querySelectorAll(".bw-tab[data-case='"+c.id+"']").forEach(b => {
+            b.classList.remove("active");
+            b.setAttribute("aria-selected","false");
+          });
           btn.classList.add("active");
-          document.querySelectorAll("#bw_root_"+c.id+" .bw-panel").forEach(p=>p.classList.remove("active"));
-          document.getElementById("bw_panel_"+tab+"_"+c.id).classList.add("active");
+          btn.setAttribute("aria-selected","true");
+          /* Show/hide panels — use hidden attribute (removes from AT tree) */
+          document.querySelectorAll("#bw_root_"+c.id+" .bw-panel").forEach(p => {
+            p.classList.remove("active");
+            p.setAttribute("hidden","");
+          });
+          const activePanel = document.getElementById("bw_panel_"+tab+"_"+c.id);
+          if (activePanel) { activePanel.classList.add("active"); activePanel.removeAttribute("hidden"); }
           currentTab = tab;
           visitedTabs.add(tab);
           checkSubmitReady();
@@ -1423,6 +1494,9 @@ function buildBioWorldTrials(c) {
         beliefSlider.addEventListener("input", () => {
           const val = parseInt(beliefSlider.value);
           if (beliefVal) beliefVal.textContent = "Confidence: "+val+"%";
+          const vt = val<=25?"low confidence":val<=50?"moderate confidence":val<=75?"high confidence":"very high confidence";
+          beliefSlider.setAttribute("aria-valuenow", val);
+          beliefSlider.setAttribute("aria-valuetext", val+"% — "+vt);
           if (beliefSel && beliefSel.value) {
             const h = hypState.find(x=>x.id===beliefSel.value);
             if (h) {
@@ -1590,9 +1664,15 @@ function buildBioWorldTrials(c) {
 
       /* ── Assessment cards ── */
       document.querySelectorAll("#bw_root_"+c.id+" .bw-assess-card").forEach(card => {
+        /* Keyboard activation for role="button" divs */
+        card.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); card.click(); }
+        });
         card.addEventListener("click", () => {
           if (card.classList.contains("ordered")) return;
           card.classList.add("ordered");
+          card.setAttribute("aria-label", (card.getAttribute("aria-label")||"").replace("Click to order this assessment.","Already ordered."));
+          card.setAttribute("aria-pressed","true");
           const assessId = card.dataset.assessId;
           const assess   = c.assessments.find(a=>a.id===assessId);
           orderedAssessments.push(assessId);
@@ -1724,7 +1804,7 @@ function buildBioWorldTrials(c) {
           <div style="display:flex;align-items:center;gap:10px;max-width:900px;margin:0 auto;">
             <span id="rta_cur_${c.id}" style="font-size:13px;color:#cdd9e5;font-family:'Segoe UI',monospace;min-width:38px;text-align:right;">0:00</span>
             <div style="flex:1;background:rgba(255,255,255,0.2);border-radius:3px;height:5px;overflow:hidden;">
-              <div id="rta_bar_${c.id}" style="height:100%;width:0%;background:#2b9fd6;border-radius:3px;transition:width 0.25s linear;"></div>
+              <div id="rta_bar_${c.id}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Video playback progress" style="height:100%;width:0%;background:#2b9fd6;border-radius:3px;transition:width 0.25s linear;"></div>
             </div>
             <span id="rta_dur_${c.id}" style="font-size:13px;color:#8aa0b6;font-family:'Segoe UI',monospace;min-width:38px;">-:--</span>
           </div>
@@ -1757,7 +1837,11 @@ function buildBioWorldTrials(c) {
         if (rtaCur) rtaCur.textContent = fmtTime(cur);
         if (isFinite(dur) && dur > 0) {
           if (rtaDur) rtaDur.textContent = fmtTime(dur);
-          if (rtaBar) rtaBar.style.width = Math.min(100, (cur / dur) * 100).toFixed(2) + "%";
+          const pct = Math.min(100, (cur / dur) * 100);
+          if (rtaBar) {
+            rtaBar.style.width = pct.toFixed(2) + "%";
+            rtaBar.setAttribute("aria-valuenow", Math.round(pct));
+          }
         }
       }
       video.addEventListener("loadedmetadata", updateBar);
