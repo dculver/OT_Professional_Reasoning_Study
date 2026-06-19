@@ -630,6 +630,7 @@ function uploadCaseInBackground(caseId) {
     participant_code: study.participant_code,
     sub_id_from_url: study.sub_id_from_url,
     experimental_condition: study.experimental_condition,
+    randomization_method: study.randomization_method,
     calibration: study.calibration,
     case_id: caseId, partial: true,
     "case": sanitiseCaseForUpload(study.cases[caseId] || {}),
@@ -652,6 +653,7 @@ var jsPsych = initJsPsych({
       participant_code: study.participant_code,
       sub_id_from_url: study.sub_id_from_url,
       experimental_condition: study.experimental_condition,
+      randomization_method: study.randomization_method,
       calibration: study.calibration,
       cases: Object.fromEntries(
         Object.entries(study.cases).map(([k, v]) => [k, sanitiseCaseForUpload(v)])
@@ -678,8 +680,43 @@ var jsPsych = initJsPsych({
 });
 
 var timeline = [];
-study.experimental_condition = CONFIG.FORCE_CONDITION ||
-  jsPsych.randomization.sampleWithoutReplacement(["dashboard","control"], 1)[0];
+/* =====================================================================
+   BLOCK RANDOMIZATION
+   Randomly permuted blocks (sizes 2 and 4, mixed at random) ensure
+   balanced group sizes even with small samples. The sequence is
+   pre-generated with a fixed seed (documented in the methods) and
+   indexed by the participant's sub_id from Qualtrics, which is a
+   sequential integer assigned before redirect.
+
+   Methodological basis:
+     Schulz & Grimes (2002). Unequal group sizes in randomised trials:
+       guarding against guessing. Lancet, 359(9310), 966–970.
+     Efird (2011). Blocked randomization with randomly selected block
+       sizes. International Journal of Environmental Research and
+       Public Health, 8(1), 15–20.
+
+   If sub_id is absent (direct testing) or FORCE_CONDITION is set,
+   falls back to simple randomization so testing is never blocked.
+   ===================================================================== */
+const BLOCK_SEQ = ["control", "dashboard", "control", "dashboard", "dashboard", "control", "control", "dashboard", "control", "dashboard", "control", "dashboard", "control", "dashboard", "control", "dashboard", "dashboard", "dashboard", "control", "control", "control", "dashboard", "control", "dashboard", "control", "dashboard", "dashboard", "control", "control", "dashboard", "control", "dashboard", "control", "dashboard", "control", "control", "dashboard", "dashboard", "dashboard", "control", "dashboard", "control", "control", "dashboard", "dashboard", "control", "control", "dashboard", "control", "dashboard", "control", "dashboard", "dashboard", "control", "control", "dashboard", "dashboard", "control", "dashboard", "control", "dashboard", "control", "control", "dashboard", "control", "dashboard", "dashboard", "dashboard", "control", "control", "control", "dashboard", "control", "dashboard", "dashboard", "dashboard", "control", "control", "dashboard", "control", "dashboard", "control", "dashboard", "control", "dashboard", "control", "control", "dashboard", "dashboard", "control", "dashboard", "control", "dashboard", "control", "dashboard", "control", "control", "dashboard", "control", "dashboard", "dashboard", "control", "dashboard", "control", "dashboard", "control", "dashboard", "control", "control", "dashboard", "control", "control", "dashboard", "dashboard", "dashboard", "dashboard", "control", "control", "control", "dashboard", "dashboard", "control", "dashboard", "control", "dashboard", "control", "control", "dashboard", "control", "dashboard", "dashboard", "control", "control", "control", "dashboard", "dashboard", "control", "dashboard", "dashboard", "control", "control", "dashboard", "dashboard", "control", "dashboard", "control", "control", "dashboard", "dashboard", "control", "dashboard", "control", "dashboard", "control", "control", "dashboard", "dashboard", "control", "control", "dashboard", "control", "control", "dashboard", "dashboard", "control", "dashboard", "control", "dashboard", "control", "dashboard", "dashboard", "control", "control", "dashboard", "control", "dashboard", "dashboard", "control", "dashboard", "dashboard", "control", "control", "control", "dashboard", "dashboard", "control", "dashboard", "dashboard", "control", "control", "control", "dashboard", "dashboard", "control", "control", "dashboard", "control", "dashboard", "dashboard", "control"];
+
+(function assignCondition() {
+  if (CONFIG.FORCE_CONDITION) {
+    study.experimental_condition = CONFIG.FORCE_CONDITION;
+    study.randomization_method   = "forced";
+    return;
+  }
+  const sub = parseInt(study.sub_id_from_url, 10);
+  if (!isNaN(sub) && sub >= 0 && sub < BLOCK_SEQ.length) {
+    study.experimental_condition = BLOCK_SEQ[sub];
+    study.randomization_method   = "block_seq_idx_" + sub;
+  } else {
+    /* Fallback: simple randomization (used during direct testing) */
+    study.experimental_condition = jsPsych.randomization
+      .sampleWithoutReplacement(["dashboard","control"], 1)[0];
+    study.randomization_method   = "simple_fallback";
+  }
+})();
 
 /* =====================================================================
    SELF-GENERATED CODE
