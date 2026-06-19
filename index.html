@@ -432,27 +432,34 @@
 <script>
 /* =====================================================================
    BROWSER COMPATIBILITY GATE
-   Tab-level screen sharing, WebM MediaRecorder, WebAssembly (Whisper),
-   and WebGazer all require Chrome or Edge on desktop.
-   Firefox lacks tab sharing; Safari lacks WebM; all mobile browsers
-   lack getDisplayMedia.
+   Required APIs: tab-level getDisplayMedia, WebM MediaRecorder, WebAssembly.
+   Known incompatible: Firefox (no tab-level screen share), Safari (no WebM),
+   all mobile browsers (no getDisplayMedia).
+   Chromium-based browsers — Chrome, Edge, Arc, Brave, Vivaldi, Opera, etc. —
+   all support the required APIs and are permitted.
    ===================================================================== */
 (function checkBrowser() {
-  const ua = navigator.userAgent;
-  const isChrome = /Chrome\//.test(ua) && !/Edg\//.test(ua) && !/OPR\//.test(ua);
-  const isEdge   = /Edg\//.test(ua);
-  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
-  if (isMobile || (!isChrome && !isEdge)) {
+  const ua        = navigator.userAgent;
+  const isMobile  = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  const isFirefox = /Firefox\//.test(ua);
+  const isSafari  = /Safari\//.test(ua) && !/Chrome\//.test(ua);
+
+  if (isMobile || isFirefox || isSafari) {
+    const reason = isMobile
+      ? "mobile browsers"
+      : isFirefox
+        ? "Firefox (tab-level screen recording is not supported)"
+        : "Safari (the required audio/video format is not supported)";
     document.body.style.background = "#0f1923";
     document.body.innerHTML = `
       <div style="max-width:580px;margin:12% auto;text-align:left;color:#c8d8e8;
            font-family:'Segoe UI',Arial,sans-serif;padding:0 20px;">
         <h2 style="color:#e05a5a;">Unsupported Browser</h2>
-        <p style="font-size:17px;line-height:1.7;">This study requires <strong>Google Chrome</strong>
-           or <strong>Microsoft Edge</strong> on a <strong>desktop or laptop computer</strong>.</p>
+        <p style="font-size:17px;line-height:1.7;">This study requires a <strong>Chromium-based desktop browser</strong>
+           such as Google Chrome, Microsoft Edge, Arc, Brave, or Vivaldi.</p>
         <p style="font-size:15px;color:#7a9ab0;">The study uses tab-level screen recording and local
-           speech processing that are not supported in ${isMobile ? "mobile browsers" : "your current browser"}.
-           Please reopen this link in Chrome or Edge on a desktop machine.</p>
+           speech processing that are not supported in ${reason}.
+           Please reopen this link in a supported browser on a desktop or laptop computer.</p>
       </div>`;
     throw new Error("Unsupported browser — study halted.");
   }
@@ -1338,6 +1345,9 @@ function buildBioWorldTrials(c) {
       let   currentTab  = "problem";
       let   aoiRects    = snapshotAOIRects(c, caseStart);
       let   timerInterval;
+      /* Track last mouse position so logClick can capture cursor coords */
+      let _lastMouseX = null, _lastMouseY = null;
+      document.addEventListener("mousemove", (e) => { _lastMouseX = e.clientX; _lastMouseY = e.clientY; }, { passive:true });
 
       /* timer */
       timerInterval = setInterval(() => {
@@ -1384,8 +1394,13 @@ function buildBioWorldTrials(c) {
       }
 
       /* ── helpers ── */
-      function logClick(aoi, emic, etic, action, detail) {
-        clickEvents.push({ t:Math.round(performance.now()-caseStart), aoi, emic, etic, source:"click", action, detail:detail||null });
+      function logClick(aoi, emic, etic, action, detail, x, y) {
+        clickEvents.push({
+          t:Math.round(performance.now()-caseStart),
+          aoi, emic, etic, source:"click", action, detail:detail||null,
+          x: Math.round(x != null ? x : (_lastMouseX || 0)),
+          y: Math.round(y != null ? y : (_lastMouseY || 0))
+        });
       }
 
       function renderHypotheses() {
@@ -1851,11 +1866,7 @@ function buildBioWorldTrials(c) {
         if (rtaCur && isFinite(video.duration)) rtaCur.textContent = fmtTime(video.duration);
       });
 
-      const AOI_COLORS = {
-        "TASK-DEF":"91,176,224", "GOAL-SET":"155,89,182",
-        "ENACTING":"26,188,156", "MONITOR":"231,76,60",
-        "SCIENTIFIC":"39,174,96", "NARRATIVE":"241,196,15", "PRAGMATIC":"231,76,60"
-      };
+
 
       if (!m || !m.url) { study.cases[c.id].transcript_segments=[]; return jsPsych.finishTrial(); }
       video.src = m.url;
@@ -1866,6 +1877,16 @@ function buildBioWorldTrials(c) {
         aRec = new MediaRecorder(aStream);
         aRec.ondataavailable = e => { if(e.data && e.data.size) aChunks.push(e.data); };
       } catch(e) { console.error("mic failed",e); }
+
+      /* ── Click flash state ──
+         Each active flash: { cx, cy, born, fromAOI }
+         born = video timestamp (ms) when the click occurred
+         cx/cy = canvas coords of the element center that was clicked   */
+      const activeFlashes = [];
+      const FLASH_DURATION_MS = 600;   // how long the ripple animates
+
+      /* Pre-index click events by AOI so we can look them up by video time */
+      const clickEventsForCase = (study.cases[c.id] && study.cases[c.id].click_events) || [];
 
       function loop() {
         if (video.paused || video.ended) return;
@@ -1884,32 +1905,109 @@ function buildBioWorldTrials(c) {
         else { drawH=cH; drawW=cH*vidAspect; offX=(cW-drawW)/2; }
         const sx=drawW/vp.w, sy=drawH/vp.h;
 
-        const recent=gaze.filter(p=>p.t<=tMs&&(tMs-p.t)<200);
-        if (!recent.length) return requestAnimationFrame(loop);
-        const ax=recent.reduce((s,p)=>s+p.x,0)/recent.length;
-        const ay=recent.reduce((s,p)=>s+p.y,0)/recent.length;
-        const age=tMs-recent[recent.length-1].t;
-        if (age>500) return requestAnimationFrame(loop);
+        /* ── Trigger new click flashes ──
+           For each click event whose timestamp falls within the last frame's
+           worth of video time (~16ms window), spawn a flash on that AOI's rect. */
+        const FRAME_MS = 20;
+        clickEventsForCase.forEach(ev => {
+          if (ev.t > tMs - FRAME_MS && ev.t <= tMs && !ev._flashed) {
+            ev._flashed = true;
+            /* Prefer stored x,y if available; fall back to AOI rect center */
+            let cx, cy;
+            if (ev.x && ev.y) {
+              cx = offX + ev.x * sx;
+              cy = offY + ev.y * sy;
+            } else {
+              const rect = aoiRects.find(r => r.id === ev.aoi);
+              if (rect) {
+                cx = offX + ((rect.left + rect.right) / 2) * sx;
+                cy = offY + ((rect.top  + rect.bottom) / 2) * sy;
+              }
+            }
+            if (cx != null && cy != null) {
+              activeFlashes.push({ cx, cy, born: tMs });
+            }
+          }
+        });
 
-        /* highlight the AOI region with etic/emic code colour */
-        const hit=aoiRects.find(r=>ax>=r.left&&ax<=r.right&&ay>=r.top&&ay<=r.bottom);
-        if (hit) {
-          const codeKey=hit.etic||hit.emic||"";
-          const rgb=AOI_COLORS[codeKey]||"255,255,255";
-          const rx=offX+hit.left*sx, ry=offY+hit.top*sy,
-                rw=(hit.right-hit.left)*sx, rh=(hit.bottom-hit.top)*sy;
-          ctx.fillStyle=`rgba(${rgb},0.22)`; ctx.strokeStyle=`rgba(${rgb},0.85)`; ctx.lineWidth=3;
-          ctx.fillRect(rx,ry,rw,rh); ctx.strokeRect(rx,ry,rw,rh);
-          ctx.fillStyle=`rgba(${rgb},1)`; ctx.font="bold 13px 'Segoe UI',Arial,sans-serif";
-          ctx.fillText((hit.etic||hit.emic||""), rx+10, ry+20);
+        /* ── Gaze cursor position (no AOI highlighting — removed per stimulated
+           recall protocol: overlaid AOI labels change at gaze frequency and
+           compete with concurrent verbalization; Gass & Mackey, 2017) ── */
+        const recent=gaze.filter(p=>p.t<=tMs&&(tMs-p.t)<200);
+        let ax = null, ay = null;
+        if (recent.length > 0) {
+          const age=tMs-recent[recent.length-1].t;
+          if (age <= 500) {
+            ax=recent.reduce((s,p)=>s+p.x,0)/recent.length;
+            ay=recent.reduce((s,p)=>s+p.y,0)/recent.length;
+          }
         }
-        ctx.beginPath(); ctx.arc(offX+ax*sx, offY+ay*sy, 10,0,2*Math.PI);
-        ctx.fillStyle="rgba(255,212,0,0.75)"; ctx.strokeStyle="rgba(0,0,0,0.4)"; ctx.lineWidth=1.5;
-        ctx.fill(); ctx.stroke();
+
+        /* ── Draw click flash ripples ──
+           Each flash is a pair of expanding concentric rings that fade out.
+           Inner ring: white; outer ring: yellow. Both fade over FLASH_DURATION_MS. */
+        for (let i = activeFlashes.length - 1; i >= 0; i--) {
+          const f = activeFlashes[i];
+          const age = tMs - f.born;
+          if (age > FLASH_DURATION_MS) { activeFlashes.splice(i, 1); continue; }
+          const progress = age / FLASH_DURATION_MS;       // 0 → 1
+          const eased    = 1 - Math.pow(1 - progress, 2); // ease-out quad
+          const alpha    = 1 - progress;
+
+          /* Outer ripple ring — expands from 18px to 52px */
+          const r1 = 18 + eased * 34;
+          ctx.beginPath(); ctx.arc(f.cx, f.cy, r1, 0, 2*Math.PI);
+          ctx.strokeStyle = `rgba(255,212,0,${alpha * 0.9})`;
+          ctx.lineWidth   = 3;
+          ctx.stroke();
+
+          /* Inner ripple ring — expands from 10px to 28px */
+          const r2 = 10 + eased * 18;
+          ctx.beginPath(); ctx.arc(f.cx, f.cy, r2, 0, 2*Math.PI);
+          ctx.strokeStyle = `rgba(255,255,255,${alpha * 0.7})`;
+          ctx.lineWidth   = 2;
+          ctx.stroke();
+
+          /* Static filled dot at center — stays fixed, fades out */
+          ctx.beginPath(); ctx.arc(f.cx, f.cy, 7, 0, 2*Math.PI);
+          ctx.fillStyle   = `rgba(255,212,0,${alpha})`;
+          ctx.fill();
+          ctx.strokeStyle = `rgba(0,0,0,${alpha * 0.5})`;
+          ctx.lineWidth   = 1.5;
+          ctx.stroke();
+        }
+
+        /* ── Draw cursor ring (gaze proxy) ──
+           Larger than before: outer halo ring + filled dot.
+           Distinguishable from the click flash by being persistent and calmer. */
+        if (ax != null && ay != null) {
+          const cx = offX+ax*sx, cy = offY+ay*sy;
+
+          /* Outer ring — unfilled, gives the "cursor circle" silhouette */
+          ctx.beginPath(); ctx.arc(cx, cy, 18, 0, 2*Math.PI);
+          ctx.strokeStyle = "rgba(255,212,0,0.55)";
+          ctx.lineWidth   = 2;
+          ctx.stroke();
+
+          /* Inner filled dot */
+          ctx.beginPath(); ctx.arc(cx, cy, 7, 0, 2*Math.PI);
+          ctx.fillStyle   = "rgba(255,212,0,0.85)";
+          ctx.strokeStyle = "rgba(0,0,0,0.5)";
+          ctx.lineWidth   = 1.5;
+          ctx.fill(); ctx.stroke();
+        }
+
         requestAnimationFrame(loop);
       }
 
-      video.addEventListener("play",()=>{ vStart=performance.now(); if(aRec&&aRec.state==="inactive"){aRec.start();aStart=performance.now();} requestAnimationFrame(loop); });
+      video.addEventListener("play",()=>{
+        vStart=performance.now();
+        if(aRec&&aRec.state==="inactive"){aRec.start();aStart=performance.now();}
+        /* Reset flash flags so replays work correctly */
+        clickEventsForCase.forEach(ev => { delete ev._flashed; });
+        activeFlashes.length = 0;
+        requestAnimationFrame(loop);
+      });
       video.addEventListener("ended",()=>{ done.disabled=false; done.style.background="#27ae60"; });
       setTimeout(()=>{ if(done.disabled){done.disabled=false;done.style.background="#27ae60";} }, CONFIG.RTA_MAX_SECONDS*1000);
       try { await video.play(); } catch(e){ done.disabled=false; done.style.background="#27ae60"; }
