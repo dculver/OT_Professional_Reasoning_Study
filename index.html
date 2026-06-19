@@ -277,21 +277,36 @@
     .bw-narrative { font-size:14px; line-height:1.75; color:#b8ccd8; }
     .bw-narrative p { margin-bottom:12px; }
 
-    /* Paragraph evidence buttons */
+    /* Paragraph evidence — free-text highlight model */
     .bw-ev-para {
       position:relative; padding:10px 12px; border:1px solid transparent;
       border-radius:6px; margin-bottom:10px; transition:border-color .15s,background .15s;
+      user-select:text; -webkit-user-select:text;
     }
     .bw-ev-para:hover { border-color:#2a4a2a; background:#1a2520; }
     .bw-ev-para p { margin:0; }
-    .bw-para-btn {
-      display:none; margin-top:8px; background:#1e4a2a; border:1px solid #2a6a3a;
-      color:#5ac070; font-size:11px; padding:3px 10px; border-radius:4px; cursor:pointer;
-    }
-    .bw-ev-para:hover .bw-para-btn { display:inline-block; }
-    .bw-para-btn:hover { background:#2a5a3a; }
     .bw-ev-para.para-added { border-color:#2a6a3a; background:#1a2d1e; }
-    .bw-ev-para.para-added .bw-para-btn { display:inline-block; background:#0f2a18; border-color:#1a4a28; color:#3a8050; cursor:default; }
+
+    /* Floating selection popover */
+    #bw-sel-popover {
+      position:fixed; z-index:9999;
+      background:#1e4a2a; border:1px solid #3a8050; border-radius:6px;
+      padding:5px 10px; display:flex; align-items:center; gap:8px;
+      box-shadow:0 4px 16px rgba(0,0,0,.5); pointer-events:auto;
+      animation:bw-pop-in .1s ease;
+    }
+    @keyframes bw-pop-in { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+    #bw-sel-popover button {
+      background:#2a6a3a; border:1px solid #3a8a50; border-radius:4px;
+      color:#7ad090; font-size:11px; font-weight:600; padding:4px 10px; cursor:pointer;
+      white-space:nowrap;
+    }
+    #bw-sel-popover button:hover { background:#3a7a48; color:#9ae0a8; }
+    #bw-sel-popover .bw-sel-dismiss {
+      background:transparent; border:none; color:#4a6070; font-size:16px;
+      line-height:1; padding:0 2px; cursor:pointer;
+    }
+    #bw-sel-popover .bw-sel-dismiss:hover { color:#e05a5a; }
 
     /* Assessment grid */
     .bw-assess-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; margin-top:4px; }
@@ -350,8 +365,26 @@
     }
     .bw-btn-secondary { background:transparent; border-color:#2a3a4a; color:#7a9ab0; }
     .bw-btn-secondary:hover { border-color:#3a5a70; color:#c8d8e8; }
-    .bw-btn-submit { background:#1e4a2a; border-color:#2a6a3a; color:#5ac070; }
-    .bw-btn-submit:hover { background:#2a5a3a; }
+    .bw-btn-submit {
+      background:#1e4a2a; border-color:#2a6a3a; color:#5ac070;
+      padding:9px 22px; font-size:14px; font-weight:600;
+    }
+    .bw-btn-submit:hover:not(:disabled) { background:#2a5a3a; }
+    .bw-btn-submit:disabled {
+      background:transparent; border-color:#2a3a4a; color:#3a5060;
+      cursor:not-allowed; opacity:1;
+    }
+    @keyframes bw-submit-pulse {
+      0%   { box-shadow:0 0 0 0 rgba(90,192,112,0.7); }
+      60%  { box-shadow:0 0 0 10px rgba(90,192,112,0); }
+      100% { box-shadow:0 0 0 0 rgba(90,192,112,0); }
+    }
+    .bw-btn-submit.unlocked { animation:bw-submit-pulse 0.8s ease-out 1; }
+    .bw-submit-hint {
+      font-size:11px; color:#4a6070; margin-right:8px; font-style:italic;
+    }
+    .bw-submit-hint.ready { color:#5ac070; font-style:normal; font-weight:500; }
+    .bw-tab-final::after { content:" ★"; color:#5ac070; font-size:10px; }
 
     ::-webkit-scrollbar { width:6px; }
     ::-webkit-scrollbar-track { background:transparent; }
@@ -608,59 +641,27 @@ var validation_instructions = {
     </div>`
 };
 
-/* Calibration protocol per Yang & Krajbich (2021, JDM):
-   Three attempts with escalating pixel radius and descending hit-rate
-   thresholds. On all three failures, proceed-and-flag rather than
-   terminate — for a fixed dissertation sample, losing participants
-   to calibration is not viable. The gaze_quality field lets you
-   make stream-specific exclusion decisions analytically in R. */
-var calibAttempt = 0;
-const CALIB_THRESHOLDS = [
-  { roi_radius:130, min_pct:80 },   // attempt 1
-  { roi_radius:165, min_pct:70 },   // attempt 2
-  { roi_radius:200, min_pct:60 }    // attempt 3
-];
-const CALIB_RETRY_MSGS = [
-  "Eye-tracking accuracy was below 80%. Adjust your lighting so your face is evenly lit from the front, make sure your whole face is visible, and keep your head completely still.",
-  "Accuracy was still below 70%. This is your final attempt. Sit closer to your screen, fix your gaze precisely on each dot, and do not move your head at all."
-];
-
-var validation_trial = {
-  type: jsPsychWebgazerValidate,
-  validation_points: calib_points,
-  roi_radius: () => CALIB_THRESHOLDS[Math.min(calibAttempt, 2)].roi_radius,
-  time_limit:2200, show_validation_data:false
-};
+/* Calibration: single pass — calibrate once, validate once, proceed regardless.
+   Accuracy is recorded in study.calibration for analytical exclusion in R.
+   No retry loops, no alert dialogs — participant frustration and dropout
+   are a greater threat to sample size than imperfect gaze data on some participants. */
 timeline.push({
-  timeline: [calibration_instructions, calibration_grid, validation_instructions, validation_trial],
-  loop_function: function (data) {
-    var v = data.filter({ trial_type:"webgazer-validate" }).last(1).values()[0];
-    var thresh = CALIB_THRESHOLDS[Math.min(calibAttempt, 2)];
-    var passed = v.percent_in_roi >= thresh.min_pct;
-    calibAttempt++;
-
-    if (passed) {
+  timeline: [calibration_instructions, calibration_grid, validation_instructions, {
+    type: jsPsychWebgazerValidate,
+    validation_points: calib_points,
+    roi_radius: 150,
+    time_limit: 2200,
+    show_validation_data: false,
+    on_finish: function(data) {
+      const pct = data.percent_in_roi;
       study.calibration = {
-        percent_in_roi: v.percent_in_roi, average_offset: v.average_offset,
-        attempt_number: calibAttempt, roi_radius_used: thresh.roi_radius,
-        gaze_quality: v.percent_in_roi >= 80 ? "good" : v.percent_in_roi >= 65 ? "acceptable" : "poor"
+        calibration_pct:  Math.round(pct),
+        average_offset:   data.average_offset,
+        roi_radius_used:  150,
+        gaze_quality:     pct >= 75 ? "good" : pct >= 55 ? "acceptable" : "poor"
       };
-      return false;
     }
-
-    if (calibAttempt >= 3) {
-      study.calibration = {
-        percent_in_roi: v.percent_in_roi, average_offset: v.average_offset,
-        attempt_number: calibAttempt, roi_radius_used: thresh.roi_radius,
-        gaze_quality: "poor — three attempts failed, gaze stream may be unreliable"
-      };
-      alert("Eye-tracking accuracy is lower than ideal. The study will continue — your verbal reasoning and interaction data are fully usable regardless. If possible, improve your lighting and keep your head very still during the case.");
-      return false;
-    }
-
-    alert(CALIB_RETRY_MSGS[calibAttempt - 1]);
-    return true;
-  }
+  }]
 });
 
 /* model warm-up gate — worker loads Whisper in background while participant reads instructions */
@@ -736,29 +737,24 @@ const BW_CASES = {
       <div class="bw-narrative">
         <div class="bw-ev-para" id="bw_para_h1">
           <p>Evelyn is a 74-year-old retired schoolteacher admitted five days ago following an ischemic stroke affecting the left middle cerebral artery territory. She presents with right hemiparesis, mild expressive aphasia, and reduced grip strength on the right side. Prior to admission she was fully independent in all activities of daily living and lived alone in a single-story home.</p>
-          <button class="bw-para-btn" data-para="bw_para_h1">+ Evidence</button>
         </div>
         <div class="bw-ev-para" id="bw_para_h2">
           <p>Her medical history is significant for Type 2 diabetes (well-controlled), hypertension, and mild osteoarthritis of both hands. She reports being right-hand dominant. She is widowed, has two adult children who live nearby, and describes herself as highly motivated to return home.</p>
-          <button class="bw-para-btn" data-para="bw_para_h2">+ Evidence</button>
         </div>
       </div>
       <div class="bw-section-heading">ADL Observation Summary</div>
       <div class="bw-narrative">
         <div class="bw-ev-para" id="bw_para_a1">
           <p>During an observed meal preparation task this morning, Evelyn was able to ambulate to the kitchen with supervision using a quad cane. She demonstrated difficulty stabilizing bread on the counter while attempting to spread peanut butter, requiring multiple attempts. She was unable to open a standard jar lid without assistance. Her right hand showed functional reach but significantly reduced pinch strength; she compensated by using her left hand for most fine motor tasks.</p>
-          <button class="bw-para-btn" data-para="bw_para_a1">+ Evidence</button>
         </div>
         <div class="bw-ev-para" id="bw_para_a2">
           <p>She became visibly frustrated after two failed attempts at opening the jar and stated: "I used to do this every morning." Fatigue was noted after approximately 12 minutes of activity. She completed the task with moderate assistance and verbal cueing.</p>
-          <button class="bw-para-btn" data-para="bw_para_a2">+ Evidence</button>
         </div>
       </div>
       <div class="bw-section-heading">Current Functional Status</div>
       <div class="bw-narrative">
         <div class="bw-ev-para" id="bw_para_f1">
           <p>FIM scores on admission: Self-care 3/7, Transfers 4/7, Locomotion 4/7. Occupational profile indicates high priority for independent meal preparation, home management, and community mobility. Evelyn's goal is to return home within three weeks and resume weekly book club meetings.</p>
-          <button class="bw-para-btn" data-para="bw_para_f1">+ Evidence</button>
         </div>
       </div>`,
 
@@ -843,29 +839,24 @@ const BW_CASES = {
       <div class="bw-narrative">
         <div class="bw-ev-para" id="bw_para_h1">
           <p>Marcus is a 27-year-old graphic designer admitted six weeks ago following a motor vehicle collision resulting in a C6 incomplete spinal cord injury (AIS D). He presents with reduced bilateral grip strength and impaired finger flexion, though tenodesis grasp is intact. He currently uses a manual wheelchair and is independent with transfers.</p>
-          <button class="bw-para-btn" data-para="bw_para_h1">+ Evidence</button>
         </div>
         <div class="bw-ev-para" id="bw_para_h2">
           <p>Marcus has no prior medical conditions. He is right-hand dominant. He lives with his partner in an accessible apartment. He describes himself as highly motivated and values autonomy. He has no traumatic brain injury and is cognitively intact.</p>
-          <button class="bw-para-btn" data-para="bw_para_h2">+ Evidence</button>
         </div>
       </div>
       <div class="bw-section-heading">ADL Observation Summary</div>
       <div class="bw-narrative">
         <div class="bw-ev-para" id="bw_para_a1">
           <p>During an observed upper-body dressing task this morning, Marcus was unable to button a standard dress shirt independently. Tenodesis grasp was functional for grasping larger objects but insufficient for manipulating small fasteners. He required moderate assistance and multiple attempts before giving up on the top two buttons.</p>
-          <button class="bw-para-btn" data-para="bw_para_a1">+ Evidence</button>
         </div>
         <div class="bw-ev-para" id="bw_para_a2">
           <p>Marcus expressed frustration and stated: "I need to be able to dress myself before I go back to the office." Fatigue was noted after approximately 15 minutes of upper-body dressing tasks. He completed the task with moderate assistance and verbal cueing for compensatory strategies.</p>
-          <button class="bw-para-btn" data-para="bw_para_a2">+ Evidence</button>
         </div>
       </div>
       <div class="bw-section-heading">Current Functional Status</div>
       <div class="bw-narrative">
         <div class="bw-ev-para" id="bw_para_f1">
           <p>FIM scores: Self-care 4/7, Upper-body dressing 3/7. COPM priorities: dressing for work P:2/S:1, meal preparation P:3/S:2, computer use for graphic design P:4/S:3. Marcus's primary goal is to return to work within six weeks.</p>
-          <button class="bw-para-btn" data-para="bw_para_f1">+ Evidence</button>
         </div>
       </div>`,
 
@@ -951,7 +942,7 @@ function buildBioWorldUI(c) {
       <button class="bw-tab active" data-tab="problem" data-case="${c.id}">Problem</button>
       <button class="bw-tab" data-tab="chart"   data-case="${c.id}">Chart</button>
       <button class="bw-tab" data-tab="library" data-case="${c.id}">Library</button>
-      <button class="bw-tab" data-tab="plan"    data-case="${c.id}">Intervention Plan</button>
+      <button class="bw-tab bw-tab-final" data-tab="plan" data-case="${c.id}">Intervention Plan</button>
       <span class="bw-patient-label">${c.patientName.toUpperCase()} — ${c.diagnosis.toUpperCase()}</span>
     </div>
 
@@ -986,7 +977,7 @@ function buildBioWorldUI(c) {
         <div class="bw-evidence-section" id="bw_ev_panel">
           <div class="bw-panel-label">Evidence Table</div>
           <div class="bw-ev-list" id="bw_ev_list_${c.id}">
-            <div class="bw-ev-empty" id="bw_ev_empty_${c.id}">No evidence collected yet. Hover over paragraphs in the Problem tab to add items.</div>
+            <div class="bw-ev-empty" id="bw_ev_empty_${c.id}">No evidence collected yet. Select and highlight text in the Problem tab to add excerpts.</div>
           </div>
         </div>
 
@@ -1038,9 +1029,7 @@ function buildBioWorldUI(c) {
           <div class="bw-plan-options">${equipHTML}</div>
           <div class="bw-section-heading">Clinical Reasoning Summary</div>
           <textarea class="bw-summary-input" id="bw_summary_${c.id}" placeholder="Summarize your clinical reasoning. What evidence informed your intervention selection? How does your plan address this patient's goals?"></textarea>
-          <div style="margin-top:16px;display:flex;justify-content:flex-end;">
-            <button class="bw-btn bw-btn-submit" id="bw_submit_${c.id}">Sign Orders &amp; Complete &#8594;</button>
-          </div>
+
         </div>
 
       </div>
@@ -1050,6 +1039,8 @@ function buildBioWorldUI(c) {
     <div class="bw-bottom">
       <span class="bw-elapsed" id="bw_elapsed_${c.id}">00:00</span>
       <button class="bw-btn bw-btn-secondary" id="bw_clear_ev_${c.id}">Clear Evidence Table</button>
+      <span class="bw-submit-hint" id="bw_submit_hint_${c.id}">Visit all tabs &amp; select a plan to submit</span>
+      <button class="bw-btn bw-btn-submit" id="bw_submit_${c.id}" disabled>Sign Orders &amp; Complete &#8594;</button>
     </div>
 
   </div>`;
@@ -1076,33 +1067,116 @@ function snapshotAOIRects(caseConfig, caseStart) {
 }
 
 /* =====================================================================
-   GAZE → DWELL EVENTS  (identical logic to original index.html)
+   GAZE → DWELL EVENTS
+   Each event in the output represents one unbroken AOI visit:
+     t          — onset time (ms from case start)
+     aoi        — element id (e.g. "bw_para_h1")
+     label      — human-readable AOI name from aoi_map (e.g. "Patient History Para 1")
+     emic       — Schell emic code (SCIENTIFIC / NARRATIVE / PRAGMATIC)
+     etic       — Winne & Hadwin etic code (TASK-DEF / GOAL-SET / ENACTING / MONITOR)
+     dwell_ms   — duration of this AOI visit in milliseconds
+     aoi_from   — aoi id of the immediately preceding visit (null for first event)
+     aoi_to     — aoi id of the immediately following visit (null for last event, filled by post-pass)
+     from_label — human-readable label for aoi_from (null for first event)
+     to_label   — human-readable label for aoi_to (filled by post-pass)
+     source     — always "gaze"
    ===================================================================== */
 function pointToAOI(x, y, rects) {
   for (const r of rects) if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return r;
   return null;
 }
+
 function gazeToDwells(samples, rects) {
-  const out = [];
+  /* ── Pass 1: segment raw samples into candidate dwell visits ── */
+  const visits = [];   // { aoi, label, emic, etic, start, end }
   let cur = null, curStart = null, lastT = null;
-  const sorted = (samples||[]).filter(s => s && s.x != null).sort((a,b)=>a.t-b.t);
+
+  const sorted = (samples || []).filter(s => s && s.x != null).sort((a, b) => a.t - b.t);
+
   for (const s of sorted) {
     const hit = pointToAOI(s.x, s.y, rects);
     const aoi = hit ? hit.id : null;
+
     if (aoi !== cur) {
-      if (cur && (lastT - curStart) >= CONFIG.MIN_DWELL_MS) {
+      if (cur !== null && (lastT - curStart) >= CONFIG.MIN_DWELL_MS) {
         const r = rects.find(rr => rr.id === cur);
-        out.push({ t:Math.round(curStart), aoi:cur, emic: r?r.emic:null, etic: r?r.etic:null, source:"gaze" });
+        visits.push({
+          aoi:   cur,
+          label: r ? (r.label || cur) : cur,
+          emic:  r ? r.emic : null,
+          etic:  r ? r.etic : null,
+          start: curStart,
+          end:   lastT
+        });
       }
       cur = aoi; curStart = s.t;
     }
     lastT = s.t;
   }
-  if (cur && lastT!=null && (lastT-curStart) >= CONFIG.MIN_DWELL_MS) {
+  /* Flush final visit */
+  if (cur !== null && lastT !== null && (lastT - curStart) >= CONFIG.MIN_DWELL_MS) {
     const r = rects.find(rr => rr.id === cur);
-    out.push({ t:Math.round(curStart), aoi:cur, emic: r?r.emic:null, etic: r?r.etic:null, source:"gaze" });
+    visits.push({
+      aoi:   cur,
+      label: r ? (r.label || cur) : cur,
+      emic:  r ? r.emic : null,
+      etic:  r ? r.etic : null,
+      start: curStart,
+      end:   lastT
+    });
   }
-  return out.filter(e => e.emic || e.etic);
+
+  /* ── Pass 2: keep only coded AOIs, then add dwell_ms + transition fields ── */
+  const coded = visits.filter(v => v.emic || v.etic);
+
+  return coded.map((v, i) => {
+    const prev = i > 0             ? coded[i - 1] : null;
+    const next = i < coded.length - 1 ? coded[i + 1] : null;
+    return {
+      t:          Math.round(v.start),
+      aoi:        v.aoi,
+      label:      v.label,
+      emic:       v.emic,
+      etic:       v.etic,
+      dwell_ms:   Math.round(v.end - v.start),
+      aoi_from:   prev ? prev.aoi   : null,
+      from_label: prev ? prev.label : null,
+      aoi_to:     next ? next.aoi   : null,
+      to_label:   next ? next.label : null,
+      source:     "gaze"
+    };
+  });
+}
+
+/* =====================================================================
+   GAZE → TRANSITION SUMMARY
+   Extracts all consecutive AOI pairs from the dwell event list as a
+   flat array for direct use in transition-rate analysis.
+   Each entry: { t, from, from_label, from_emic, from_etic,
+                      to,   to_label,   to_emic,   to_etic }
+   ===================================================================== */
+function gazeToTransitions(dwellEvents) {
+  const transitions = [];
+  for (let i = 0; i < dwellEvents.length - 1; i++) {
+    const a = dwellEvents[i];
+    const b = dwellEvents[i + 1];
+    /* Only record transitions where the AOI actually changes.
+       Same-AOI consecutive entries can appear if a participant briefly
+       looks away to an uncoded region and back within MIN_DWELL_MS. */
+    if (a.aoi === b.aoi) continue;
+    transitions.push({
+      t:          a.t + a.dwell_ms,   // transition occurs at end of the departing dwell
+      from:       a.aoi,
+      from_label: a.label,
+      from_emic:  a.emic,
+      from_etic:  a.etic,
+      to:         b.aoi,
+      to_label:   b.label,
+      to_emic:    b.emic,
+      to_etic:    b.etic
+    });
+  }
+  return transitions;
 }
 
 /* =====================================================================
@@ -1214,6 +1288,40 @@ function buildBioWorldTrials(c) {
         el.textContent = String(Math.floor(sec/60)).padStart(2,"0")+":"+String(sec%60).padStart(2,"0");
       }, 1000);
 
+      /* ── Submit gate: track visited tabs + plan selection ── */
+      const visitedTabs = new Set(["problem"]);  // problem is shown on load
+      let   planSelected = false;
+      const REQUIRED_TABS = new Set(["problem", "chart", "library", "plan"]);
+
+      function checkSubmitReady() {
+        const allVisited = [...REQUIRED_TABS].every(t => visitedTabs.has(t));
+        const ready      = allVisited && planSelected;
+        const submitBtn  = document.getElementById("bw_submit_"+c.id);
+        const hintEl     = document.getElementById("bw_submit_hint_"+c.id);
+        if (!submitBtn) return;
+
+        if (ready && submitBtn.disabled) {
+          /* First time unlocking — enable and pulse once to draw attention */
+          submitBtn.disabled = false;
+          submitBtn.classList.add("unlocked");
+          submitBtn.addEventListener("animationend", () => submitBtn.classList.remove("unlocked"), { once:true });
+          if (hintEl) { hintEl.textContent = "Ready to submit"; hintEl.classList.add("ready"); }
+        } else if (!ready) {
+          submitBtn.disabled = true;
+          submitBtn.classList.remove("unlocked");
+          if (hintEl) {
+            if (!allVisited) {
+              const missing = [...REQUIRED_TABS].filter(t => !visitedTabs.has(t));
+              hintEl.textContent = "Visit all tabs to submit";
+              hintEl.classList.remove("ready");
+            } else {
+              hintEl.textContent = "Select an intervention plan to submit";
+              hintEl.classList.remove("ready");
+            }
+          }
+        }
+      }
+
       /* ── helpers ── */
       function logClick(aoi, emic, etic, action, detail) {
         clickEvents.push({ t:Math.round(performance.now()-caseStart), aoi, emic, etic, source:"click", action, detail:detail||null });
@@ -1283,6 +1391,8 @@ function buildBioWorldTrials(c) {
           document.querySelectorAll("#bw_root_"+c.id+" .bw-panel").forEach(p=>p.classList.remove("active"));
           document.getElementById("bw_panel_"+tab+"_"+c.id).classList.add("active");
           currentTab = tab;
+          visitedTabs.add(tab);
+          checkSubmitReady();
           aoiRects = snapshotAOIRects(c, caseStart);   // re-snapshot on tab change
           const aoiMap = { problem:"bw_panel_problem", chart:"bw_panel_chart", library:"bw_panel_library", plan:"bw_panel_plan" };
           const emicMap = { problem:"NARRATIVE", chart:"SCIENTIFIC", library:"SCIENTIFIC", plan:"PRAGMATIC" };
@@ -1327,19 +1437,147 @@ function buildBioWorldTrials(c) {
         });
       }
 
-      /* ── Paragraph evidence buttons ── */
-      document.querySelectorAll("#bw_root_"+c.id+" .bw-para-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const paraId = btn.dataset.para;
-          const text   = c.paragraphs[paraId];
-          const aoi    = c.aoi_map.find(a=>a.id===paraId);
-          if (!text) return;
-          addEvidence(text, "patient", paraId, aoi?aoi.emic:"NARRATIVE", aoi?aoi.etic:"TASK-DEF");
-          const para = document.getElementById(paraId);
-          if (para) para.classList.add("para-added");
-          btn.textContent = "✓ Added";
+      /* ── Free-text highlight → Evidence popover ── */
+      (function attachSelectionHandlers() {
+        let popover    = null;
+        let rafHandle  = null;   // pending rAF for positioning
+
+        function removePopover() {
+          if (rafHandle) { cancelAnimationFrame(rafHandle); rafHandle = null; }
+          if (popover)   { popover.remove(); popover = null; }
+        }
+
+        function positionPopover(rect) {
+          /* Called inside rAF — popover is in DOM so offsetWidth/Height are real. */
+          const margin = 8;
+          const pw = popover.offsetWidth;
+          const ph = popover.offsetHeight;
+          const vw = window.innerWidth;
+          const vh = window.innerHeight;
+
+          /* Prefer above the selection; flip below if insufficient room. */
+          let top = rect.top - ph - margin;
+          if (top < margin) top = rect.bottom + margin;
+          /* Final clamp — keeps it fully on-screen even on small viewports. */
+          top = Math.max(margin, Math.min(top, vh - ph - margin));
+
+          let left = rect.left + rect.width / 2 - pw / 2;
+          left = Math.max(margin, Math.min(left, vw - pw - margin));
+
+          popover.style.left = left + "px";
+          popover.style.top  = top  + "px";
+          popover.style.visibility = "visible";
+        }
+
+        function showPopover(selectedText, paraEl, paraId, selectionRect) {
+          removePopover();
+
+          popover = document.createElement("div");
+          popover.id = "bw-sel-popover";
+          /* Start invisible so the pre-paint frame isn't visible at 0,0 */
+          popover.style.visibility = "hidden";
+
+          const addBtn = document.createElement("button");
+          addBtn.textContent = "＋ Add to Evidence";
+
+          const dismissBtn = document.createElement("button");
+          dismissBtn.className = "bw-sel-dismiss";
+          dismissBtn.innerHTML = "&times;";
+          dismissBtn.title = "Dismiss";
+          dismissBtn.setAttribute("aria-label", "Dismiss");
+
+          popover.appendChild(addBtn);
+          popover.appendChild(dismissBtn);
+          document.body.appendChild(popover);
+
+          /* Wait one frame so the browser has painted and offsetWidth is real. */
+          rafHandle = requestAnimationFrame(() => {
+            rafHandle = null;
+            if (!popover) return;   // was removed before frame fired
+            positionPopover(selectionRect);
+          });
+
+          addBtn.addEventListener("click", () => {
+            const aoi = c.aoi_map.find(a => a.id === paraId);
+            addEvidence(
+              selectedText, "patient", paraId,
+              aoi ? aoi.emic : "NARRATIVE",
+              aoi ? aoi.etic : "TASK-DEF"
+            );
+            paraEl.classList.add("para-added");
+            try { window.getSelection().removeAllRanges(); } catch(e) {}
+            removePopover();
+          });
+
+          dismissBtn.addEventListener("click", () => {
+            try { window.getSelection().removeAllRanges(); } catch(e) {}
+            removePopover();
+          });
+        }
+
+        /* Attach mouseup to every clinical narrative paragraph. */
+        document.querySelectorAll("#bw_root_"+c.id+" .bw-ev-para").forEach(paraEl => {
+          const paraId = paraEl.id;
+
+          paraEl.addEventListener("mouseup", () => {
+            /*
+             * Delay one tick: on some browsers the selection object isn't
+             * fully committed at the moment mouseup fires.
+             */
+            setTimeout(() => {
+              try {
+                const sel = window.getSelection();
+                if (!sel || sel.rangeCount === 0) { removePopover(); return; }
+
+                const text = sel.toString().trim();
+                if (!text) { removePopover(); return; }
+
+                /* Verify both endpoints of the selection are inside this paragraph.
+                   Checking anchorNode alone misses backwards-drag edge cases. */
+                const anchor = sel.anchorNode;
+                const focus  = sel.focusNode;
+                if (!anchor || !focus) { removePopover(); return; }
+                if (!paraEl.contains(anchor) && !paraEl.contains(focus)) {
+                  removePopover(); return;
+                }
+
+                /* Snapshot the rect NOW (before rAF) while the selection range
+                   is still guaranteed to exist. */
+                const range = sel.getRangeAt(0);
+                const rect  = range.getBoundingClientRect();
+                if (!rect || (rect.width === 0 && rect.height === 0)) {
+                  removePopover(); return;
+                }
+
+                showPopover(text, paraEl, paraId, rect);
+
+              } catch(err) {
+                /* Silently swallow — never crash the experiment. */
+                console.warn("bw-sel mouseup handler:", err);
+                removePopover();
+              }
+            }, 0);
+          });
         });
-      });
+
+        /* ── Global dismissal listeners ── */
+
+        /* Mousedown outside the popover closes it (capture phase so it fires
+           before the next mouseup, preventing flicker on fast clicks). */
+        document.addEventListener("mousedown", (e) => {
+          if (popover && !popover.contains(e.target)) removePopover();
+        }, true);
+
+        /* Scroll in the content pane invalidates the rect we positioned against. */
+        const contentPane = document.querySelector("#bw_root_"+c.id+" .bw-content");
+        if (contentPane) contentPane.addEventListener("scroll", removePopover, { passive:true });
+
+        /* Keyboard Escape */
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") { removePopover(); try { window.getSelection().removeAllRanges(); } catch(ex) {} }
+        });
+
+      })();
 
       /* ── Clear evidence ── */
       const clearBtn = document.getElementById("bw_clear_ev_"+c.id);
@@ -1348,7 +1586,6 @@ function buildBioWorldTrials(c) {
         logClick("bw_ev_panel","","MONITOR","evidence_cleared",null);
         renderEvidence();
         document.querySelectorAll("#bw_root_"+c.id+" .bw-ev-para").forEach(p=>p.classList.remove("para-added"));
-        document.querySelectorAll("#bw_root_"+c.id+" .bw-para-btn").forEach(b=>b.textContent="+ Evidence");
       });
 
       /* ── Assessment cards ── */
@@ -1400,6 +1637,8 @@ function buildBioWorldTrials(c) {
       /* ── Intervention plan radio + checkboxes ── */
       document.querySelectorAll(`input[name="bw_plan_${c.id}"]`).forEach(r => {
         r.addEventListener("change", () => {
+          planSelected = true;
+          checkSubmitReady();
           logClick("bw_panel_plan_"+c.id,"PRAGMATIC","ENACTING","plan_selected",r.value);
         });
       });
@@ -1445,8 +1684,11 @@ function buildBioWorldTrials(c) {
         });
       });
 
-      /* initial AOI snapshot after DOM settles */
-      setTimeout(() => { aoiRects = snapshotAOIRects(c, caseStart); }, 300);
+      /* initial AOI snapshot after DOM settles; also set initial hint text */
+      setTimeout(() => {
+        aoiRects = snapshotAOIRects(c, caseStart);
+        checkSubmitReady();
+      }, 300);
     },
 
     on_finish: function (data) {
@@ -1461,7 +1703,9 @@ function buildBioWorldTrials(c) {
       study.cases[c.id].choice              = data.selected_plan;      // dashboard compat
       study.cases[c.id].aoi_map             = c.aoi_map;
       study.cases[c.id].aoi_rects           = data.aoi_rects           || [];
-      study.cases[c.id].gaze_events         = gazeToDwells(data.webgazer_data||[], data.aoi_rects||[]);
+      const dwells = gazeToDwells(data.webgazer_data||[], data.aoi_rects||[]);
+      study.cases[c.id].gaze_events         = dwells;
+      study.cases[c.id].gaze_transitions    = gazeToTransitions(dwells);
       study.cases[c.id]._gaze_raw           = data.webgazer_data       || [];
       study.cases[c.id].viewport            = { w: data.captureW || window.innerWidth, h: data.captureH || window.innerHeight };
     }
@@ -1475,7 +1719,17 @@ function buildBioWorldTrials(c) {
           <strong>Retrospective Review</strong> <span style="color:#c0392b;margin-left:8px;">&#127908; narrate your reasoning as you re-watch</span></div>
         <video id="rv_${c.id}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;" muted playsinline></video>
         <canvas id="ro_${c.id}" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;"></canvas>
-        <button id="rd_${c.id}" disabled style="position:fixed;bottom:24px;right:24px;z-index:10;padding:14px 28px;background:#7f8c8d;color:#fff;border:none;border-radius:6px;font-weight:700;">Done narrating</button>
+        <!-- Playback progress bar -->
+        <div style="position:fixed;bottom:0;left:0;right:0;z-index:10;padding:10px 16px 12px;background:linear-gradient(transparent,rgba(0,0,0,0.75));">
+          <div style="display:flex;align-items:center;gap:10px;max-width:900px;margin:0 auto;">
+            <span id="rta_cur_${c.id}" style="font-size:13px;color:#cdd9e5;font-family:'Segoe UI',monospace;min-width:38px;text-align:right;">0:00</span>
+            <div style="flex:1;background:rgba(255,255,255,0.2);border-radius:3px;height:5px;overflow:hidden;">
+              <div id="rta_bar_${c.id}" style="height:100%;width:0%;background:#2b9fd6;border-radius:3px;transition:width 0.25s linear;"></div>
+            </div>
+            <span id="rta_dur_${c.id}" style="font-size:13px;color:#8aa0b6;font-family:'Segoe UI',monospace;min-width:38px;">-:--</span>
+          </div>
+        </div>
+        <button id="rd_${c.id}" disabled style="position:fixed;bottom:36px;right:24px;z-index:11;padding:14px 28px;background:#7f8c8d;color:#fff;border:none;border-radius:6px;font-weight:700;">Done narrating</button>
       </div>`,
     data: { trial_tag:"rta", case_id:c.id },
     on_load: async function () {
@@ -1483,9 +1737,35 @@ function buildBioWorldTrials(c) {
       const video  = document.getElementById("rv_"+c.id);
       const canvas = document.getElementById("ro_"+c.id);
       const done   = document.getElementById("rd_"+c.id);
+      const rtaBar = document.getElementById("rta_bar_"+c.id);
+      const rtaCur = document.getElementById("rta_cur_"+c.id);
+      const rtaDur = document.getElementById("rta_dur_"+c.id);
       const ctx    = canvas.getContext("2d");
       const gaze     = (study.cases[c.id] && study.cases[c.id]._gaze_raw) || [];
       const aoiRects = (study.cases[c.id] && study.cases[c.id].aoi_rects) || [];
+
+      /* ── Progress bar helpers ── */
+      function fmtTime(sec) {
+        if (!isFinite(sec) || isNaN(sec)) return "-:--";
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        return m + ":" + String(s).padStart(2, "0");
+      }
+      function updateBar() {
+        const dur = video.duration;
+        const cur = video.currentTime;
+        if (rtaCur) rtaCur.textContent = fmtTime(cur);
+        if (isFinite(dur) && dur > 0) {
+          if (rtaDur) rtaDur.textContent = fmtTime(dur);
+          if (rtaBar) rtaBar.style.width = Math.min(100, (cur / dur) * 100).toFixed(2) + "%";
+        }
+      }
+      video.addEventListener("loadedmetadata", updateBar);
+      video.addEventListener("timeupdate",     updateBar);
+      video.addEventListener("ended", () => {
+        if (rtaBar) rtaBar.style.width = "100%";
+        if (rtaCur && isFinite(video.duration)) rtaCur.textContent = fmtTime(video.duration);
+      });
 
       const AOI_COLORS = {
         "TASK-DEF":"91,176,224", "GOAL-SET":"155,89,182",
@@ -1872,6 +2152,7 @@ timeline.push({
       case_id:1, condition: study.experimental_condition,
       aoi_map:            c1.aoi_map             || [],
       gaze_events:        c1.gaze_events          || [],
+      gaze_transitions:   c1.gaze_transitions     || [],
       click_events:       c1.click_events         || [],
       transcript_segments:c1.transcript_segments  || [],
       hypotheses:         c1.hypotheses           || [],
@@ -1891,8 +2172,8 @@ timeline.push({
   }
 });
 
-/* Mid-session recalibration (Yang & Krajbich, 2021) */
-var midCalibAttempt=0;
+/* Mid-session recalibration (Yang & Krajbich, 2021) — single pass, no retry.
+   Records mid_session calibration_pct for analytical comparison with initial score. */
 timeline.push({
   type: jsPsychHtmlKeyboardResponse,
   stimulus:`<div style="max-width:680px;margin:10% auto;text-align:left;color:#c8d8e8;font-family:'Segoe UI',Arial,sans-serif;">
@@ -1905,17 +2186,19 @@ timeline.push({
 });
 timeline.push({
   timeline: [calibration_grid, validation_instructions, {
-    type: jsPsychWebgazerValidate, validation_points: calib_points,
-    roi_radius:200, time_limit:2200, show_validation_data:false
-  }],
-  loop_function: function(data) {
-    var v=data.filter({trial_type:"webgazer-validate"}).last(1).values()[0];
-    study.calibration.mid_session={percent_in_roi:v.percent_in_roi, average_offset:v.average_offset};
-    midCalibAttempt++;
-    if(v.percent_in_roi>=50||midCalibAttempt>=2) return false;
-    alert("Eye-tracking accuracy has drifted. Please reposition carefully — one more attempt.");
-    return true;
-  }
+    type: jsPsychWebgazerValidate,
+    validation_points: calib_points,
+    roi_radius: 150,
+    time_limit: 2200,
+    show_validation_data: false,
+    on_finish: function(data) {
+      study.calibration.mid_session = {
+        calibration_pct: Math.round(data.percent_in_roi),
+        average_offset:  data.average_offset,
+        gaze_quality:    data.percent_in_roi >= 75 ? "good" : data.percent_in_roi >= 55 ? "acceptable" : "poor"
+      };
+    }
+  }]
 });
 
 /* Dashboard (experimental group only) */
