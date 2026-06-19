@@ -31,6 +31,7 @@
        Uses importScripts with the UMD/classic build which works in classic workers. */
     const WORKER_CODE = `
       let transcriber = null;
+      let modelName   = "Xenova/whisper-small.en";  // default; overridden by warmup message
 
       async function loadModel() {
         if (transcriber) return;
@@ -39,7 +40,7 @@
         env.useBrowserCache  = true;
         transcriber = await pipeline(
           "automatic-speech-recognition",
-          "Xenova/whisper-small.en",
+          modelName,
           {
             progress_callback: (p) => {
               if (p && p.progress != null)
@@ -50,8 +51,9 @@
       }
 
       self.onmessage = async (e) => {
-        const { type, audioData } = e.data;
+        const { type, audioData, model } = e.data;
         if (type === "warmup") {
+          if (model) modelName = model;
           try { await loadModel(); self.postMessage({ type:"ready" }); }
           catch(err) { self.postMessage({ type:"error", message: String(err) }); }
           return;
@@ -95,7 +97,7 @@
         console.error("Whisper worker onerror:", e);
         if (__pendingReject) { __pendingReject(new Error("Worker error")); __pendingResolve = null; __pendingReject = null; }
       };
-      __whisperWorker.postMessage({ type:"warmup" });
+      __whisperWorker.postMessage({ type:"warmup", model: CONFIG.WHISPER_MODEL });
     }
 
     function warmUpTranscriber() { initWhisperWorker(); }
@@ -551,9 +553,10 @@ const study = {
 const caseMedia = {};
 
 /* =====================================================================
-   TRANSCRIBER — worker-based (see whisper-worker.js + inline script above)
-   warmUpTranscriber and transcribeBlob are defined in the inline script.
-   __modelProgress is set by worker progress messages.
+   TRANSCRIBER — inline Blob Worker (WORKER_CODE string above).
+   No external file needed; avoids CORS and MIME-type issues on GitHub Pages.
+   warmUpTranscriber() and transcribeBlob() are defined in the inline script.
+   __modelProgress is updated by worker progress messages.
    ===================================================================== */
 
 /* =====================================================================
@@ -2036,8 +2039,10 @@ function buildBioWorldTrials(c) {
   const rtaTrial = {
     type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
     stimulus:`<div style="position:fixed;inset:0;background:#000;">
-        <div style="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10;background:#fff;padding:10px 16px;border:2px solid #2b9fd6;border-radius:6px;text-align:center;">
-          <strong>Retrospective Review</strong> <span style="color:#c0392b;margin-left:8px;">&#127908; narrate your reasoning as you re-watch</span></div>
+        <div style="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10;background:#fff;padding:10px 16px;border:2px solid #2b9fd6;border-radius:6px;text-align:center;display:flex;align-items:center;gap:14px;white-space:nowrap;">
+          <span><strong>Retrospective Review</strong> <span style="color:#c0392b;margin-left:6px;">&#127908; narrate your reasoning as you re-watch</span></span>
+          <select id="rta_mic_sel_${c.id}" style="font-size:12px;padding:3px 6px;border:1px solid #b8c6d6;border-radius:4px;color:#16263d;background:#f0f4f8;max-width:200px;" aria-label="Select microphone"></select>
+        </div>
         <video id="rv_${c.id}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;" muted playsinline></video>
         <canvas id="ro_${c.id}" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;"></canvas>
         <!-- Playback progress bar -->
@@ -2104,60 +2109,119 @@ function buildBioWorldTrials(c) {
       video.src = m.url;
 
       let aStream=null, aRec=null, aChunks=[], aStart=0, vStart=0;
-      try {
-        aStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            /* Disable voice-call processing — these are designed for WebRTC
-               calls, not transcription. echoCancellation and noiseSuppression
-               in particular actively suppress or distort speech in ways that
-               cause Whisper to hallucinate rather than transcribe. */
-            echoCancellation:   false,
-            noiseSuppression:   false,
-            autoGainControl:    false,
-            /* Prefer high sample rate — we resample to 16kHz in transcribeBlob
-               via OfflineAudioContext, so native quality is better raw input. */
-            sampleRate:         { ideal: 48000 }
-          }
-        });
+      let meterCtx=null, meterTick=null;
+
+      /* ── Open a mic stream for a given deviceId (or default if null) ──
+         Never pass echoCancellation:false to getUserMedia — on macOS this
+         causes Bluetooth HFP re-negotiation that can drop the stream.
+         Never call applyConstraints() afterwards either — same risk on some
+         Bluetooth stacks. Instead, the resampling and amplitude normalization
+         in transcribeBlob handle audio quality regardless of device type. ── */
+      async function openMicStream(deviceId) {
+        if (aRec && aRec.state !== "inactive") { try { aRec.stop(); } catch(e){} }
+        if (aStream) aStream.getTracks().forEach(t => t.stop());
+        if (meterTick) { clearInterval(meterTick); meterTick = null; }
+        if (meterCtx)  { try { meterCtx.close(); } catch(e){} meterCtx = null; }
+
+        const constraints = deviceId
+          ? { audio: { deviceId: { exact: deviceId } } }
+          : { audio: true };
+
+        aStream = await navigator.mediaDevices.getUserMedia(constraints);
+        aChunks = [];
         aRec    = new MediaRecorder(aStream);
-        /* Collect chunks every second — more resilient than waiting for a single
-           ondataavailable event on stop() in case of unexpected interruption. */
         aRec.ondataavailable = e => { if(e.data && e.data.size) aChunks.push(e.data); };
-        /* Start recording immediately — do not wait for the play event.
-           The play event can fire within the same microtask as video.play(),
-           before the listener is guaranteed to have run on all browsers.
-           Leading silence before the video plays is trimmed by Whisper. */
         aRec.start(1000);
         aStart = performance.now();
 
-        /* Live mic level meter — visual confirmation mic is active.
-           Uses an AnalyserNode on the stream; no audio is played back. */
+        /* ── Mic level meter using RMS on time-domain data ──
+           RMS is a true measure of audio energy and is sensitive to quiet
+           voices and compressed Bluetooth audio where frequency-domain
+           averages often read near-zero even when audio is present. */
         try {
-          const meterCtx  = new (window.AudioContext || window.webkitAudioContext)();
+          meterCtx = new (window.AudioContext || window.webkitAudioContext)();
           const analyser  = meterCtx.createAnalyser();
-          analyser.fftSize = 256;
+          analyser.fftSize = 512;
+          analyser.smoothingTimeConstant = 0.4;
           meterCtx.createMediaStreamSource(aStream).connect(analyser);
-          const meterBuf  = new Uint8Array(analyser.frequencyBinCount);
-          const micBar    = document.getElementById("rta_mic_bar_"+c.id);
-          const meterTick = setInterval(() => {
+          const timeBuf  = new Float32Array(analyser.fftSize);
+          const micBar   = document.getElementById("rta_mic_bar_"+c.id);
+
+          /* Silence detection — warn if RMS stays below threshold for 8s */
+          let silentMs = 0;
+          let silenceWarnShown = false;
+          const SILENCE_THRESHOLD = 0.005;  // RMS below this = effectively silent
+          const SILENCE_WARN_MS   = 8000;
+
+          meterTick = setInterval(() => {
             if (!micBar) { clearInterval(meterTick); return; }
-            analyser.getByteFrequencyData(meterBuf);
-            const avg = meterBuf.reduce((s, v) => s + v, 0) / meterBuf.length;
-            micBar.style.width = Math.min(100, avg * 2.5).toFixed(1) + "%";
+            analyser.getFloatTimeDomainData(timeBuf);
+            const rms = Math.sqrt(timeBuf.reduce((s, v) => s + v*v, 0) / timeBuf.length);
+            /* Scale: RMS of 0.02 (quiet speech) → ~40% width; 0.1 (normal) → ~100% */
+            micBar.style.width = Math.min(100, rms * 1400).toFixed(1) + "%";
+            /* Colour: green when active, amber when very quiet */
+            micBar.style.background = rms > SILENCE_THRESHOLD ? "#27ae60" : "#e0a040";
+
+            if (rms < SILENCE_THRESHOLD) {
+              silentMs += 80;
+              if (silentMs >= SILENCE_WARN_MS && !silenceWarnShown) {
+                silenceWarnShown = true;
+                const w = document.createElement("div");
+                w.id = "rta_silence_warn_"+c.id;
+                w.style.cssText = "position:fixed;bottom:110px;left:50%;transform:translateX(-50%);z-index:30;background:#3a2800;border:2px solid #e0a040;border-radius:8px;padding:12px 20px;color:#f0d080;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;text-align:center;max-width:480px;line-height:1.6;";
+                w.innerHTML = "&#127908; <strong>No audio detected.</strong> Please speak clearly — or use the microphone selector above to switch to a different input device.";
+                document.body.appendChild(w);
+                /* Auto-dismiss when audio returns */
+                const dismissCheck = setInterval(() => {
+                  analyser.getFloatTimeDomainData(timeBuf);
+                  const r = Math.sqrt(timeBuf.reduce((s,v)=>s+v*v,0)/timeBuf.length);
+                  if (r > SILENCE_THRESHOLD) {
+                    clearInterval(dismissCheck);
+                    silenceWarnShown = false;
+                    silentMs = 0;
+                    const el = document.getElementById("rta_silence_warn_"+c.id);
+                    if (el) el.remove();
+                  }
+                }, 200);
+              }
+            } else {
+              silentMs = 0;
+            }
           }, 80);
-          /* Clean up meter when Done is clicked */
-          done.addEventListener("click", () => {
-            clearInterval(meterTick);
-            try { meterCtx.close(); } catch(e) {}
-          }, { once: true });
         } catch(meterErr) {
-          /* Non-critical — meter failure doesn't affect recording */
           console.warn("mic meter failed:", meterErr);
         }
+      }
 
+      /* ── Populate mic device selector ── */
+      async function populateMicSelector() {
+        const sel = document.getElementById("rta_mic_sel_"+c.id);
+        if (!sel) return;
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const mics    = devices.filter(d => d.kind === "audioinput");
+          sel.innerHTML = mics.map((d, i) =>
+            `<option value="${d.deviceId}">${d.label || "Microphone " + (i+1)}</option>`
+          ).join("");
+          /* Pre-select the device currently in use */
+          if (aStream) {
+            const activeId = aStream.getAudioTracks()[0].getSettings().deviceId;
+            if (activeId) sel.value = activeId;
+          }
+          sel.addEventListener("change", async () => {
+            try { await openMicStream(sel.value); }
+            catch(e) { console.error("mic switch failed:", e); }
+          });
+        } catch(e) {
+          if (sel) sel.style.display = "none";
+        }
+      }
+
+      try {
+        await openMicStream(null);   // open with default device
+        await populateMicSelector(); // then enumerate and show selector
       } catch(e) {
         console.error("mic failed", e);
-        /* Non-blocking banner — participant must know their narration isn't being captured */
         const micWarn = document.createElement("div");
         micWarn.style.cssText = "position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:20;background:#3a1010;border:2px solid #e05a5a;border-radius:8px;padding:12px 20px;color:#f0b0b0;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;text-align:center;max-width:520px;line-height:1.6;";
         micWarn.innerHTML = "<strong>Microphone access was denied.</strong><br>Your narration cannot be recorded. Please check your browser microphone permissions, then reload and try again.";
@@ -2376,7 +2440,9 @@ function buildBioWorldTrials(c) {
           study.cases[c.id].transcript_segments = segs;
           delete study.cases[c.id]._gaze_raw;
           uploadCaseInBackground(c.id);
-          if (aStream) try { aStream.getTracks().forEach(t => t.stop()); } catch(e){}
+          if (meterTick) clearInterval(meterTick);
+        if (meterCtx)  try { meterCtx.close(); } catch(e){}
+        if (aStream) try { aStream.getTracks().forEach(t => t.stop()); } catch(e){}
           if (m.url){ try { URL.revokeObjectURL(m.url); } catch(e){} m.url=null; m.blob=null; }
           jsPsych.finishTrial();
         };
