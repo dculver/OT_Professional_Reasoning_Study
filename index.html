@@ -135,6 +135,8 @@
 
     /* ── jsPsych global overrides ── */
     .jspsych-display-element, .jspsych-content { color:#dbe6f0; }
+    /* jsPsych centers stimulus content by default — override for the BioWorld interface */
+    .jspsych-display-element { text-align:left; }
     .jspsych-content h1,.jspsych-content h2,.jspsych-content h3,
     .jspsych-content h4,.jspsych-content p,.jspsych-content label,
     .jspsych-content span,.jspsych-survey-text-question label { color:#dbe6f0; }
@@ -290,7 +292,6 @@
       border-radius:6px; margin-bottom:10px; transition:border-color .15s,background .15s;
       user-select:text; -webkit-user-select:text;
     }
-    .bw-ev-para:hover { border-color:#2a4a2a; background:#1a2520; }
     .bw-ev-para p { margin:0; }
     .bw-ev-para.para-added { border-color:#2a6a3a; background:#1a2d1e; }
 
@@ -1258,62 +1259,70 @@ function buildBioWorldTrials(c) {
         <p style="font-size:17px;line-height:1.7;">We will record this browser tab while you review the chart, so you can narrate over it afterward. The recording stays on your computer — only transcribed text is uploaded.</p>
 
         <div style="background:#1d3450;border-left:4px solid #5ab0f0;padding:16px 20px;border-radius:6px;margin:18px 0;">
-          <p style="margin:0 0 16px;font-size:16px;"><strong style="color:#5ab0f0;">Step 1 —</strong> Click the button to go fullscreen so browser chrome does not appear in the recording.</p>
-          <p style="margin:0;font-size:16px;color:#7a9ab0;"><strong style="color:#5ab0f0;">Step 2 —</strong> A second button will appear. Click it, then select <strong>this experiment's tab</strong> from the share dialog (not Window or Entire Screen).</p>
+          <p style="margin:0;font-size:16px;">Click the button below. Your browser will ask you to <strong>select a tab to share</strong> — choose <strong>this experiment's tab</strong> (not Window or Entire Screen). The case will then open in fullscreen automatically.</p>
         </div>
 
-        <button id="go_fs_${c.id}"
-          style="margin-top:6px;padding:14px 30px;background:#2b9fd6;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">
-          Step 1: Go Fullscreen
-        </button>
         <button id="rec_${c.id}"
-          style="margin-top:10px;padding:14px 30px;background:#27ae60;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;display:none;">
-          Step 2: Start Recording &amp; Open Case ${c.id}
+          style="margin-top:6px;padding:14px 30px;background:#27ae60;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">
+          Start Recording &amp; Open Case ${c.id}
         </button>
         <p id="err_${c.id}" style="color:#e05a5a;margin-top:10px;"></p>
       </div>`,
     on_load: function () {
-      const fsBtn  = document.getElementById("go_fs_"+c.id);
       const recBtn = document.getElementById("rec_"+c.id);
       const errEl  = document.getElementById("err_"+c.id);
 
-      // Step 1: Go fullscreen via the Fullscreen API (click = user gesture = works reliably)
-      fsBtn.addEventListener("click", async () => {
-        fsBtn.disabled = true;
-        try {
-          await document.documentElement.requestFullscreen();
-          // fullscreenchange will fire and reveal the recording button
-        } catch(fe) {
-          console.warn("requestFullscreen failed:", fe);
-          fsBtn.disabled = false;
-          errEl.textContent = "Fullscreen request was blocked. Try View → Enter Full Screen in your browser menu, then click Step 2 below.";
-          // Show Step 2 anyway so they are not stuck
-          recBtn.style.display = "block";
-        }
-      });
-
-      // fullscreenchange fires reliably when requestFullscreen() is used
-      function onFSChange() {
-        if (document.fullscreenElement) {
-          fsBtn.style.display = "none";
-          recBtn.style.display = "block";
-        } else {
-          // Exited fullscreen (e.g., Esc) — put Step 1 back
-          fsBtn.style.display = "block";
-          fsBtn.disabled = false;
-          recBtn.style.display = "none";
-        }
-      }
-      document.addEventListener("fullscreenchange", onFSChange);
-      document.addEventListener("webkitfullscreenchange", onFSChange);
-
-      // Step 2: Start recording (separate click = fresh user gesture for getDisplayMedia)
       recBtn.addEventListener("click", async () => {
         recBtn.disabled = true;
         try {
           const s = await startScreenRecording(c.id);
+          /* Enter fullscreen AFTER the share dialog has resolved —
+             avoids macOS Chrome exiting fullscreen to show the picker. */
+          try { await document.documentElement.requestFullscreen(); } catch(fe) {
+            /* Fullscreen not critical — log and continue */
+            console.warn("requestFullscreen after share failed:", fe);
+          }
           s.getVideoTracks()[0].addEventListener("ended", () => {
-            const sub = document.getElementById("bw_submit_"+c.id); if (sub) sub.click();
+            /* Screen share was stopped by the browser (tab switch, Esc, user revoked
+               permission, etc.). Do NOT auto-submit — that would advance the timeline
+               silently while the participant may still be mid-case. Instead show a
+               prominent warning and require an explicit decision. */
+            const sub = document.getElementById("bw_submit_"+c.id);
+            if (!sub || sub.dataset.submitted === "true") return;
+
+            const warn = document.createElement("div");
+            warn.id = "bw_stream_warn_"+c.id;
+            warn.style.cssText = "position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.82);";
+            warn.innerHTML = `
+              <div style="background:#1a2332;border:2px solid #e05a5a;border-radius:10px;padding:32px 36px;max-width:500px;text-align:left;font-family:'Segoe UI',Arial,sans-serif;color:#c8d8e8;">
+                <h3 style="color:#e05a5a;margin:0 0 14px;">Screen recording stopped</h3>
+                <p style="font-size:15px;line-height:1.7;margin:0 0 20px;">
+                  The screen recording was interrupted — this usually happens when you switch to another tab or window, or stop sharing from the browser toolbar.
+                </p>
+                <p style="font-size:15px;line-height:1.7;margin:0 0 24px;">
+                  <strong>Your work so far has not been lost.</strong>
+                  You can submit what you have completed, or return to the case to finish.
+                </p>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                  <button id="bw_warn_submit_${c.id}" style="padding:11px 22px;background:#c0392b;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer;">
+                    Submit case as-is
+                  </button>
+                  <button id="bw_warn_dismiss_${c.id}" style="padding:11px 22px;background:#1e4a6e;color:#5ab0f0;border:1px solid #2a6090;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer;">
+                    Return to case
+                  </button>
+                </div>
+              </div>`;
+            document.body.appendChild(warn);
+
+            document.getElementById("bw_warn_submit_"+c.id).addEventListener("click", () => {
+              warn.remove();
+              if (sub && sub.dataset.submitted !== "true") sub.click();
+            });
+            document.getElementById("bw_warn_dismiss_${c.id}").addEventListener("click", () => {
+              warn.remove();
+              /* Participant continues without a recording for the remainder.
+                 Partial gaze and click data collected before the drop is preserved. */
+            });
           });
           jsPsych.finishTrial();
         } catch (e) {
@@ -1756,6 +1765,7 @@ function buildBioWorldTrials(c) {
       /* ── Submit ── */
       const submitBtn = document.getElementById("bw_submit_"+c.id);
       if (submitBtn) submitBtn.addEventListener("click", async () => {
+        submitBtn.dataset.submitted = "true";   // prevents stream-ended handler from re-triggering
         clearInterval(timerInterval);
         const pickedPlan  = document.querySelector(`input[name="bw_plan_${c.id}"]:checked`);
         const pickedEquip = [...document.querySelectorAll("#bw_panel_plan_"+c.id+" input[type='checkbox']:checked")].map(cb=>cb.value);
@@ -2126,49 +2136,42 @@ const practiceStartRec = {
       <h2 style="color:#5ab0f0;">Practice Run</h2>
       <p style="font-size:17px;line-height:1.7;">This is a short practice — <strong>not</strong> a real OT case. It is just to help you get comfortable with the process.</p>
       <div style="background:#1d3450;border-left:4px solid #5fb0e0;padding:16px 20px;border-radius:6px;margin:16px 0;">
-        <p style="margin:0 0 14px;font-size:16px;"><strong style="color:#5ab0f0;">Step 1 —</strong> Click to go fullscreen so browser chrome does not appear in the recording.</p>
-        <p style="margin:0;font-size:16px;color:#7a9ab0;"><strong style="color:#5ab0f0;">Step 2 —</strong> A second button will appear. Click it, then select this experiment's tab from the share dialog.</p>
+        <p style="margin:0;font-size:16px;">Click the button below. Your browser will ask you to <strong>select a tab to share</strong> — choose <strong>this experiment's tab</strong>. The practice will then open in fullscreen automatically.</p>
       </div>
-      <button id="go_fs_pr"
-        style="margin-top:6px;padding:14px 28px;background:#2b9fd6;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">
-        Step 1: Go Fullscreen</button>
       <button id="rec_pr"
-        style="margin-top:10px;padding:14px 28px;background:#27ae60;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;display:none;">
-        Step 2: Start Practice Recording</button>
+        style="margin-top:6px;padding:14px 28px;background:#27ae60;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">
+        Start Practice Recording</button>
       <p id="err_pr" style="color:#e05a5a;margin-top:10px;"></p></div>`,
   on_load: function () {
-    const fsBtn  = document.getElementById("go_fs_pr");
     const recBtn = document.getElementById("rec_pr");
     const errEl  = document.getElementById("err_pr");
-
-    fsBtn.addEventListener("click", async () => {
-      fsBtn.disabled = true;
-      try {
-        await document.documentElement.requestFullscreen();
-      } catch(fe) {
-        console.warn("requestFullscreen failed:", fe);
-        fsBtn.disabled = false;
-        errEl.textContent = "Fullscreen was blocked — try View → Enter Full Screen, then click Step 2.";
-        recBtn.style.display = "block";
-      }
-    });
-
-    function onFSChange() {
-      if (document.fullscreenElement) {
-        fsBtn.style.display = "none"; recBtn.style.display = "block";
-      } else {
-        fsBtn.style.display = "block"; fsBtn.disabled = false; recBtn.style.display = "none";
-      }
-    }
-    document.addEventListener("fullscreenchange", onFSChange);
-    document.addEventListener("webkitfullscreenchange", onFSChange);
 
     recBtn.addEventListener("click", async () => {
       recBtn.disabled = true;
       try {
         const s = await startScreenRecording("practice");
+        /* Enter fullscreen after share dialog resolves */
+        try { await document.documentElement.requestFullscreen(); } catch(fe) {
+          console.warn("requestFullscreen after share failed (practice):", fe);
+        }
         s.getVideoTracks()[0].addEventListener("ended", () => {
-          const sub = document.getElementById("pr_submit"); if(sub) sub.click();
+          /* Practice: stream dropped — warn rather than auto-advance */
+          const sub = document.getElementById("pr_submit");
+          if (!sub || sub.dataset.submitted === "true") return;
+          const warn = document.createElement("div");
+          warn.style.cssText = "position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.82);";
+          warn.innerHTML = `
+            <div style="background:#1a2332;border:2px solid #e05a5a;border-radius:10px;padding:28px 32px;max-width:460px;font-family:'Segoe UI',Arial,sans-serif;color:#c8d8e8;">
+              <h3 style="color:#e05a5a;margin:0 0 12px;">Screen recording stopped</h3>
+              <p style="font-size:15px;line-height:1.7;margin:0 0 20px;">The recording was interrupted (you may have switched tabs). You can finish the practice and continue, or submit it now.</p>
+              <div style="display:flex;gap:12px;">
+                <button id="pr_warn_submit" style="padding:10px 20px;background:#c0392b;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer;">Submit practice</button>
+                <button id="pr_warn_dismiss" style="padding:10px 20px;background:#1e4a6e;color:#5ab0f0;border:1px solid #2a6090;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer;">Return to practice</button>
+              </div>
+            </div>`;
+          document.body.appendChild(warn);
+          document.getElementById("pr_warn_submit").addEventListener("click", () => { warn.remove(); if(sub && sub.dataset.submitted !== "true") sub.click(); });
+          document.getElementById("pr_warn_dismiss").addEventListener("click", () => { warn.remove(); });
         });
         jsPsych.finishTrial();
       } catch(e) {
@@ -2264,7 +2267,9 @@ const practiceCase = {
         btn.textContent="✓ Added"; renderPrEv();
       });
     });
-    document.getElementById("pr_submit").addEventListener("click", async()=>{
+    const prSubmitBtn = document.getElementById("pr_submit");
+    prSubmitBtn.addEventListener("click", async()=>{
+      prSubmitBtn.dataset.submitted = "true";
       clearInterval(tick);
       await stopScreenRecording("practice");
       if(document.fullscreenElement) try{await document.exitFullscreen();}catch(fe){}
