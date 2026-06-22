@@ -1411,6 +1411,64 @@ function gazeToTransitions(dwellEvents) {
    ===================================================================== */
 function buildBioWorldTrials(c) {
 
+  /* ── Pre-case navigation warning ── */
+  const navWarn = {
+    type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
+    stimulus:`<div style="max-width:660px;margin:7% auto;text-align:left;color:#c8d8e8;font-family:'Segoe UI',Arial,sans-serif;">
+        <h2 style="color:#5ab0f0;">Before You Begin: Case ${c.id}</h2>
+
+        <div style="background:#2a1a1a;border-left:4px solid #e05a5a;padding:18px 22px;border-radius:6px;margin:18px 0;">
+          <p style="margin:0 0 10px;font-weight:700;font-size:16px;color:#e8a0a0;">&#9888;&nbsp; Do not navigate away during the case</p>
+          <p style="margin:0;font-size:15px;line-height:1.7;">
+            Once the case begins, <strong>do not switch tabs, open other windows, or leave this browser.</strong>
+            The study records your eye movements and interactions continuously.
+            Switching away stops the screen recording and interrupts the data collection — there is no way to resume.
+          </p>
+        </div>
+
+        <div style="background:#141e2b;border:1px solid #2a3a4a;border-radius:6px;padding:16px 20px;margin:18px 0;font-size:15px;line-height:1.8;">
+          <p style="margin:0 0 8px;font-weight:700;color:#5ab0f0;">If you need to pause or step away:</p>
+          <ul style="margin:0;padding-left:20px;">
+            <li>Do so <strong>before</strong> clicking "Start Recording" on the next screen.</li>
+            <li>Once the case is open, plan to work through it without interruption.</li>
+            <li>Cases typically take 10–15 minutes each.</li>
+          </ul>
+        </div>
+
+        <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin-top:22px;padding:14px 18px;background:#1a2a3a;border:1px solid #2a5080;border-radius:6px;">
+          <input type="checkbox" id="nav_ack_${c.id}"
+            style="width:20px;height:20px;margin-top:2px;accent-color:#5ab0f0;cursor:pointer;flex-shrink:0;" />
+          <span style="font-size:15px;line-height:1.6;">
+            I understand. I will not switch tabs or navigate away once the case begins.
+            I am ready to work through this case without interruption.
+          </span>
+        </label>
+
+        <button id="nav_ack_btn_${c.id}" disabled
+          style="margin-top:18px;padding:13px 32px;background:#2a4060;color:#7a9ab0;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:not-allowed;transition:background 0.2s,color 0.2s;">
+          Continue to Case ${c.id} &rarr;
+        </button>
+      </div>`,
+    on_load: function () {
+      const ack = document.getElementById("nav_ack_"+c.id);
+      const btn = document.getElementById("nav_ack_btn_"+c.id);
+      ack.addEventListener("change", () => {
+        if (ack.checked) {
+          btn.disabled = false;
+          btn.style.background = "#1e5799";
+          btn.style.color = "#ffffff";
+          btn.style.cursor = "pointer";
+        } else {
+          btn.disabled = true;
+          btn.style.background = "#2a4060";
+          btn.style.color = "#7a9ab0";
+          btn.style.cursor = "not-allowed";
+        }
+      });
+      btn.addEventListener("click", () => { if (!btn.disabled) jsPsych.finishTrial(); });
+    }
+  };
+
   /* ── Screen-share consent + recording start ── */
   const startRec = {
     type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
@@ -1419,7 +1477,7 @@ function buildBioWorldTrials(c) {
         <p style="font-size:17px;line-height:1.7;">We will record this browser tab while you review the chart, so you can narrate over it afterward. The recording stays on your computer — only transcribed text is uploaded.</p>
 
         <div style="background:#1d3450;border-left:4px solid #5ab0f0;padding:16px 20px;border-radius:6px;margin:18px 0;">
-          <p style="margin:0;font-size:16px;">Click the button below. Your browser will ask you to <strong>select a tab to share</strong> — choose <strong>this experiment's tab</strong> (not Window or Entire Screen). The case will then open in fullscreen automatically.</p>
+          <p style="margin:0;font-size:16px;">Click the button below. The window will go <strong>fullscreen first</strong>, then your browser will ask you to <strong>select a tab to share</strong> — choose <strong>this experiment's tab</strong> (not Window or Entire Screen).</p>
         </div>
 
         <button id="rec_${c.id}"
@@ -1435,12 +1493,21 @@ function buildBioWorldTrials(c) {
       recBtn.addEventListener("click", async () => {
         recBtn.disabled = true;
         try {
-          const s = await startScreenRecording(c.id);
-          /* Enter fullscreen AFTER the share dialog has resolved —
-             avoids macOS Chrome exiting fullscreen to show the picker. */
+          /* Request fullscreen SYNCHRONOUSLY inside the user gesture before any
+             await — Chrome requires transient activation for requestFullscreen()
+             and it is consumed by the first await (getDisplayMedia). Requesting
+             here guarantees the gesture is still live.
+             On some platforms the share picker may momentarily exit fullscreen;
+             we re-enter it after getDisplayMedia resolves (second try block). */
           try { await document.documentElement.requestFullscreen(); } catch(fe) {
-            /* Fullscreen not critical — log and continue */
-            console.warn("requestFullscreen after share failed:", fe);
+            console.warn("requestFullscreen (pre-share) failed:", fe);
+          }
+          const s = await startScreenRecording(c.id);
+          /* Re-enter fullscreen if the share picker dismissed it (common on macOS). */
+          if (!document.fullscreenElement) {
+            try { await document.documentElement.requestFullscreen(); } catch(fe) {
+              console.warn("requestFullscreen (post-share re-enter) failed:", fe);
+            }
           }
           s.getVideoTracks()[0].addEventListener("ended", () => {
             /* Screen share was stopped by the browser (tab switch, Esc, user revoked
@@ -2458,7 +2525,7 @@ function buildBioWorldTrials(c) {
     }
   };
 
-  return [startRec, ehrTrial, rtaTrial];
+  return [navWarn, startRec, ehrTrial, rtaTrial];
 }
 
 /* =====================================================================
@@ -2496,13 +2563,65 @@ timeline.push({
    Uses BioWorld visual style. No hypothesis manager, no assessments,
    no library — just 2 evidence paragraphs + submit so participants
    learn the mechanics without rehearsing OT clinical reasoning. */
+const practiceNavWarn = {
+  type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
+  stimulus:`<div style="max-width:660px;margin:7% auto;text-align:left;color:#c8d8e8;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#5ab0f0;">Before the Practice Run</h2>
+
+      <div style="background:#2a1a1a;border-left:4px solid #e05a5a;padding:18px 22px;border-radius:6px;margin:18px 0;">
+        <p style="margin:0 0 10px;font-weight:700;font-size:16px;color:#e8a0a0;">&#9888;&nbsp; Do not navigate away once the practice begins</p>
+        <p style="margin:0;font-size:15px;line-height:1.7;">
+          The practice uses the same recording and eye-tracking setup as the real cases.
+          Once it starts, <strong>do not switch tabs, open other windows, or leave this browser.</strong>
+          Switching away will stop the recording and interrupt data collection.
+        </p>
+      </div>
+
+      <div style="background:#141e2b;border:1px solid #2a3a4a;border-radius:6px;padding:16px 20px;margin:18px 0;font-size:15px;line-height:1.8;">
+        <p style="margin:0 0 8px;font-weight:700;color:#5ab0f0;">The practice takes about 3–5 minutes.</p>
+        <p style="margin:0;">If you need a moment before starting, take it now — before clicking the button on the next screen.</p>
+      </div>
+
+      <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin-top:22px;padding:14px 18px;background:#1a2a3a;border:1px solid #2a5080;border-radius:6px;">
+        <input type="checkbox" id="nav_ack_pr"
+          style="width:20px;height:20px;margin-top:2px;accent-color:#5ab0f0;cursor:pointer;flex-shrink:0;" />
+        <span style="font-size:15px;line-height:1.6;">
+          I understand. I will not switch tabs or navigate away once the practice begins.
+        </span>
+      </label>
+
+      <button id="nav_ack_btn_pr" disabled
+        style="margin-top:18px;padding:13px 32px;background:#2a4060;color:#7a9ab0;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:not-allowed;transition:background 0.2s,color 0.2s;">
+        Continue to Practice &rarr;
+      </button>
+    </div>`,
+  on_load: function () {
+    const ack = document.getElementById("nav_ack_pr");
+    const btn = document.getElementById("nav_ack_btn_pr");
+    ack.addEventListener("change", () => {
+      if (ack.checked) {
+        btn.disabled = false;
+        btn.style.background = "#1e5799";
+        btn.style.color = "#ffffff";
+        btn.style.cursor = "pointer";
+      } else {
+        btn.disabled = true;
+        btn.style.background = "#2a4060";
+        btn.style.color = "#7a9ab0";
+        btn.style.cursor = "not-allowed";
+      }
+    });
+    btn.addEventListener("click", () => { if (!btn.disabled) jsPsych.finishTrial(); });
+  }
+};
+
 const practiceStartRec = {
   type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
   stimulus:`<div style="max-width:680px;margin:11% auto;text-align:left;color:#c8d8e8;font-family:'Segoe UI',Arial,sans-serif;">
       <h2 style="color:#5ab0f0;">Practice Run</h2>
       <p style="font-size:17px;line-height:1.7;">This is a short practice — <strong>not</strong> a real OT case. It is just to help you get comfortable with the process.</p>
       <div style="background:#1d3450;border-left:4px solid #5fb0e0;padding:16px 20px;border-radius:6px;margin:16px 0;">
-        <p style="margin:0;font-size:16px;">Click the button below. Your browser will ask you to <strong>select a tab to share</strong> — choose <strong>this experiment's tab</strong>. The practice will then open in fullscreen automatically.</p>
+        <p style="margin:0;font-size:16px;">Click the button below. The window will go <strong>fullscreen first</strong>, then your browser will ask you to <strong>select a tab to share</strong> — choose <strong>this experiment's tab</strong>.</p>
       </div>
       <button id="rec_pr"
         style="margin-top:6px;padding:14px 28px;background:#27ae60;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">
@@ -2515,10 +2634,17 @@ const practiceStartRec = {
     recBtn.addEventListener("click", async () => {
       recBtn.disabled = true;
       try {
-        const s = await startScreenRecording("practice");
-        /* Enter fullscreen after share dialog resolves */
+        /* Same gesture-timing fix as the case trials: request fullscreen
+           synchronously before the first await so transient activation is live. */
         try { await document.documentElement.requestFullscreen(); } catch(fe) {
-          console.warn("requestFullscreen after share failed (practice):", fe);
+          console.warn("requestFullscreen (pre-share, practice) failed:", fe);
+        }
+        const s = await startScreenRecording("practice");
+        /* Re-enter fullscreen if the share picker exited it. */
+        if (!document.fullscreenElement) {
+          try { await document.documentElement.requestFullscreen(); } catch(fe) {
+            console.warn("requestFullscreen (post-share re-enter, practice) failed:", fe);
+          }
         }
         s.getVideoTracks()[0].addEventListener("ended", () => {
           /* Practice: stream dropped — warn rather than auto-advance */
@@ -2798,7 +2924,7 @@ const practiceDebrief = {
     </div>`,
   choices:"ALL_KEYS"
 };
-[practiceStartRec, practiceCase, practiceRTA, practiceDebrief].forEach(t => timeline.push(t));
+[practiceNavWarn, practiceStartRec, practiceCase, practiceRTA, practiceDebrief].forEach(t => timeline.push(t));
 
 /* Case 1 */
 buildBioWorldTrials(BW_CASES[1]).forEach(t => timeline.push(t));
