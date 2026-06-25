@@ -547,7 +547,9 @@ const study = {
   sub_id_from_url: new URLSearchParams(location.search).get("sub_id"),
   experimental_condition: null,
   calibration: {},
+  calibration_viewport: null,
   screen_geometry: {},
+  unlinked_session: false,
   cases: {},
   user_agent: navigator.userAgent,
   started_at: new Date().toISOString()
@@ -636,15 +638,17 @@ function uploadCaseInBackground(caseId) {
     sub_id_from_url: study.sub_id_from_url,
     experimental_condition: study.experimental_condition,
     randomization_method: study.randomization_method,
+    unlinked_session: study.unlinked_session,
     calibration: study.calibration,
     screen_geometry: study.screen_geometry,
+    calibration_viewport: study.calibration_viewport,
     case_id: caseId, partial: true,
     "case": sanitiseCaseForUpload(study.cases[caseId] || {}),
     started_at: study.started_at,
     saved_at: new Date().toISOString()
   };
-  postToDataPipe(uniqueName("case"+caseId), payload)
-    .catch(e => console.error("Per-case OSF save (case "+caseId+") failed:", e));
+  return postToDataPipe(uniqueName("case"+caseId), payload)
+    .catch(e => { console.error("Per-case OSF save (case "+caseId+") failed:", e); return null; });
 }
 
 /* =====================================================================
@@ -660,8 +664,10 @@ var jsPsych = initJsPsych({
       sub_id_from_url: study.sub_id_from_url,
       experimental_condition: study.experimental_condition,
       randomization_method: study.randomization_method,
+    unlinked_session: study.unlinked_session,
       calibration: study.calibration,
       screen_geometry: study.screen_geometry,
+    calibration_viewport: study.calibration_viewport,
       cases: Object.fromEntries(
         Object.entries(study.cases).map(([k, v]) => [k, sanitiseCaseForUpload(v)])
       ),
@@ -722,6 +728,14 @@ const BLOCK_SEQ = ["control", "dashboard", "control", "dashboard", "dashboard", 
     study.experimental_condition = jsPsych.randomization
       .sampleWithoutReplacement(["dashboard","control"], 1)[0];
     study.randomization_method   = "simple_fallback";
+    /* A null/invalid sub_id means this session cannot be linked back to the
+       Qualtrics consent record or to a Phase-3 retest. Expected during manual
+       testing; a data-integrity problem if it happens in real collection.
+       Flag it explicitly so such sessions are filterable in analysis, and warn
+       in the console so the researcher notices during pilot runs. */
+    study.unlinked_session = true;
+    console.warn("No valid sub_id in URL — session is UNLINKED (not tied to Qualtrics). " +
+                 "This is fine for testing but should not occur for enrolled participants.");
   }
 })();
 
@@ -847,7 +861,17 @@ var calibration_instructions = {
     </div>`
 };
 
-var calibration_grid = { type: jsPsychWebgazerCalibrate, calibration_mode:"click", calibration_points: calib_points, point_size:26 };
+var calibration_grid = { type: jsPsychWebgazerCalibrate, calibration_mode:"click", calibration_points: calib_points, point_size:26,
+  on_finish: function() {
+    /* Record the viewport at calibration time. The per-case task viewport may
+       differ because Chrome's "sharing this tab" bar shrinks the viewport once
+       screen recording starts. Storing both lets us (a) detect the mismatch and
+       (b) correct or exclude in analysis. WebGazer's regression maps eye
+       features to client coordinates in THIS viewport; if the task viewport
+       differs, absolute gaze-y is biased by roughly the bar height. */
+    study.calibration_viewport = { w: window.innerWidth, h: window.innerHeight };
+  }
+};
 
 var validation_instructions = {
   type: jsPsychHtmlKeyboardResponse,
@@ -915,12 +939,17 @@ timeline.push({
          px2deg per participant, letting us express gaze error in degrees — the
          metric the WebGazer paper (Papoutsaki et al., 2016) reports (their
          best webcam accuracy was ~4.17° vs a commercial tracker). This is the
-         defensible basis for a pre-registered gaze-quality exclusion rule. */
+         defensible basis for a pre-registered gaze-quality exclusion rule.
+
+         IMPORTANT: the chinrest's px2deg is PIXELS PER DEGREE, so degrees =
+         pixels / px2deg (NOT pixels * px2deg). Verified against the same data:
+         win_width_deg * px2deg ≈ viewport width in px, which only holds if
+         px2deg is pixels-per-degree. */
       const px2deg = (study.screen_geometry && study.screen_geometry.px2deg) || null;
       let meanOffsetPx = null, meanOffsetDeg = null;
       if (offsets && offsets.length) {
         meanOffsetPx = offsets.reduce((s, o) => s + (o.r || 0), 0) / offsets.length;
-        if (px2deg != null) meanOffsetDeg = +(meanOffsetPx * px2deg).toFixed(3);
+        if (px2deg != null && px2deg > 0) meanOffsetDeg = +(meanOffsetPx / px2deg).toFixed(3);
       }
 
       study.calibration = {
@@ -1364,19 +1393,27 @@ function buildBioWorldUI(c) {
    ===================================================================== */
 function snapshotAOIRects(caseConfig, caseStart) {
   const rects = [];
+  const cid = caseConfig.id;
   caseConfig.aoi_map.forEach(aoi => {
+    /* Resolve the element for this AOI id. Tab-panel AOIs are suffixed with the
+       case id in the DOM (e.g. bw_panel_chart -> bw_panel_chart_2); always-present
+       left-panel AOIs use their bare id. Try both forms. */
     const el = document.getElementById(aoi.id) ||
-               document.getElementById("bw_panel_" + aoi.id.replace("bw_panel_","") + "_" + caseConfig.id);
+               document.getElementById(aoi.id + "_" + cid) ||
+               document.getElementById("bw_panel_" + aoi.id.replace("bw_panel_","") + "_" + cid);
     if (!el) return;
+    /* Skip elements that aren't currently rendered (hidden inactive tabs have
+       zero size). Only the visible tab's content has a valid rect at this
+       instant — which is exactly why we take a NEW snapshot on every tab switch
+       and time-window the matching, rather than relying on one static set. */
     const r = el.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) return;
     rects.push({
       id: aoi.id, emic: aoi.emic, etic: aoi.etic, label: aoi.label,
-      left:r.left, right:r.right, top:r.top, bottom:r.bottom,
-      snapshot_t: Math.round(performance.now() - caseStart)
+      left:r.left, right:r.right, top:r.top, bottom:r.bottom
     });
   });
-  return rects;
+  return { t: Math.round(performance.now() - caseStart), rects };
 }
 
 /* =====================================================================
@@ -1399,20 +1436,46 @@ function pointToAOI(x, y, rects) {
   return null;
 }
 
-function gazeToDwells(samples, rects) {
-  /* ── Pass 1: segment raw samples into candidate dwell visits ── */
+/* Given the array of time-stamped snapshots [{t, rects}, ...] (sorted ascending
+   by t), return the rect set that was valid at gaze-sample time `sampleT`.
+   The valid snapshot is the most recent one whose t <= sampleT. Before the
+   first snapshot, use the first one. This is the core of the fix: AOI geometry
+   changes when the participant switches tabs, so a gaze sample must be matched
+   against the layout that existed AT THAT MOMENT, not the end-of-case layout. */
+function rectsAtTime(snapshots, sampleT) {
+  if (!snapshots || !snapshots.length) return [];
+  let chosen = snapshots[0].rects;
+  for (const snap of snapshots) {
+    if (snap.t <= sampleT) chosen = snap.rects;
+    else break;
+  }
+  return chosen;
+}
+
+/* Resolve the rect (with label/emic/etic) for a given AOI id from the snapshot
+   valid at time `t`. Used when emitting a completed dwell so its label/codes
+   come from the layout that existed during the visit. */
+function lastValidRect(snapshots, aoiId, t) {
+  const rects = rectsAtTime(snapshots, t);
+  return rects.find(rr => rr.id === aoiId) || null;
+}
+
+function gazeToDwells(samples, snapshots) {
+  /* ── Pass 1: segment raw samples into candidate dwell visits ──
+     Each sample is matched against the time-valid AOI snapshot. */
   const visits = [];   // { aoi, label, emic, etic, start, end }
   let cur = null, curStart = null, lastT = null;
 
   const sorted = (samples || []).filter(s => s && s.x != null).sort((a, b) => a.t - b.t);
 
   for (const s of sorted) {
+    const rects = rectsAtTime(snapshots, s.t);
     const hit = pointToAOI(s.x, s.y, rects);
     const aoi = hit ? hit.id : null;
 
     if (aoi !== cur) {
       if (cur !== null && (lastT - curStart) >= CONFIG.MIN_DWELL_MS) {
-        const r = rects.find(rr => rr.id === cur);
+        const r = lastValidRect(snapshots, cur, lastT);
         visits.push({
           aoi:   cur,
           label: r ? (r.label || cur) : cur,
@@ -1428,7 +1491,7 @@ function gazeToDwells(samples, rects) {
   }
   /* Flush final visit */
   if (cur !== null && lastT !== null && (lastT - curStart) >= CONFIG.MIN_DWELL_MS) {
-    const r = rects.find(rr => rr.id === cur);
+    const r = lastValidRect(snapshots, cur, lastT);
     visits.push({
       aoi:   cur,
       label: r ? (r.label || cur) : cur,
@@ -1521,10 +1584,10 @@ function buildBioWorldTrials(c) {
           </ul>
         </div>
 
-        <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin-top:22px;padding:14px 18px;background:#1a2a3a;border:1px solid #a9c8e6;border-radius:6px;">
+        <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin-top:22px;padding:14px 18px;background:#eef4fb;border:1px solid #7fb0dc;border-radius:6px;">
           <input type="checkbox" id="nav_ack_${c.id}"
             style="width:20px;height:20px;margin-top:2px;accent-color:#1565c0;cursor:pointer;flex-shrink:0;" />
-          <span style="font-size:15px;line-height:1.6;">
+          <span style="font-size:15px;line-height:1.6;color:#16202e;">
             I understand. I will not switch tabs or navigate away once the case begins.
             I am ready to work through this case without interruption.
           </span>
@@ -1686,7 +1749,12 @@ function buildBioWorldTrials(c) {
       const evState     = [];   // { id, text, tag }
       const orderedAssessments = [];
       let   currentTab  = "problem";
-      let   aoiRects    = snapshotAOIRects(c, caseStart);
+      /* Accumulate every AOI-geometry snapshot with its timestamp, rather than
+         keeping only the latest. Each gaze sample is later matched against the
+         snapshot valid at its time (see gazeToDwells). The first snapshot is
+         taken after DOM settles (setTimeout below); a new one is pushed on every
+         tab switch. */
+      const aoiSnapshots = [];
       let   timerInterval;
       /* Track last mouse position so logClick can capture cursor coords */
       let _lastMouseX = null, _lastMouseY = null;
@@ -1848,7 +1916,7 @@ function buildBioWorldTrials(c) {
           currentTab = tab;
           visitedTabs.add(tab);
           checkSubmitReady();
-          aoiRects = snapshotAOIRects(c, caseStart);   // re-snapshot on tab change
+          aoiSnapshots.push(snapshotAOIRects(c, caseStart));   // re-snapshot on tab change
           const aoiMap = { problem:"bw_panel_problem", chart:"bw_panel_chart", library:"bw_panel_library", plan:"bw_panel_plan" };
           const emicMap = { problem:"NARRATIVE", chart:"SCIENTIFIC", library:"SCIENTIFIC", plan:"PRAGMATIC" };
           const eticMap = { problem:"TASK-DEF", chart:"ENACTING", library:"ENACTING", plan:"ENACTING" };
@@ -2045,6 +2113,18 @@ function buildBioWorldTrials(c) {
         logClick("bw_ev_panel","","MONITOR","evidence_cleared",null);
         renderEvidence();
         document.querySelectorAll("#bw_root_"+c.id+" .bw-ev-para").forEach(p=>p.classList.remove("para-added"));
+        /* Re-enable every "Send to Evidence" source button (assessment results
+           and library entries). Clearing the table previously left these stuck
+           on "✓ Added"/disabled, so a participant who cleared could never re-add
+           chart or library evidence. Restore their original enabled state. */
+        document.querySelectorAll("#bw_root_"+c.id+" .bw-result-send").forEach(b => {
+          b.disabled = false;
+          b.textContent = "+ Send to Evidence";
+        });
+        document.querySelectorAll("#bw_root_"+c.id+" .bw-lib-send").forEach(b => {
+          b.disabled = false;
+          b.textContent = "+ Send to Evidence";
+        });
       });
 
       /* ── Assessment cards ── */
@@ -2135,12 +2215,14 @@ function buildBioWorldTrials(c) {
         logClick("bw_panel_plan_"+c.id,"PRAGMATIC","ENACTING","case_submitted",pickedPlan?pickedPlan.value:"none");
         // Capture viewport dims while still in fullscreen (no browser chrome bias)
         const captureW = window.innerWidth, captureH = window.innerHeight;
+        /* Final snapshot at submit time so the last-active layout is captured. */
+        aoiSnapshots.push(snapshotAOIRects(c, caseStart));
         await stopScreenRecording(c.id);
         // Exit fullscreen before RTA replay screen
         if (document.fullscreenElement) try { await document.exitFullscreen(); } catch(fe) {}
         jsPsych.finishTrial({
           click_events:        clickEvents,
-          aoi_rects:           aoiRects,
+          aoi_snapshots:       aoiSnapshots,
           hypotheses:          hypState,
           evidence_table:      evState,
           assessments_ordered: orderedAssessments,
@@ -2153,7 +2235,7 @@ function buildBioWorldTrials(c) {
 
       /* initial AOI snapshot after DOM settles; also set initial hint text */
       setTimeout(() => {
-        aoiRects = snapshotAOIRects(c, caseStart);
+        aoiSnapshots.push(snapshotAOIRects(c, caseStart));
         checkSubmitReady();
       }, 300);
 
@@ -2179,12 +2261,31 @@ function buildBioWorldTrials(c) {
       study.cases[c.id].case_summary        = data.case_summary        || "";
       study.cases[c.id].choice              = data.selected_plan;      // dashboard compat
       study.cases[c.id].aoi_map             = c.aoi_map;
-      study.cases[c.id].aoi_rects           = data.aoi_rects           || [];
-      const dwells = gazeToDwells(data.webgazer_data||[], data.aoi_rects||[]);
+      /* Time-windowed AOI snapshots: array of {t, rects}. Each gaze sample is
+         matched against the snapshot valid at its timestamp, so tab switches no
+         longer cause the whole case's gaze to be matched against end-of-case
+         geometry. */
+      const snapshots = data.aoi_snapshots || [];
+      study.cases[c.id].aoi_snapshots       = snapshots;
+      const dwells = gazeToDwells(data.webgazer_data||[], snapshots);
       study.cases[c.id].gaze_events         = dwells;
       study.cases[c.id].gaze_transitions    = gazeToTransitions(dwells);
       study.cases[c.id]._gaze_raw           = data.webgazer_data       || [];
-      study.cases[c.id].viewport            = { w: data.captureW || window.innerWidth, h: data.captureH || window.innerHeight };
+
+      const taskVp = { w: data.captureW || window.innerWidth, h: data.captureH || window.innerHeight };
+      study.cases[c.id].viewport            = taskVp;
+      /* Record how much the task viewport differs from the calibration viewport.
+         The Chrome "sharing this tab" bar shrinks the task viewport relative to
+         calibration; a non-zero height delta quantifies the gaze-y bias for this
+         case so it can be corrected or used as an exclusion criterion in R.
+         Within-task gaze→AOI matching is unaffected (gaze and AOI rects share
+         the task viewport); this delta only affects calibration alignment. */
+      const calVp = study.calibration_viewport;
+      study.cases[c.id].viewport_vs_calibration = calVp
+        ? { calib_w: calVp.w, calib_h: calVp.h,
+            task_w: taskVp.w, task_h: taskVp.h,
+            dw: taskVp.w - calVp.w, dh: taskVp.h - calVp.h }
+        : null;
     }
   };
 
@@ -2193,7 +2294,7 @@ function buildBioWorldTrials(c) {
     type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
     stimulus:`<div style="position:fixed;inset:0;background:#000000;">
         <div style="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10;background:#ffffff;padding:10px 16px;border:2px solid #1565c0;border-radius:6px;text-align:center;display:flex;align-items:center;gap:14px;white-space:nowrap;">
-          <span><strong>Retrospective Review</strong> <span style="color:#c0392b;margin-left:6px;">&#0e6606; narrate your reasoning as you re-watch</span></span>
+          <span><strong>Retrospective Review</strong> <span style="color:#c0392b;margin-left:6px;">&#127908; narrate your reasoning as you re-watch</span></span>
           <select id="rta_mic_sel_${c.id}" style="font-size:12px;padding:3px 6px;border:1px solid #9fb3c4;border-radius:4px;color:#16263d;background:#f0f4f8;max-width:200px;" aria-label="Select microphone"></select>
         </div>
         <video id="rv_${c.id}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000000;" muted playsinline></video>
@@ -2210,7 +2311,7 @@ function buildBioWorldTrials(c) {
         </div>
         <!-- Mic level meter — shows participant mic is active and picking up voice -->
         <div style="position:fixed;bottom:60px;left:24px;z-index:11;display:flex;align-items:center;gap:8px;">
-          <span style="font-size:11px;color:#44545f;font-family:'Segoe UI',Arial,sans-serif;">&#0e6606;</span>
+          <span style="font-size:11px;color:#44545f;font-family:'Segoe UI',Arial,sans-serif;">&#127908;</span>
           <div style="width:80px;height:5px;background:rgba(255,255,255,0.15);border-radius:3px;overflow:hidden;">
             <div id="rta_mic_bar_${c.id}" style="height:100%;width:0%;background:#1e8e4e;border-radius:3px;transition:width 0.08s;"></div>
           </div>
@@ -2237,7 +2338,17 @@ function buildBioWorldTrials(c) {
       const rtaDur = document.getElementById("rta_dur_"+c.id);
       const ctx    = canvas.getContext("2d");
       /* _gaze_raw retained in study.cases for analytical export but not used in the RTA overlay */
-      const aoiRects = (study.cases[c.id] && study.cases[c.id].aoi_rects) || [];
+      /* Flatten all time-windowed AOI snapshots into one id->rect lookup for the
+         click-flash fallback (used only when a click event lacks x,y). Last
+         snapshot wins for a given id; positions here are approximate by design. */
+      const _snaps = (study.cases[c.id] && study.cases[c.id].aoi_snapshots) || [];
+      const aoiRects = [];
+      const _seen = {};
+      for (let i = _snaps.length - 1; i >= 0; i--) {
+        for (const r of (_snaps[i].rects || [])) {
+          if (!_seen[r.id]) { _seen[r.id] = true; aoiRects.push(r); }
+        }
+      }
 
       /* ── Progress bar helpers ── */
       function fmtTime(sec) {
@@ -2402,7 +2513,7 @@ function buildBioWorldTrials(c) {
                 const w = document.createElement("div");
                 w.id = "rta_silence_warn_"+c.id;
                 w.style.cssText = "position:fixed;bottom:110px;left:50%;transform:translateX(-50%);z-index:30;background:#fdf3dc;border:2px solid #b86e00;border-radius:8px;padding:12px 20px;color:#7a5c10;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;text-align:center;max-width:480px;line-height:1.6;";
-                w.innerHTML = "&#0e6606; <strong>No audio detected.</strong> Please speak clearly — or use the microphone selector above to switch to a different input device.";
+                w.innerHTML = "&#127908; <strong>No audio detected.</strong> Please speak clearly — or use the microphone selector above to switch to a different input device.";
                 document.body.appendChild(w);
                 silenceBannerEl = w;
                 /* Auto-dismiss when audio returns */
@@ -2648,30 +2759,57 @@ function buildBioWorldTrials(c) {
         /* Per-segment offsets are computed inside finalize (each device segment
            carries its own start time), so no single offset is needed here. */
 
-        /* Progress indicator — worker runs off main thread so UI stays responsive */
-        const progressDiv = document.createElement("div");
-        progressDiv.style.cssText = "position:fixed;bottom:80px;right:24px;z-index:20;background:#16263d;color:#1d2a38;padding:14px 20px;border-radius:8px;border:1px solid #1565c0;font-size:14px;font-family:'Segoe UI',Arial,sans-serif;max-width:340px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.4);";
-        progressDiv.innerHTML = `
-          <div style="font-weight:600;margin-bottom:6px;">&#0e6606; Transcribing narration…</div>
-          <div style="font-size:12px;color:#44545f;margin-bottom:10px;">Running locally. Page stays responsive.</div>
-          <div style="background:#e3e9f0;border-radius:4px;height:6px;overflow:hidden;">
-            <div id="trans_bar" style="background:#1565c0;height:100%;width:0%;transition:width .4s;border-radius:4px;"></div>
-          </div>
-          <div id="trans_pct" style="font-size:12px;color:#1565c0;margin-top:6px;">0%</div>`;
-        document.body.appendChild(progressDiv);
-
-        /* Poll worker progress into the bar */
-        const barInterval = setInterval(() => {
-          const bar = document.getElementById("trans_bar");
-          const pct = document.getElementById("trans_pct");
-          if (bar) bar.style.width = __modelProgress + "%";
-          if (pct) pct.textContent  = __modelProgress + "%";
-        }, 300);
+        /* ── Full-screen saving overlay ──
+           Transcription (Whisper) and the OSF upload can take 30–90s. A small
+           corner toast made the page look frozen. This full-screen overlay
+           covers the RTA screen, can't be missed, and shows an animated
+           indeterminate indicator plus stage text so participants know work is
+           ongoing. It stays up until BOTH transcription and upload finish. */
+        const overlay = document.createElement("div");
+        overlay.id = "bw_saving_overlay_"+c.id;
+        overlay.setAttribute("role","status");
+        overlay.setAttribute("aria-live","polite");
+        overlay.style.cssText = "position:fixed;inset:0;z-index:99999;background:#ffffff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Segoe UI',Arial,sans-serif;color:#16202e;";
+        overlay.innerHTML = `
+          <div style="width:min(520px,86vw);text-align:center;">
+            <div style="font-size:22px;font-weight:700;color:#1565c0;margin-bottom:10px;">Saving your responses…</div>
+            <div id="bw_save_stage_${c.id}" style="font-size:16px;color:#2a3744;line-height:1.6;margin-bottom:26px;">
+              Processing your narration. This can take up to a minute.
+            </div>
+            <!-- Indeterminate animated bar (we cannot measure true Whisper progress) -->
+            <div style="background:#e3e9f0;border-radius:6px;height:10px;overflow:hidden;position:relative;">
+              <div id="bw_save_bar_${c.id}" style="position:absolute;top:0;left:-40%;width:40%;height:100%;border-radius:6px;background:#1565c0;animation:bw-indeterminate 1.3s ease-in-out infinite;"></div>
+            </div>
+            <div style="font-size:14px;color:#566673;margin-top:22px;line-height:1.6;">
+              <strong>Please do not close this tab or navigate away.</strong><br>
+              Your audio and video are processed on your computer and never uploaded — only de-identified text and interaction data are saved.
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        /* Inject the keyframes once. */
+        if (!document.getElementById("bw_indeterminate_kf")) {
+          const kf = document.createElement("style");
+          kf.id = "bw_indeterminate_kf";
+          kf.textContent = "@keyframes bw-indeterminate{0%{left:-40%}50%{left:60%}100%{left:100%}}";
+          document.head.appendChild(kf);
+        }
+        const setStage = (msg) => {
+          const el = document.getElementById("bw_save_stage_"+c.id);
+          if (el) el.textContent = msg;
+        };
+        /* If the Whisper model is still downloading (can happen on the very
+           first case if warm-up hasn't finished), show real download % so the
+           wait is explained rather than mysterious. Stops once transcription
+           begins (setStage overwrites it). */
+        let modelPollActive = true;
+        const modelPoll = setInterval(() => {
+          if (!modelPollActive) { clearInterval(modelPoll); return; }
+          if (__modelProgress > 0 && __modelProgress < 100) {
+            setStage(`Preparing the speech processor (${__modelProgress}%)… first case only.`);
+          }
+        }, 400);
 
         const finalize = async (finalSegment) => {
-          clearInterval(barInterval);
-          if (progressDiv.parentNode) progressDiv.parentNode.removeChild(progressDiv);
-
           /* Build the full ordered list of recording segments: every device
              the participant used, in order, each a self-contained valid blob.
              In the common case (no mid-RTA switch) this is just one segment. */
@@ -2682,7 +2820,15 @@ function buildBioWorldTrials(c) {
 
           let segs = [];
           let fullTextParts = [];
+          let segIndex = 0;
+          modelPollActive = false;   // stop model-download polling; transcription stages take over
+          clearInterval(modelPoll);
+          setStage("Processing your narration. This can take up to a minute.");
           for (const seg of allSegments) {
+            segIndex++;
+            if (allSegments.length > 1) {
+              setStage(`Processing your narration (part ${segIndex} of ${allSegments.length})…`);
+            }
             /* Offset = where this device's recording sits relative to the video
                timeline. vStart is when the video began playing. */
             const segOffset = (seg.startWall - vStart) / 1000;
@@ -2691,8 +2837,8 @@ function buildBioWorldTrials(c) {
               const mapped = (out.chunks || []).map(ch => {
                 const [s, e] = ch.timestamp || [null, null];
                 return {
-                  start_ms: s == null ? null : Math.round((s + segOffset) * 1000),
-                  end_ms:   e == null ? null : Math.round((e + segOffset) * 1000),
+                  start_ms: s == null ? null : Math.max(0, Math.round((s + segOffset) * 1000)),
+                  end_ms:   e == null ? null : Math.max(0, Math.round((e + segOffset) * 1000)),
                   text: (ch.text || "").trim()
                 };
               }).filter(x => x.text);
@@ -2709,9 +2855,21 @@ function buildBioWorldTrials(c) {
                                                    (allSegments.length ? "[transcription error]" : "");
           study.cases[c.id].transcript_segments = segs;
           delete study.cases[c.id]._gaze_raw;
-          uploadCaseInBackground(c.id);
           cleanupAudioUI();   // clears meterTick, dismiss-check, silence banner, stops stream
           if (m.url){ try { URL.revokeObjectURL(m.url); } catch(e){} m.url=null; m.blob=null; }
+
+          /* Upload now, with the overlay still up, and WAIT for it so the
+             participant doesn't advance before their data is saved. */
+          setStage("Saving your data securely…");
+          try {
+            await uploadCaseInBackground(c.id);
+          } catch(uploadErr) {
+            console.error("Upload await error:", uploadErr);
+            /* Don't trap the participant on a failed background save — the final
+               end-of-study upload re-sends all cases. Continue. */
+          }
+          setStage("Done. Continuing…");
+          if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
           jsPsych.finishTrial();
         };
 
@@ -2789,10 +2947,10 @@ const practiceNavWarn = {
         <p style="margin:0;">If you need a moment before starting, take it now — before clicking the button on the next screen.</p>
       </div>
 
-      <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin-top:22px;padding:14px 18px;background:#1a2a3a;border:1px solid #a9c8e6;border-radius:6px;">
+      <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin-top:22px;padding:14px 18px;background:#eef4fb;border:1px solid #7fb0dc;border-radius:6px;">
         <input type="checkbox" id="nav_ack_pr"
           style="width:20px;height:20px;margin-top:2px;accent-color:#1565c0;cursor:pointer;flex-shrink:0;" />
-        <span style="font-size:15px;line-height:1.6;">
+        <span style="font-size:15px;line-height:1.6;color:#16202e;">
           I understand. I will not switch tabs or navigate away once the practice begins.
         </span>
       </label>
@@ -3085,7 +3243,7 @@ const practiceRTA = {
   stimulus:`<div style="position:fixed;inset:0;background:#000000;">
       <div style="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10;background:#ffffff;padding:10px 18px;border:2px solid #1565c0;border-radius:6px;text-align:center;max-width:640px;">
         <strong>Practice: Stimulated Recall</strong><br>
-        <span style="color:#c0392b;font-size:14px;">&#0e6606; Speak aloud — tell us what you were <em>thinking</em>, not just what you see.</span>
+        <span style="color:#c0392b;font-size:14px;">&#127908; Speak aloud — tell us what you were <em>thinking</em>, not just what you see.</span>
       </div>
       <video id="rv_pr" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000000;" muted playsinline></video>
       <button id="rd_pr" disabled style="position:fixed;bottom:24px;right:24px;z-index:10;padding:14px 28px;background:#5a6470;color:#ffffff;border:none;border-radius:6px;font-weight:700;">Done narrating</button>
@@ -3199,12 +3357,20 @@ timeline.push({
       const scored  = (pct != null)
         ? { pct: Math.round(pct), quality: pct >= 75 ? "good" : pct >= 55 ? "acceptable" : "poor" }
         : gazeQualityFromOffsets(offsets, 150);
+      const px2deg = (study.screen_geometry && study.screen_geometry.px2deg) || null;
+      let meanOffsetPx = null, meanOffsetDeg = null;
+      if (offsets && offsets.length) {
+        meanOffsetPx = offsets.reduce((s, o) => s + (o.r || 0), 0) / offsets.length;
+        if (px2deg != null && px2deg > 0) meanOffsetDeg = +(meanOffsetPx / px2deg).toFixed(3);
+      }
       study.calibration.mid_session = {
         calibration_pct:      scored.pct,
         calibration_pct_raw:  pct,
         average_offset:       offsets,
         gaze_quality:         scored.quality,
-        score_method:         pct != null ? "percent_in_roi" : "offset_fallback"
+        score_method:         pct != null ? "percent_in_roi" : "offset_fallback",
+        mean_offset_px:       meanOffsetPx != null ? Math.round(meanOffsetPx) : null,
+        mean_offset_deg:      meanOffsetDeg
       };
     }
   }]
