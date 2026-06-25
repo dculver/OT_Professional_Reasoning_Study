@@ -743,7 +743,18 @@ timeline.push({
 /* =====================================================================
    CALIBRATION
    ===================================================================== */
-timeline.push({ type: jsPsychInitializeMicrophone, error_message:"<p>Microphone access is required.</p>" });
+timeline.push({
+  type: jsPsychInitializeMicrophone,
+  error_message:"<p>Microphone access is required.</p>",
+  on_finish: function(data) {
+    /* Persist the device the participant chose here so every RTA trial can
+       reopen the SAME microphone. Without this, each RTA fell back to the OS
+       default input (often the internal mic) regardless of what was picked. */
+    if (data && data.device_id) {
+      study.mic_device_id = data.device_id;
+    }
+  }
+});
 timeline.push({
   type: jsPsychWebgazerInitCamera,
   instructions:"<p>Center your face in the webcam window. Sit ~50cm away, ensure even lighting, and keep your head still during the study.</p>",
@@ -2132,6 +2143,15 @@ function buildBioWorldTrials(c) {
         <button id="rd_${c.id}" disabled style="position:fixed;bottom:36px;right:24px;z-index:11;padding:14px 28px;background:#7f8c8d;color:#fff;border:none;border-radius:6px;font-weight:700;">Done narrating</button>
       </div>`,
     data: { trial_tag:"rta", case_id:c.id },
+    on_finish: function () {
+      /* Safety net: guarantee no audio meter interval or silence banner
+         survives into the next trial (recalibration), regardless of how the
+         RTA ended. The per-trial cleanup fn is stashed on window.__rtaCleanup. */
+      try { if (window.__rtaCleanup && window.__rtaCleanup[c.id]) window.__rtaCleanup[c.id](); } catch(e){}
+      /* Belt-and-suspenders: remove any stray silence banner by id. */
+      const stray = document.getElementById("rta_silence_warn_"+c.id);
+      if (stray && stray.parentNode) stray.parentNode.removeChild(stray);
+    },
     on_load: async function () {
       const m      = caseMedia[c.id];
       const video  = document.getElementById("rv_"+c.id);
@@ -2177,29 +2197,95 @@ function buildBioWorldTrials(c) {
 
       let aStream=null, aRec=null, aChunks=[], aStart=0, vStart=0;
       let meterCtx=null, meterTick=null;
+      /* Each completed device segment is sealed into its own valid blob with
+         the wall-clock time it started. Concatenating WebM chunks from two
+         different MediaRecorder sessions produces two glued containers that
+         decodeAudioData cannot read past the first — so we keep them separate
+         and transcribe each, merging segments by their individual offsets. */
+      let priorSegments = [];   // [{ blob, startWall }]
+      let segStartWall = 0;     // wall clock when the CURRENT recorder started
+      /* Track every interval and the silence banner at trial scope so they can
+         be force-cleaned when the trial ends — previously the dismiss-check
+         interval and the banner leaked into the next trial (recalibration). */
+      let dismissCheckInterval = null;
+      let silenceBannerEl = null;
+
+      /* Remove any silence banner and stop the dismiss-check loop. */
+      function clearSilenceBanner() {
+        if (dismissCheckInterval) { clearInterval(dismissCheckInterval); dismissCheckInterval = null; }
+        if (silenceBannerEl && silenceBannerEl.parentNode) silenceBannerEl.parentNode.removeChild(silenceBannerEl);
+        silenceBannerEl = null;
+        const stray = document.getElementById("rta_silence_warn_"+c.id);
+        if (stray && stray.parentNode) stray.parentNode.removeChild(stray);
+      }
+
+      /* Full audio-UI teardown — safe to call multiple times. Called both when
+         the participant clicks Done and from the trial's on_finish guard. */
+      function cleanupAudioUI() {
+        clearSilenceBanner();
+        if (meterTick) { clearInterval(meterTick); meterTick = null; }
+        if (meterCtx)  { try { meterCtx.close(); } catch(e){} meterCtx = null; }
+        if (aStream)   { try { aStream.getTracks().forEach(t => t.stop()); } catch(e){} }
+      }
+      /* Expose for the trial-level on_finish (set on the rtaTrial object). */
+      window.__rtaCleanup = window.__rtaCleanup || {};
+      window.__rtaCleanup[c.id] = cleanupAudioUI;
 
       /* ── Open a mic stream for a given deviceId (or default if null) ──
          Never pass echoCancellation:false to getUserMedia — on macOS this
          causes Bluetooth HFP re-negotiation that can drop the stream.
          Never call applyConstraints() afterwards either — same risk on some
          Bluetooth stacks. Instead, the resampling and amplitude normalization
-         in transcribeBlob handle audio quality regardless of device type. ── */
-      async function openMicStream(deviceId) {
-        if (aRec && aRec.state !== "inactive") { try { aRec.stop(); } catch(e){} }
+         in transcribeBlob handle audio quality regardless of device type.
+
+         `isSwitch` = true when the participant changes the device mid-RTA. In
+         that case we PRESERVE already-recorded audio (aChunks) by flushing the
+         old recorder's final data before tearing it down, and we keep the
+         original recording start time so the transcript offset stays correct.
+         Previously a switch discarded everything recorded before it. ── */
+      async function openMicStream(deviceId, isSwitch) {
+        /* Flush + stop the previous recorder. On a switch, SEAL its chunks into
+           a standalone valid blob (with the time it started) and push to
+           priorSegments so the audio is not lost and stays decodable. */
+        if (aRec && aRec.state !== "inactive") {
+          const sealedChunks = aChunks;
+          const sealedStart  = segStartWall;
+          const sealedMime   = aRec.mimeType || "audio/webm";
+          await new Promise(res => {
+            aRec.onstop = () => res();
+            try { aRec.requestData(); } catch(e){}
+            try { aRec.stop(); } catch(e){ res(); }
+          });
+          if (isSwitch && sealedChunks.length) {
+            priorSegments.push({
+              blob: new Blob(sealedChunks, { type: sealedMime }),
+              startWall: sealedStart
+            });
+          }
+        }
         if (aStream) aStream.getTracks().forEach(t => t.stop());
         if (meterTick) { clearInterval(meterTick); meterTick = null; }
         if (meterCtx)  { try { meterCtx.close(); } catch(e){} meterCtx = null; }
+        clearSilenceBanner();
 
         const constraints = deviceId
           ? { audio: { deviceId: { exact: deviceId } } }
           : { audio: true };
 
         aStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        /* On a fresh start, reset everything and anchor the offset clock.
+           On a switch, clear priorSegments only on a fresh start; the new
+           recorder always gets its own chunk buffer and its own start time. */
+        if (!isSwitch) {
+          priorSegments = [];
+          aStart = performance.now();   // anchor for transcript offset (first device)
+        }
         aChunks = [];
-        aRec    = new MediaRecorder(aStream);
+        segStartWall = performance.now();   // when THIS recorder begins
+        aRec = new MediaRecorder(aStream);
         aRec.ondataavailable = e => { if(e.data && e.data.size) aChunks.push(e.data); };
         aRec.start(1000);
-        aStart = performance.now();
 
         /* ── Mic level meter using RMS on time-domain data ──
            RMS is a true measure of audio energy and is sensitive to quiet
@@ -2221,7 +2307,12 @@ function buildBioWorldTrials(c) {
           const SILENCE_WARN_MS   = 8000;
 
           meterTick = setInterval(() => {
-            if (!micBar) { clearInterval(meterTick); return; }
+            if (!micBar || !document.body.contains(micBar)) {
+              /* Bar gone = trial DOM torn down. Force full cleanup so nothing
+                 leaks into the next trial. */
+              cleanupAudioUI();
+              return;
+            }
             analyser.getFloatTimeDomainData(timeBuf);
             const rms = Math.sqrt(timeBuf.reduce((s, v) => s + v*v, 0) / timeBuf.length);
             /* Scale: RMS of 0.02 (quiet speech) → ~40% width; 0.1 (normal) → ~100% */
@@ -2238,16 +2329,17 @@ function buildBioWorldTrials(c) {
                 w.style.cssText = "position:fixed;bottom:110px;left:50%;transform:translateX(-50%);z-index:30;background:#3a2800;border:2px solid #e0a040;border-radius:8px;padding:12px 20px;color:#f0d080;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;text-align:center;max-width:480px;line-height:1.6;";
                 w.innerHTML = "&#127908; <strong>No audio detected.</strong> Please speak clearly — or use the microphone selector above to switch to a different input device.";
                 document.body.appendChild(w);
+                silenceBannerEl = w;
                 /* Auto-dismiss when audio returns */
-                const dismissCheck = setInterval(() => {
+                dismissCheckInterval = setInterval(() => {
+                  if (!meterCtx) { clearInterval(dismissCheckInterval); dismissCheckInterval = null; return; }
                   analyser.getFloatTimeDomainData(timeBuf);
                   const r = Math.sqrt(timeBuf.reduce((s,v)=>s+v*v,0)/timeBuf.length);
                   if (r > SILENCE_THRESHOLD) {
-                    clearInterval(dismissCheck);
+                    clearInterval(dismissCheckInterval); dismissCheckInterval = null;
                     silenceWarnShown = false;
                     silentMs = 0;
-                    const el = document.getElementById("rta_silence_warn_"+c.id);
-                    if (el) el.remove();
+                    clearSilenceBanner();
                   }
                 }, 200);
               }
@@ -2276,8 +2368,18 @@ function buildBioWorldTrials(c) {
             if (activeId) sel.value = activeId;
           }
           sel.addEventListener("change", async () => {
-            try { await openMicStream(sel.value); }
-            catch(e) { console.error("mic switch failed:", e); }
+            sel.disabled = true;
+            try {
+              /* isSwitch=true preserves audio already recorded on the old device. */
+              await openMicStream(sel.value, true);
+            } catch(e) {
+              console.error("mic switch failed:", e);
+              /* If the chosen device fails, fall back to default so recording
+                 continues rather than leaving a dead recorder. */
+              try { await openMicStream(null, true); } catch(e2) { console.error("fallback mic failed:", e2); }
+            } finally {
+              sel.disabled = false;
+            }
           });
         } catch(e) {
           if (sel) sel.style.display = "none";
@@ -2285,7 +2387,15 @@ function buildBioWorldTrials(c) {
       }
 
       try {
-        await openMicStream(null);   // open with default device
+        /* Open the device chosen at study start. If it is no longer available
+           (e.g. AirPods disconnected), getUserMedia with exact deviceId throws
+           OverconstrainedError — we catch that below and retry with default. */
+        try {
+          await openMicStream(study.mic_device_id || null, false);
+        } catch(constraintErr) {
+          console.warn("Saved mic unavailable, falling back to default:", constraintErr);
+          await openMicStream(null, false);
+        }
         await populateMicSelector(); // then enumerate and show selector
       } catch(e) {
         console.error("mic failed", e);
@@ -2460,7 +2570,8 @@ function buildBioWorldTrials(c) {
       done.addEventListener("click", async () => {
         done.disabled=true; done.textContent="Saving…";
         try { video.pause(); } catch(e){}
-        const offset=(aStart-vStart)/1000;
+        /* Per-segment offsets are computed inside finalize (each device segment
+           carries its own start time), so no single offset is needed here. */
 
         /* Progress indicator — worker runs off main thread so UI stays responsive */
         const progressDiv = document.createElement("div");
@@ -2482,41 +2593,62 @@ function buildBioWorldTrials(c) {
           if (pct) pct.textContent  = __modelProgress + "%";
         }, 300);
 
-        const finalize = async (blob) => {
+        const finalize = async (finalSegment) => {
           clearInterval(barInterval);
           if (progressDiv.parentNode) progressDiv.parentNode.removeChild(progressDiv);
 
+          /* Build the full ordered list of recording segments: every device
+             the participant used, in order, each a self-contained valid blob.
+             In the common case (no mid-RTA switch) this is just one segment. */
+          const allSegments = priorSegments.slice();
+          if (finalSegment && finalSegment.blob && finalSegment.blob.size) {
+            allSegments.push(finalSegment);
+          }
+
           let segs = [];
-          if (blob && blob.size) {
+          let fullTextParts = [];
+          for (const seg of allSegments) {
+            /* Offset = where this device's recording sits relative to the video
+               timeline. vStart is when the video began playing. */
+            const segOffset = (seg.startWall - vStart) / 1000;
             try {
-              const out = await transcribeBlob(blob);   /* non-blocking — runs in worker */
-              segs = (out.chunks || []).map(ch => {
+              const out = await transcribeBlob(seg.blob);
+              const mapped = (out.chunks || []).map(ch => {
                 const [s, e] = ch.timestamp || [null, null];
                 return {
-                  start_ms: s == null ? null : Math.round((s + offset) * 1000),
-                  end_ms:   e == null ? null : Math.round((e + offset) * 1000),
+                  start_ms: s == null ? null : Math.round((s + segOffset) * 1000),
+                  end_ms:   e == null ? null : Math.round((e + segOffset) * 1000),
                   text: (ch.text || "").trim()
                 };
               }).filter(x => x.text);
-              study.cases[c.id].transcript_full = out.text.trim();
+              segs = segs.concat(mapped);
+              if (out.text && out.text.trim()) fullTextParts.push(out.text.trim());
             } catch(transcribeErr) {
-              console.error("Transcription failed:", transcribeErr);
-              study.cases[c.id].transcript_full = "[transcription error]";
+              console.error("Transcription failed for a segment:", transcribeErr);
             }
           }
+          /* Order merged segments chronologically by start time. */
+          segs.sort((a, b) => (a.start_ms ?? 0) - (b.start_ms ?? 0));
+
+          study.cases[c.id].transcript_full     = fullTextParts.join(" ").trim() ||
+                                                   (allSegments.length ? "[transcription error]" : "");
           study.cases[c.id].transcript_segments = segs;
           delete study.cases[c.id]._gaze_raw;
           uploadCaseInBackground(c.id);
-          if (meterTick) clearInterval(meterTick);
-        if (meterCtx)  try { meterCtx.close(); } catch(e){}
-        if (aStream) try { aStream.getTracks().forEach(t => t.stop()); } catch(e){}
+          cleanupAudioUI();   // clears meterTick, dismiss-check, silence banner, stops stream
           if (m.url){ try { URL.revokeObjectURL(m.url); } catch(e){} m.url=null; m.blob=null; }
           jsPsych.finishTrial();
         };
 
+        /* Stop the active recorder, seal its chunks as the final segment, then
+           transcribe all segments together. */
         if (aRec && aRec.state !== "inactive") {
-          aRec.onstop  = () => finalize(new Blob(aChunks, { type: aRec.mimeType || "audio/webm" }));
+          const activeChunks = aChunks;
+          const activeStart  = segStartWall;
+          const activeMime   = aRec.mimeType || "audio/webm";
+          aRec.onstop  = () => finalize({ blob: new Blob(activeChunks, { type: activeMime }), startWall: activeStart });
           aRec.onerror = () => finalize(null);
+          try { aRec.requestData(); } catch(e){}
           try { aRec.stop(); } catch(e) { finalize(null); }
         } else {
           finalize(null);
@@ -2889,7 +3021,16 @@ const practiceRTA = {
     video.src=m.url;
     let aStream=null,aRec=null,aChunks=[];
     try{
-      aStream=await navigator.mediaDevices.getUserMedia({audio:true});
+      /* Use the same device chosen at study start so the participant exercises
+         the real mic path during practice. Falls back to default if unavailable. */
+      const micConstraints = study.mic_device_id
+        ? { audio: { deviceId: { exact: study.mic_device_id } } }
+        : { audio: true };
+      try {
+        aStream = await navigator.mediaDevices.getUserMedia(micConstraints);
+      } catch(devErr) {
+        aStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
       aRec=new MediaRecorder(aStream);
       aRec.ondataavailable=e=>{if(e.data&&e.data.size)aChunks.push(e.data);};
       aRec.start(1000);
