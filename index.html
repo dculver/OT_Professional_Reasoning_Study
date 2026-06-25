@@ -18,6 +18,7 @@
   <script src="js/plugin-webgazer-init-calibrate.js"></script>
   <script src="js/plugin-webgazer-validate.js"></script>
   <script src="js/plugin-initialize-microphone.js"></script>
+  <script src="js/plugin-virtual-chinrest.js"></script>
 
   <!-- Whisper transcription via inline Blob Worker (no external file needed, no CORS issues) -->
   <script>
@@ -546,6 +547,7 @@ const study = {
   sub_id_from_url: new URLSearchParams(location.search).get("sub_id"),
   experimental_condition: null,
   calibration: {},
+  screen_geometry: {},
   cases: {},
   user_agent: navigator.userAgent,
   started_at: new Date().toISOString()
@@ -635,6 +637,7 @@ function uploadCaseInBackground(caseId) {
     experimental_condition: study.experimental_condition,
     randomization_method: study.randomization_method,
     calibration: study.calibration,
+    screen_geometry: study.screen_geometry,
     case_id: caseId, partial: true,
     "case": sanitiseCaseForUpload(study.cases[caseId] || {}),
     started_at: study.started_at,
@@ -658,6 +661,7 @@ var jsPsych = initJsPsych({
       experimental_condition: study.experimental_condition,
       randomization_method: study.randomization_method,
       calibration: study.calibration,
+      screen_geometry: study.screen_geometry,
       cases: Object.fromEntries(
         Object.entries(study.cases).map(([k, v]) => [k, sanitiseCaseForUpload(v)])
       ),
@@ -758,7 +762,7 @@ timeline.push({
 timeline.push({
   type: jsPsychWebgazerInitCamera,
   instructions:"<p>Center your face in the webcam window. Sit ~50cm away, ensure even lighting, and keep your head still during the study.</p>",
-  button_text:"Continue to calibration",
+  button_text:"Continue",
   on_load: function() {
     warmUpTranscriber();
     try {
@@ -768,6 +772,57 @@ timeline.push({
          quickly rather than being diluted by old calibration data. */
       webgazer.setRegression("weightedRidge");
     } catch(e) {}
+  }
+});
+
+/* =====================================================================
+   VIRTUAL CHINREST  (Li, Joo, Yeatman, & Reinecke, 2020)
+   Measures each participant's physical screen scale (px-to-mm) and
+   viewing distance via a credit-card resize + blind-spot task. This
+   converts gaze error from pixels — meaningless across the heterogeneous
+   monitors in a remote cluster sample — into degrees of visual angle,
+   the only cross-device-defensible accuracy metric.
+
+   CRITICAL: resize_units:"none" — the chinrest MUST NOT rescale page
+   content. Resizing would shift the BioWorld layout and invalidate the
+   AOI pixel coordinates that gaze data is mapped to. We measure only.
+
+   blindspot_reps must be > 0 or px2deg / view_dist_mm are never computed.
+   ===================================================================== */
+timeline.push({
+  type: jsPsychVirtualChinrest,
+  blindspot_reps: 5,
+  resize_units: "none",          // measure only — never rescale the page
+  item_path: null,               // solid-colour card (no external image dependency)
+  adjustment_prompt: `
+    <div style="max-width:560px;margin:0 auto;color:#16263d;font-family:'Segoe UI',Arial,sans-serif;text-align:left;">
+      <p style="font-size:16px;line-height:1.6;">Hold a <strong>credit card, driver's license, or any card of that size</strong> up to the screen.
+      Click and drag the lower-right corner of the image until it is exactly the same size as your card.</p>
+      <p style="font-size:14px;color:#555;">No card handy? A standard card is 85.6&nbsp;mm wide (3.37&nbsp;inches) — you can measure with a ruler instead.</p>
+    </div>`,
+  blindspot_prompt: `
+    <div style="max-width:560px;margin:0 auto;color:#16263d;font-family:'Segoe UI',Arial,sans-serif;text-align:left;">
+      <p style="font-size:16px;line-height:1.6;">Now we will quickly measure how far you are sitting from the screen.</p>
+      <ul style="font-size:15px;line-height:1.9;padding-left:20px;">
+        <li>Put your <strong>left hand on the space bar</strong>.</li>
+        <li>Cover your <strong>right eye</strong> with your right hand.</li>
+        <li>With your left eye, <strong>focus on the black square</strong> and keep focusing on it.</li>
+        <li>A red ball will move left and disappear. Press the <strong>space bar the moment it disappears</strong>.</li>
+      </ul>
+      <p style="font-size:15px;">Press the space bar when you are ready to begin.</p>
+    </div>`,
+  on_finish: function(data) {
+    /* Persist the physical-geometry measurements so the WebGazer validation
+       (next) can express its error in degrees of visual angle. */
+    study.screen_geometry = {
+      px2deg:        data.px2deg        != null ? data.px2deg        : null,
+      px2mm:         data.px2mm         != null ? data.px2mm         : null,
+      view_dist_mm:  data.view_dist_mm  != null ? data.view_dist_mm  : null,
+      win_width_deg: data.win_width_deg,
+      win_height_deg:data.win_height_deg,
+      scale_factor:  data.scale_factor,
+      measured:      data.px2deg != null   // false if participant's browser blocked the blindspot task
+    };
   }
 });
 
@@ -853,13 +908,33 @@ timeline.push({
       const scored = (pct != null)
         ? { pct: Math.round(pct), quality: pct >= 75 ? "good" : pct >= 55 ? "acceptable" : "poor" }
         : gazeQualityFromOffsets(offsets, 150);
+
+      /* ── Convert pixel error to degrees of visual angle ──
+         Pixel error is not comparable across the heterogeneous monitors in a
+         remote cluster sample. The virtual chinrest (Li et al., 2020) gives us
+         px2deg per participant, letting us express gaze error in degrees — the
+         metric the WebGazer paper (Papoutsaki et al., 2016) reports (their
+         best webcam accuracy was ~4.17° vs a commercial tracker). This is the
+         defensible basis for a pre-registered gaze-quality exclusion rule. */
+      const px2deg = (study.screen_geometry && study.screen_geometry.px2deg) || null;
+      let meanOffsetPx = null, meanOffsetDeg = null;
+      if (offsets && offsets.length) {
+        meanOffsetPx = offsets.reduce((s, o) => s + (o.r || 0), 0) / offsets.length;
+        if (px2deg != null) meanOffsetDeg = +(meanOffsetPx * px2deg).toFixed(3);
+      }
+
       study.calibration = {
         calibration_pct:      scored.pct,
         calibration_pct_raw:  pct,          // preserve raw value (may be null)
         average_offset:       offsets,
         roi_radius_used:      150,
         gaze_quality:         scored.quality,
-        score_method:         pct != null ? "percent_in_roi" : "offset_fallback"
+        score_method:         pct != null ? "percent_in_roi" : "offset_fallback",
+        /* Visual-angle accuracy — the cross-device-comparable metric. */
+        mean_offset_px:       meanOffsetPx != null ? Math.round(meanOffsetPx) : null,
+        mean_offset_deg:      meanOffsetDeg,           // null if chinrest was skipped/blocked
+        px2deg_used:          px2deg,
+        view_dist_mm:         (study.screen_geometry && study.screen_geometry.view_dist_mm) || null
       };
     }
   }]
