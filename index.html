@@ -174,22 +174,22 @@
     }
 
     /* ── jsPsych global overrides ── */
-    .jspsych-display-element, .jspsych-content { color:#dbe6f0; }
+    .jspsych-display-element, .jspsych-content { color:#16202e; }
     /* jsPsych centers stimulus content by default — override for the BioWorld interface */
     .jspsych-display-element { text-align:left; }
     .jspsych-content h1,.jspsych-content h2,.jspsych-content h3,
     .jspsych-content h4,.jspsych-content p,.jspsych-content label,
-    .jspsych-content span,.jspsych-survey-text-question label { color:#dbe6f0; }
+    .jspsych-content span,.jspsych-survey-text-question label { color:#16202e; }
     .jspsych-content input[type="text"],.jspsych-content textarea,
     .jspsych-content select { color:#16263d; background:#ffffff; }
-    .jspsych-btn { color:#16263d; background:#e8eef5; border:1px solid #b8c6d6; }
-    .jspsych-btn:hover { background:#ffffff; }
+    .jspsych-btn { color:#16263d; background:#e8eef5; border:1px solid #9fb3c4; }
+    .jspsych-btn:hover { background:#d4deea; }
 
     /* ── Calibration dots ── */
     .jspsych-webgazer-calibrate-point,.jspsych-webgazer-validate-point,
     .calibration-point,.validation-point,
     div[id^="calibration-point"],div[id^="validation-point"],#webgazerGazeDot {
-      background-color:#ffd400 !important;
+      background-color:#a87c00 !important;
       border:2px solid #16263d !important;
       box-shadow:0 0 8px 2px rgba(255,212,0,0.8) !important;
       opacity:1 !important;
@@ -203,99 +203,99 @@
 
     .bw-root {
       width:100vw; height:100vh; display:flex; flex-direction:column;
-      background:#1a2332; color:#e8edf3;
+      background:#ffffff; color:#16202e;
       font-family:'Segoe UI',system-ui,sans-serif; overflow:hidden;
     }
 
     /* Top nav */
     .bw-topbar {
-      background:#0f1923; border-bottom:1px solid #2a3a4a;
+      background:#e3e9f0; border-bottom:1px solid #d0d9e3;
       padding:0 16px; height:48px; display:flex; align-items:center; gap:0; flex-shrink:0;
     }
     .bw-tab {
       height:48px; padding:0 20px; background:transparent; border:none;
-      border-bottom:3px solid transparent; color:#7a8fa0;
+      border-bottom:3px solid transparent; color:#566673;
       font-size:13px; font-weight:500; cursor:pointer;
       letter-spacing:.04em; text-transform:uppercase;
       transition:color .15s,border-color .15s;
     }
-    .bw-tab:hover { color:#c8d8e8; }
-    .bw-tab.active { color:#5ab0f0; border-bottom-color:#5ab0f0; }
-    .bw-patient-label { margin-left:auto; font-size:12px; color:#8aaabb; letter-spacing:.06em; }
+    .bw-tab:hover { color:#1d2a38; }
+    .bw-tab.active { color:#1565c0; border-bottom-color:#1565c0; }
+    .bw-patient-label { margin-left:auto; font-size:12px; color:#44545f; letter-spacing:.06em; }
 
     /* Main layout */
     .bw-main { display:flex; flex:1; overflow:hidden; }
 
     /* Left panel */
     .bw-left {
-      width:280px; flex-shrink:0; background:#141e2b;
-      border-right:1px solid #2a3a4a; display:flex; flex-direction:column; overflow:hidden;
+      width:280px; flex-shrink:0; background:#f2f5f9;
+      border-right:1px solid #d0d9e3; display:flex; flex-direction:column; overflow:hidden;
     }
-    .bw-panel-section { border-bottom:1px solid #2a3a4a; padding:12px 14px; }
+    .bw-panel-section { border-bottom:1px solid #d0d9e3; padding:12px 14px; }
     .bw-panel-label {
       font-size:11px; font-weight:600; letter-spacing:.1em;
-      text-transform:uppercase; color:#7a9ab0; margin-bottom:8px;
+      text-transform:uppercase; color:#566673; margin-bottom:8px;
     }
 
     /* Hypothesis manager */
     .bw-hyp-list { display:flex; flex-direction:column; gap:6px; }
     .bw-hyp-row {
       display:flex; align-items:center; gap:8px;
-      background:#1e2d3d; border:1px solid #2a3a4a;
+      background:#f4f7fa; border:1px solid #d0d9e3;
       border-radius:6px; padding:7px 10px;
     }
-    .bw-hyp-name { flex:1; font-size:13px; color:#c8d8e8; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .bw-hyp-rm { width:24px; height:24px; background:transparent; border:none; color:#7a9ab0; cursor:pointer; font-size:16px; line-height:1; padding:0; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
-    .bw-hyp-rm:hover { color:#e05a5a; }
+    .bw-hyp-name { flex:1; font-size:13px; color:#1d2a38; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .bw-hyp-rm { width:24px; height:24px; background:transparent; border:none; color:#566673; cursor:pointer; font-size:16px; line-height:1; padding:0; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+    .bw-hyp-rm:hover { color:#c0392b; }
     .bw-hyp-input-row { display:flex; gap:6px; margin-top:8px; }
     .bw-hyp-input {
-      flex:1; background:#1e2d3d; border:1px solid #2a3a4a; border-radius:5px;
-      color:#c8d8e8; font-size:12px; padding:5px 8px;
+      flex:1; background:#f4f7fa; border:1px solid #7790a5; border-radius:5px;
+      color:#1d2a38; font-size:12px; padding:5px 8px;
     }
-    .bw-hyp-input::placeholder { color:#4a6070; }
-    .bw-hyp-input:focus { border-color:#5ab0f0; }
+    .bw-hyp-input::placeholder { color:#8a9bab; }
+    .bw-hyp-input:focus { border-color:#1565c0; }
     .bw-hyp-add {
-      background:#1e4a6e; border:1px solid #2a6090; border-radius:5px;
-      color:#5ab0f0; font-size:12px; padding:5px 10px; cursor:pointer;
+      background:#d3e4f5; border:1px solid #7fb0dc; border-radius:5px;
+      color:#1565c0; font-size:12px; padding:5px 10px; cursor:pointer;
     }
-    .bw-hyp-add:hover { background:#2a5a80; }
+    .bw-hyp-add:hover { background:#bcd6ee; }
 
     /* Belief meter */
     .bw-belief-select {
-      width:100%; background:#1e2d3d; border:1px solid #2a3a4a; border-radius:5px;
-      color:#c8d8e8; font-size:12px; padding:5px 8px; margin-bottom:10px;
+      width:100%; background:#f4f7fa; border:1px solid #7790a5; border-radius:5px;
+      color:#1d2a38; font-size:12px; padding:5px 8px; margin-bottom:10px;
     }
-    .bw-belief-select:focus { border-color:#5ab0f0; }
+    .bw-belief-select:focus { border-color:#1565c0; }
     .bw-belief-slider {
       width:100%; -webkit-appearance:none; appearance:none; height:4px; border-radius:2px;
-      background:linear-gradient(to right,#e05a5a 0%,#e0a040 35%,#4a9a60 60%,#5ab0f0 100%);
+      background:linear-gradient(to right,#c0392b 0%,#b86e00 35%,#16692f 60%,#1565c0 100%);
     }
     .bw-belief-slider::-webkit-slider-thumb {
       -webkit-appearance:none; width:18px; height:18px; border-radius:50%;
-      background:#c8d8e8; cursor:pointer; border:2px solid #1a2332;
+      background:#1d2a38; cursor:pointer; border:2px solid #ffffff;
     }
     .bw-belief-labels { display:flex; justify-content:space-between; margin-top:4px; }
-    .bw-belief-labels span { font-size:11px; color:#7a9ab0; }
-    .bw-belief-value { text-align:center; font-size:12px; color:#5ab0f0; margin-top:4px; font-weight:500; }
+    .bw-belief-labels span { font-size:11px; color:#566673; }
+    .bw-belief-value { text-align:center; font-size:12px; color:#1565c0; margin-top:4px; font-weight:500; }
 
     /* Evidence table */
     .bw-evidence-section { flex:1; overflow-y:auto; padding:12px 14px; min-height:0; }
     .bw-ev-list { display:flex; flex-direction:column; gap:5px; }
     .bw-ev-item {
-      background:#1e2d3d; border:1px solid #2a3a4a; border-left:3px solid #4a9a60;
-      border-radius:5px; padding:6px 10px; font-size:12px; color:#a0b8c8;
+      background:#f4f7fa; border:1px solid #d0d9e3; border-left:3px solid #16692f;
+      border-radius:5px; padding:6px 10px; font-size:12px; color:#33424f;
       display:flex; align-items:flex-start; gap:8px;
     }
     .bw-ev-tag {
       flex-shrink:0; font-size:10px; padding:1px 5px; border-radius:3px;
       font-weight:600; letter-spacing:.04em; text-transform:uppercase; margin-top:1px;
     }
-    .tag-patient { background:#1e3d5a; color:#8acfff; }
-    .tag-assess  { background:#2a3a1a; color:#a0d060; }
-    .tag-obs     { background:#3a2a1a; color:#f0c060; }
-    .bw-ev-rm { margin-left:auto; background:transparent; border:none; color:#7a9ab0; cursor:pointer; font-size:14px; line-height:1; flex-shrink:0; min-width:24px; min-height:24px; display:flex; align-items:center; justify-content:center; }
-    .bw-ev-rm:hover { color:#e05a5a; }
-    .bw-ev-empty { font-size:12px; color:#7a9ab0; font-style:italic; padding:8px 0; }
+    .tag-patient { background:#d3e4f5; color:#0d5aa7; }
+    .tag-assess  { background:#dcefc4; color:#2f6618; }
+    .tag-obs     { background:#f3e4c4; color:#6e5210; }
+    .bw-ev-rm { margin-left:auto; background:transparent; border:none; color:#566673; cursor:pointer; font-size:14px; line-height:1; flex-shrink:0; min-width:24px; min-height:24px; display:flex; align-items:center; justify-content:center; }
+    .bw-ev-rm:hover { color:#c0392b; }
+    .bw-ev-empty { font-size:12px; color:#566673; font-style:italic; padding:8px 0; }
 
     /* Content area */
     .bw-content { flex:1; overflow-y:auto; padding:24px 28px; min-width:0; text-align:left; }
@@ -307,23 +307,23 @@
     /* Patient header */
     .bw-patient-header {
       display:flex; align-items:flex-start; gap:20px;
-      margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid #2a3a4a;
+      margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid #d0d9e3;
     }
     .bw-avatar {
-      width:56px; height:56px; border-radius:50%; background:#1e3d5a;
-      border:2px solid #2a5070; display:flex; align-items:center;
-      justify-content:center; font-size:20px; font-weight:600; color:#5ab0f0; flex-shrink:0;
+      width:56px; height:56px; border-radius:50%; background:#d3e4f5;
+      border:2px solid #a9c8e6; display:flex; align-items:center;
+      justify-content:center; font-size:20px; font-weight:600; color:#1565c0; flex-shrink:0;
     }
-    .bw-patient-meta h2 { font-size:18px; font-weight:600; color:#e8edf3; margin-bottom:4px; }
+    .bw-patient-meta h2 { font-size:18px; font-weight:600; color:#16202e; margin-bottom:4px; }
     .bw-meta-row { display:flex; gap:16px; flex-wrap:wrap; }
-    .bw-meta-chip { font-size:12px; color:#7a9ab0; display:flex; align-items:center; gap:4px; }
-    .bw-meta-chip strong { color:#c8d8e8; }
+    .bw-meta-chip { font-size:12px; color:#566673; display:flex; align-items:center; gap:4px; }
+    .bw-meta-chip strong { color:#1d2a38; }
 
     .bw-section-heading {
       font-size:11px; font-weight:600; letter-spacing:.08em;
-      text-transform:uppercase; color:#7a9ab0; margin:20px 0 10px;
+      text-transform:uppercase; color:#566673; margin:20px 0 10px;
     }
-    .bw-narrative { font-size:14px; line-height:1.75; color:#b8ccd8; text-align:left; }
+    .bw-narrative { font-size:14px; line-height:1.75; color:#2a3744; text-align:left; }
     .bw-narrative p { margin-bottom:12px; text-align:left; }
 
     /* Paragraph evidence — free-text highlight model */
@@ -333,93 +333,93 @@
       user-select:text; -webkit-user-select:text;
     }
     .bw-ev-para p { margin:0; }
-    .bw-ev-para.para-added { border-color:#2a6a3a; background:#1a2d1e; }
+    .bw-ev-para.para-added { border-color:#3aa564; background:#e6f4ea; }
 
     /* Floating selection popover */
     #bw-sel-popover {
       position:fixed; z-index:9999;
-      background:#1e4a2a; border:1px solid #3a8050; border-radius:6px;
+      background:#e3f4e9; border:1px solid #3aa564; border-radius:6px;
       padding:5px 10px; display:flex; align-items:center; gap:8px;
       box-shadow:0 4px 16px rgba(0,0,0,.5); pointer-events:auto;
       animation:bw-pop-in .1s ease;
     }
     @keyframes bw-pop-in { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
     #bw-sel-popover button {
-      background:#2a6a3a; border:1px solid #3a8a50; border-radius:4px;
-      color:#a0e8b0; font-size:11px; font-weight:600; padding:4px 10px; cursor:pointer;
+      background:#3aa564; border:1px solid #3aa564; border-radius:4px;
+      color:#ffffff; font-size:11px; font-weight:600; padding:4px 10px; cursor:pointer;
       white-space:nowrap;
     }
-    #bw-sel-popover button:hover { background:#3a7a48; color:#9ae0a8; }
+    #bw-sel-popover button:hover { background:#2a8e52; color:#ffffff; }
     #bw-sel-popover .bw-sel-dismiss {
-      background:transparent; border:none; color:#4a6070; font-size:16px;
+      background:transparent; border:none; color:#8a9bab; font-size:16px;
       line-height:1; padding:0 2px; cursor:pointer;
     }
-    #bw-sel-popover .bw-sel-dismiss:hover { color:#e05a5a; }
+    #bw-sel-popover .bw-sel-dismiss:hover { color:#c0392b; }
 
     /* Assessment grid */
     .bw-assess-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; margin-top:4px; }
     .bw-assess-card {
-      background:#1e2d3d; border:1px solid #2a3a4a; border-radius:8px;
+      background:#f4f7fa; border:1px solid #d0d9e3; border-radius:8px;
       padding:14px; cursor:pointer; transition:border-color .15s,background .15s; position:relative;
     }
-    .bw-assess-card:hover { border-color:#3a5a70; background:#1e3040; }
-    .bw-assess-card.ordered { border-color:#2a6a3a; background:#1a2d1e; }
-    .bw-assess-card.ordered::after { content:'✓ Ordered'; position:absolute; top:8px; right:10px; font-size:10px; color:#5ac070; font-weight:600; }
-    .bw-assess-name { font-size:13px; font-weight:600; color:#c8d8e8; margin-bottom:4px; }
-    .bw-assess-desc { font-size:12px; color:#8aaabb; line-height:1.5; }
+    .bw-assess-card:hover { border-color:#9fb3c4; background:#eaf0f6; }
+    .bw-assess-card.ordered { border-color:#3aa564; background:#e6f4ea; }
+    .bw-assess-card.ordered::after { content:'✓ Ordered'; position:absolute; top:8px; right:10px; font-size:10px; color:#16692f; font-weight:600; }
+    .bw-assess-name { font-size:13px; font-weight:600; color:#1d2a38; margin-bottom:4px; }
+    .bw-assess-desc { font-size:12px; color:#44545f; line-height:1.5; }
     .bw-result-area { margin-top:20px; display:none; }
     .bw-result-area.visible { display:block; }
-    .bw-result-card { background:#1a2d1e; border:1px solid #2a4a2a; border-radius:8px; padding:16px; margin-bottom:10px; }
-    .bw-result-title { font-size:13px; font-weight:600; color:#5ac070; margin-bottom:8px; }
-    .bw-result-body { font-size:13px; color:#a0b8a0; line-height:1.6; }
-    .bw-result-send { margin-top:8px; background:#1e4a2a; border:1px solid #2a6a3a; color:#5ac070; font-size:11px; padding:4px 10px; border-radius:4px; cursor:pointer; }
-    .bw-result-send:hover { background:#2a5a3a; }
+    .bw-result-card { background:#e6f4ea; border:1px solid #bfe3c9; border-radius:8px; padding:16px; margin-bottom:10px; }
+    .bw-result-title { font-size:13px; font-weight:600; color:#16692f; margin-bottom:8px; }
+    .bw-result-body { font-size:13px; color:#3a4a3a; line-height:1.6; }
+    .bw-result-send { margin-top:8px; background:#e3f4e9; border:1px solid #3aa564; color:#16692f; font-size:11px; padding:4px 10px; border-radius:4px; cursor:pointer; }
+    .bw-result-send:hover { background:#bfe3c9; }
 
     /* Library */
-    .bw-lib-entry { background:#1e2d3d; border:1px solid #2a3a4a; border-radius:8px; padding:14px; margin-bottom:10px; }
-    .bw-lib-entry h4 { font-size:13px; font-weight:600; color:#c8d8e8; margin-bottom:6px; }
-    .bw-lib-entry p { font-size:12px; color:#8aaabb; line-height:1.5; }
-    .bw-lib-send { margin-top:8px; background:#1e3d5a; border:1px solid #2a5070; color:#5ab0f0; font-size:11px; padding:3px 10px; border-radius:4px; cursor:pointer; }
-    .bw-lib-send:hover { background:#2a5080; }
+    .bw-lib-entry { background:#f4f7fa; border:1px solid #d0d9e3; border-radius:8px; padding:14px; margin-bottom:10px; }
+    .bw-lib-entry h4 { font-size:13px; font-weight:600; color:#1d2a38; margin-bottom:6px; }
+    .bw-lib-entry p { font-size:12px; color:#44545f; line-height:1.5; }
+    .bw-lib-send { margin-top:8px; background:#d3e4f5; border:1px solid #a9c8e6; color:#1565c0; font-size:11px; padding:3px 10px; border-radius:4px; cursor:pointer; }
+    .bw-lib-send:hover { background:#a9c8e6; }
 
     /* Plan options */
     .bw-plan-options { display:flex; flex-direction:column; gap:8px; margin-bottom:20px; }
     .bw-plan-option {
-      display:flex; align-items:flex-start; gap:10px; background:#1e2d3d;
-      border:1px solid #2a3a4a; border-radius:6px; padding:10px 12px;
+      display:flex; align-items:flex-start; gap:10px; background:#f4f7fa;
+      border:1px solid #d0d9e3; border-radius:6px; padding:10px 12px;
       cursor:pointer; transition:border-color .15s;
     }
-    .bw-plan-option:hover { border-color:#3a5a70; }
-    .bw-plan-option input { margin-top:2px; flex-shrink:0; accent-color:#5ab0f0; }
-    .bw-plan-option-name { font-size:13px; font-weight:600; color:#c8d8e8; }
-    .bw-plan-option-rationale { font-size:12px; color:#8aaabb; margin-top:3px; line-height:1.4; }
+    .bw-plan-option:hover { border-color:#9fb3c4; }
+    .bw-plan-option input { margin-top:2px; flex-shrink:0; accent-color:#1565c0; }
+    .bw-plan-option-name { font-size:13px; font-weight:600; color:#1d2a38; }
+    .bw-plan-option-rationale { font-size:12px; color:#44545f; margin-top:3px; line-height:1.4; }
     .bw-summary-input {
-      width:100%; min-height:120px; background:#1e2d3d; border:1px solid #2a3a4a;
-      border-radius:6px; color:#c8d8e8; font-size:13px; padding:10px 12px;
+      width:100%; min-height:120px; background:#f4f7fa; border:1px solid #7790a5;
+      border-radius:6px; color:#1d2a38; font-size:13px; padding:10px 12px;
       resize:vertical; line-height:1.6; font-family:inherit;
     }
-    .bw-summary-input:focus { border-color:#5ab0f0; }
-    .bw-summary-input::placeholder { color:#4a6070; }
+    .bw-summary-input:focus { border-color:#1565c0; }
+    .bw-summary-input::placeholder { color:#8a9bab; }
 
     /* Bottom bar */
     .bw-bottom {
-      background:#0f1923; border-top:1px solid #2a3a4a;
+      background:#e3e9f0; border-top:1px solid #d0d9e3;
       padding:10px 20px; display:flex; align-items:center; gap:12px; flex-shrink:0;
     }
-    .bw-elapsed { font-size:11px; color:#6a8a9a; margin-right:auto; font-family:monospace; }
+    .bw-elapsed { font-size:11px; color:#5a6a76; margin-right:auto; font-family:monospace; }
     .bw-btn {
       padding:7px 16px; border-radius:5px; font-size:13px;
       font-weight:500; cursor:pointer; border:1px solid;
     }
-    .bw-btn-secondary { background:transparent; border-color:#2a3a4a; color:#7a9ab0; }
-    .bw-btn-secondary:hover { border-color:#3a5a70; color:#c8d8e8; }
+    .bw-btn-secondary { background:transparent; border-color:#7790a5; color:#566673; }
+    .bw-btn-secondary:hover { border-color:#9fb3c4; color:#1d2a38; }
     .bw-btn-submit {
-      background:#1e4a2a; border-color:#2a6a3a; color:#5ac070;
+      background:#1e8e4e; border-color:#16692f; color:#ffffff;
       padding:9px 22px; font-size:14px; font-weight:600;
     }
-    .bw-btn-submit:hover:not(:disabled) { background:#2a5a3a; }
+    .bw-btn-submit:hover:not(:disabled) { background:#1a7a43; }
     .bw-btn-submit:disabled {
-      background:transparent; border-color:#2a3a4a; color:#3a5060;
+      background:#f2f5f9; border-color:#c0cad6; color:#7a8794;
       cursor:not-allowed; opacity:1;
     }
     @keyframes bw-submit-pulse {
@@ -429,30 +429,30 @@
     }
     .bw-btn-submit.unlocked { animation:bw-submit-pulse 0.8s ease-out 1; }
     .bw-submit-hint {
-      font-size:11px; color:#7a9ab0; margin-right:8px; font-style:italic;
+      font-size:11px; color:#566673; margin-right:8px; font-style:italic;
     }
-    .bw-submit-hint.ready { color:#5ac070; font-style:normal; font-weight:500; }
-    .bw-tab-final::after { content:" ★"; color:#5ac070; font-size:10px; }
+    .bw-submit-hint.ready { color:#16692f; font-style:normal; font-weight:500; }
+    .bw-tab-final::after { content:" ★"; color:#16692f; font-size:10px; }
 
     /* ── On-screen instruction banner ── */
     .bw-instructions {
-      background:#0d2035; border:1px solid #2a5a7a; border-radius:8px;
+      background:#eef4fb; border:1px solid #9cc0e0; border-radius:8px;
       padding:14px 16px; margin-bottom:20px; font-size:13px; line-height:1.7;
-      color:#b8ccd8; position:relative;
+      color:#2a3744; position:relative;
     }
     .bw-instructions h4 {
-      margin:0 0 10px; font-size:13px; color:#5ab0f0; font-weight:600;
+      margin:0 0 10px; font-size:13px; color:#1565c0; font-weight:600;
       letter-spacing:.04em; text-transform:uppercase;
     }
     .bw-instructions ul { margin:0; padding-left:18px; }
     .bw-instructions li { margin-bottom:4px; }
-    .bw-instructions li strong { color:#c8d8e8; }
+    .bw-instructions li strong { color:#1d2a38; }
     .bw-instructions-dismiss {
       position:absolute; top:10px; right:12px;
-      background:transparent; border:none; color:#4a6070;
+      background:transparent; border:none; color:#8a9bab;
       font-size:18px; line-height:1; cursor:pointer; padding:2px 4px;
     }
-    .bw-instructions-dismiss:hover { color:#5ab0f0; }
+    .bw-instructions-dismiss:hover { color:#1565c0; }
 
     /* ── Focus indicators (WCAG 2.4.7, 2.4.11) ──
        Using :focus-visible so keyboard users get clear indicators
@@ -467,29 +467,29 @@
     .bw-result-send:focus-visible,
     .bw-assess-card:focus-visible,
     #bw-sel-popover button:focus-visible {
-      outline:3px solid #5ab0f0;
+      outline:3px solid #1565c0;
       outline-offset:2px;
     }
     .bw-hyp-input:focus-visible,
     .bw-belief-select:focus-visible,
     .bw-summary-input:focus-visible,
     .bw-belief-slider:focus-visible {
-      outline:3px solid #5ab0f0;
+      outline:3px solid #1565c0;
       outline-offset:1px;
-      border-color:#5ab0f0;
+      border-color:#1565c0;
     }
 
-    .bw-hyp-input:focus { border-color:#5ab0f0; }
-    .bw-belief-select:focus { border-color:#5ab0f0; }
-    .bw-summary-input:focus { border-color:#5ab0f0; }
+    .bw-hyp-input:focus { border-color:#1565c0; }
+    .bw-belief-select:focus { border-color:#1565c0; }
+    .bw-summary-input:focus { border-color:#1565c0; }
 
     ::-webkit-scrollbar { width:6px; }
     ::-webkit-scrollbar-track { background:transparent; }
-    ::-webkit-scrollbar-thumb { background:#2a3a4a; border-radius:3px; }
+    ::-webkit-scrollbar-thumb { background:#d0d9e3; border-radius:3px; }
   </style>
 </head>
 
-<body style="margin:0;padding:0;background:#0f1b2d;font-family:'Segoe UI',Arial,sans-serif;">
+<body style="margin:0;padding:0;background:#e9eef3;font-family:'Segoe UI',Arial,sans-serif;">
 <script>
 /* =====================================================================
    BROWSER COMPATIBILITY GATE
@@ -511,14 +511,14 @@
       : isFirefox
         ? "Firefox (tab-level screen recording is not supported)"
         : "Safari (the required audio/video format is not supported)";
-    document.body.style.background = "#0f1923";
+    document.body.style.background = "#e3e9f0";
     document.body.innerHTML = `
-      <div style="max-width:580px;margin:12% auto;text-align:left;color:#c8d8e8;
+      <div style="max-width:580px;margin:12% auto;text-align:left;color:#1d2a38;
            font-family:'Segoe UI',Arial,sans-serif;padding:0 20px;">
-        <h2 style="color:#e05a5a;">Unsupported Browser</h2>
+        <h2 style="color:#c0392b;">Unsupported Browser</h2>
         <p style="font-size:17px;line-height:1.7;">This study requires a <strong>Chromium-based desktop browser</strong>
            such as Google Chrome, Microsoft Edge, Arc, Brave, or Vivaldi.</p>
-        <p style="font-size:15px;color:#7a9ab0;">The study uses tab-level screen recording and local
+        <p style="font-size:15px;color:#566673;">The study uses tab-level screen recording and local
            speech processing that are not supported in ${reason}.
            Please reopen this link in a supported browser on a desktop or laptop computer.</p>
       </div>`;
@@ -653,7 +653,7 @@ function uploadCaseInBackground(caseId) {
 var jsPsych = initJsPsych({
   extensions: [{ type: jsPsychExtensionWebgazer }],
   on_finish: async function () {
-    document.body.innerHTML = `<div style="text-align:center;margin-top:18%;color:#cdd9e5;">
+    document.body.innerHTML = `<div style="text-align:center;margin-top:18%;color:#1d2a38;">
       <h3>Saving de-identified session data...</h3><p>No audio or video is uploaded.</p></div>`;
     const payload = {
       participant_code: study.participant_code,
@@ -673,15 +673,15 @@ var jsPsych = initJsPsych({
     try {
       const r = await postToDataPipe(uniqueName("full"), payload);
       if (r.ok) {
-        document.body.innerHTML = `<div style="text-align:center;margin-top:18%;color:#27ae60;"><h3>Sync complete. You may close this tab.</h3></div>`;
+        document.body.innerHTML = `<div style="text-align:center;margin-top:18%;color:#1e8e4e;"><h3>Sync complete. You may close this tab.</h3></div>`;
       } else {
-        document.body.innerHTML = `<div style="text-align:center;margin-top:14%;color:#e74c3c;max-width:680px;margin-left:auto;margin-right:auto;">
+        document.body.innerHTML = `<div style="text-align:center;margin-top:14%;color:#c0392b;max-width:680px;margin-left:auto;margin-right:auto;">
           <h3>OSF save was rejected.</h3><p>Status: ${r.status}</p>
-          <p style="font-family:monospace;font-size:13px;background:#1d3450;color:#fff;padding:10px;border-radius:6px;">${JSON.stringify(r.body)}</p>
+          <p style="font-family:monospace;font-size:13px;background:#d3e4f5;color:#16263d;padding:10px;border-radius:6px;">${JSON.stringify(r.body)}</p>
           <p>Open the console for details, then notify the researcher.</p></div>`;
       }
     } catch (e) {
-      document.body.innerHTML = `<div style="text-align:center;margin-top:18%;color:#e74c3c;"><h3>Cloud sync failed: ${e.message}</h3><p>Please notify the researcher.</p></div>`;
+      document.body.innerHTML = `<div style="text-align:center;margin-top:18%;color:#c0392b;"><h3>Cloud sync failed: ${e.message}</h3><p>Please notify the researcher.</p></div>`;
     }
   }
 });
@@ -731,7 +731,7 @@ const BLOCK_SEQ = ["control", "dashboard", "control", "dashboard", "dashboard", 
 timeline.push({
   timeline: [{
     type: jsPsychSurveyText,
-    preamble: `<div style="max-width:640px;margin:auto;text-align:left;color:#cdd9e5;">
+    preamble: `<div style="max-width:640px;margin:auto;text-align:left;color:#1d2a38;">
         <h3>Create your anonymous study code</h3>
         <p>Links your data across phases without your name. Answer the same way each time.</p></div>`,
     questions: [
@@ -798,7 +798,7 @@ timeline.push({
     <div style="max-width:560px;margin:0 auto;color:#16263d;font-family:'Segoe UI',Arial,sans-serif;text-align:left;">
       <p style="font-size:16px;line-height:1.6;">Hold a <strong>credit card, driver's license, or any card of that size</strong> up to the screen.
       Click and drag the lower-right corner of the image until it is exactly the same size as your card.</p>
-      <p style="font-size:14px;color:#555;">No card handy? A standard card is 85.6&nbsp;mm wide (3.37&nbsp;inches) — you can measure with a ruler instead.</p>
+      <p style="font-size:14px;color:#444444;">No card handy? A standard card is 85.6&nbsp;mm wide (3.37&nbsp;inches) — you can measure with a ruler instead.</p>
     </div>`,
   blindspot_prompt: `
     <div style="max-width:560px;margin:0 auto;color:#16263d;font-family:'Segoe UI',Arial,sans-serif;text-align:left;">
@@ -830,20 +830,20 @@ var calib_points = [[10,10],[50,10],[90,10],[10,50],[50,50],[90,50],[10,90],[50,
 
 var calibration_instructions = {
   type: jsPsychHtmlKeyboardResponse,
-  stimulus:`<div style="max-width:620px;margin:10% auto;text-align:left;color:#cdd9e5;font-family:'Segoe UI',Arial,sans-serif;">
-      <h2 style="color:#5ab0f0;margin-bottom:20px;">Eye-Tracking Calibration</h2>
+  stimulus:`<div style="max-width:620px;margin:10% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#1565c0;margin-bottom:20px;">Eye-Tracking Calibration</h2>
       <p style="font-size:17px;margin-bottom:16px;">A series of yellow dots will appear one at a time around the screen.</p>
-      <div style="background:#1d3450;border-left:4px solid #5ab0f0;padding:14px 18px;border-radius:6px;margin-bottom:16px;">
+      <div style="background:#d3e4f5;border-left:4px solid #1565c0;padding:14px 18px;border-radius:6px;margin-bottom:16px;">
         <p style="font-size:17px;margin:0;"><strong>Click each dot</strong> as it appears. Look directly at it before clicking.</p>
       </div>
-      <p style="font-size:15px;color:#8aa0b6;margin-bottom:8px;">Tips for best accuracy:</p>
-      <ul style="font-size:15px;color:#8aa0b6;line-height:1.8;padding-left:20px;margin-bottom:24px;">
+      <p style="font-size:15px;color:#44545f;margin-bottom:8px;">Tips for best accuracy:</p>
+      <ul style="font-size:15px;color:#44545f;line-height:1.8;padding-left:20px;margin-bottom:24px;">
         <li>Sit approximately 50cm (20 inches) from your screen</li>
         <li>Keep your head still — move only your eyes</li>
         <li>Ensure your face is evenly lit from the front</li>
         <li>Maximize your screen brightness</li>
       </ul>
-      <p style="color:#8aa0b6;">Press any key to begin calibration.</p>
+      <p style="color:#44545f;">Press any key to begin calibration.</p>
     </div>`
 };
 
@@ -851,13 +851,13 @@ var calibration_grid = { type: jsPsychWebgazerCalibrate, calibration_mode:"click
 
 var validation_instructions = {
   type: jsPsychHtmlKeyboardResponse,
-  stimulus:`<div style="max-width:620px;margin:10% auto;text-align:center;color:#cdd9e5;font-family:'Segoe UI',Arial,sans-serif;">
-      <h2 style="color:#5ab0f0;margin-bottom:20px;">Testing Accuracy</h2>
+  stimulus:`<div style="max-width:620px;margin:10% auto;text-align:center;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#1565c0;margin-bottom:20px;">Testing Accuracy</h2>
       <p style="font-size:17px;">Another set of dots will appear. This time:</p>
-      <div style="background:#1d3450;border-left:4px solid #5ac070;padding:14px 18px;border-radius:6px;margin:20px auto;max-width:420px;text-align:left;">
+      <div style="background:#d3e4f5;border-left:4px solid #16692f;padding:14px 18px;border-radius:6px;margin:20px auto;max-width:420px;text-align:left;">
         <p style="font-size:17px;margin:0;"><strong>Do not click.</strong> Just <strong>look</strong> directly at each dot until it disappears.</p>
       </div>
-      <p style="color:#8aa0b6;margin-top:24px;">Press any key to begin.</p>
+      <p style="color:#44545f;margin-top:24px;">Press any key to begin.</p>
     </div>`
 };
 
@@ -888,9 +888,9 @@ var calibration_stabilise = {
   type: jsPsychHtmlKeyboardResponse,
   choices: "NO_KEYS",
   trial_duration: 1500,
-  stimulus: `<div style="max-width:620px;margin:10% auto;text-align:center;color:#cdd9e5;
+  stimulus: `<div style="max-width:620px;margin:10% auto;text-align:center;color:#1d2a38;
       font-family:'Segoe UI',Arial,sans-serif;">
-    <p style="font-size:17px;color:#5ab0f0;">Calibrating…</p>
+    <p style="font-size:17px;color:#1565c0;">Calibrating…</p>
   </div>`
 };
 
@@ -943,13 +943,13 @@ timeline.push({
 /* model warm-up gate — worker loads Whisper in background while participant reads instructions */
 timeline.push({
   type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
-  stimulus:`<div style="max-width:580px;margin:12% auto;text-align:center;color:#cdd9e5;font-family:'Segoe UI',Arial,sans-serif;">
-    <h3 style="color:#5ab0f0;margin-bottom:16px;">Preparing speech analysis tools</h3>
-    <p style="color:#8aa0b6;margin-bottom:20px;">Whisper is loading in a background thread. The page will remain responsive.<br>This only happens once.</p>
+  stimulus:`<div style="max-width:580px;margin:12% auto;text-align:center;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+    <h3 style="color:#1565c0;margin-bottom:16px;">Preparing speech analysis tools</h3>
+    <p style="color:#44545f;margin-bottom:20px;">Whisper is loading in a background thread. The page will remain responsive.<br>This only happens once.</p>
     <div style="background:#16263d;border-radius:8px;height:10px;overflow:hidden;max-width:380px;margin:0 auto 10px;">
-      <div id="model_bar" style="background:#2b9fd6;height:100%;width:0%;transition:width .4s;border-radius:8px;"></div>
+      <div id="model_bar" style="background:#1565c0;height:100%;width:0%;transition:width .4s;border-radius:8px;"></div>
     </div>
-    <div id="model_pct" style="font-size:14px;color:#5ab0f0;">0%</div>
+    <div id="model_pct" style="font-size:14px;color:#1565c0;">0%</div>
   </div>`,
   on_load: function () {
     warmUpTranscriber();
@@ -1318,7 +1318,7 @@ function buildBioWorldUI(c) {
         <!-- CHART -->
         <div class="bw-panel" id="bw_panel_chart_${c.id}" role="tabpanel" aria-label="Chart" hidden>
           <div class="bw-section-heading">Order Standardized Assessments</div>
-          <p style="font-size:13px;color:#6a8a9a;margin-bottom:16px;">Select assessments to order. Results appear below once ordered.</p>
+          <p style="font-size:13px;color:#5a6a76;margin-bottom:16px;">Select assessments to order. Results appear below once ordered.</p>
           <div class="bw-assess-grid">${assessHTML}</div>
           <div class="bw-result-area" id="bw_result_area_${c.id}">
             <div class="bw-section-heading" style="margin-top:24px;">Assessment Results</div>
@@ -1329,7 +1329,7 @@ function buildBioWorldUI(c) {
         <!-- LIBRARY -->
         <div class="bw-panel" id="bw_panel_library_${c.id}" role="tabpanel" aria-label="Library" hidden>
           <div class="bw-section-heading">OT Reference Library</div>
-          <p style="font-size:13px;color:#6a8a9a;margin-bottom:16px;">Use the Send to Evidence button to tag library content.</p>
+          <p style="font-size:13px;color:#5a6a76;margin-bottom:16px;">Use the Send to Evidence button to tag library content.</p>
           ${libHTML}
         </div>
 
@@ -1500,11 +1500,11 @@ function buildBioWorldTrials(c) {
   /* ── Pre-case navigation warning ── */
   const navWarn = {
     type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
-    stimulus:`<div style="max-width:660px;margin:7% auto;text-align:left;color:#c8d8e8;font-family:'Segoe UI',Arial,sans-serif;">
-        <h2 style="color:#5ab0f0;">Before You Begin: Case ${c.id}</h2>
+    stimulus:`<div style="max-width:660px;margin:7% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+        <h2 style="color:#1565c0;">Before You Begin: Case ${c.id}</h2>
 
-        <div style="background:#2a1a1a;border-left:4px solid #e05a5a;padding:18px 22px;border-radius:6px;margin:18px 0;">
-          <p style="margin:0 0 10px;font-weight:700;font-size:16px;color:#e8a0a0;">&#9888;&nbsp; Do not navigate away during the case</p>
+        <div style="background:#fbe4e1;border-left:4px solid #c0392b;padding:18px 22px;border-radius:6px;margin:18px 0;">
+          <p style="margin:0 0 10px;font-weight:700;font-size:16px;color:#8a241a;">&#9888;&nbsp; Do not navigate away during the case</p>
           <p style="margin:0;font-size:15px;line-height:1.7;">
             Once the case begins, <strong>do not switch tabs, open other windows, or leave this browser.</strong>
             The study records your eye movements and interactions continuously.
@@ -1512,8 +1512,8 @@ function buildBioWorldTrials(c) {
           </p>
         </div>
 
-        <div style="background:#141e2b;border:1px solid #2a3a4a;border-radius:6px;padding:16px 20px;margin:18px 0;font-size:15px;line-height:1.8;">
-          <p style="margin:0 0 8px;font-weight:700;color:#5ab0f0;">If you need to pause or step away:</p>
+        <div style="background:#f2f5f9;border:1px solid #d0d9e3;border-radius:6px;padding:16px 20px;margin:18px 0;font-size:15px;line-height:1.8;">
+          <p style="margin:0 0 8px;font-weight:700;color:#1565c0;">If you need to pause or step away:</p>
           <ul style="margin:0;padding-left:20px;">
             <li>Do so <strong>before</strong> clicking "Start Recording" on the next screen.</li>
             <li>Once the case is open, plan to work through it without interruption.</li>
@@ -1521,9 +1521,9 @@ function buildBioWorldTrials(c) {
           </ul>
         </div>
 
-        <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin-top:22px;padding:14px 18px;background:#1a2a3a;border:1px solid #2a5080;border-radius:6px;">
+        <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin-top:22px;padding:14px 18px;background:#1a2a3a;border:1px solid #a9c8e6;border-radius:6px;">
           <input type="checkbox" id="nav_ack_${c.id}"
-            style="width:20px;height:20px;margin-top:2px;accent-color:#5ab0f0;cursor:pointer;flex-shrink:0;" />
+            style="width:20px;height:20px;margin-top:2px;accent-color:#1565c0;cursor:pointer;flex-shrink:0;" />
           <span style="font-size:15px;line-height:1.6;">
             I understand. I will not switch tabs or navigate away once the case begins.
             I am ready to work through this case without interruption.
@@ -1531,7 +1531,7 @@ function buildBioWorldTrials(c) {
         </label>
 
         <button id="nav_ack_btn_${c.id}" disabled
-          style="margin-top:18px;padding:13px 32px;background:#2a4060;color:#7a9ab0;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:not-allowed;transition:background 0.2s,color 0.2s;">
+          style="margin-top:18px;padding:13px 32px;background:#c4d3e2;color:#566673;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:not-allowed;transition:background 0.2s,color 0.2s;">
           Continue to Case ${c.id} &rarr;
         </button>
       </div>`,
@@ -1541,13 +1541,13 @@ function buildBioWorldTrials(c) {
       ack.addEventListener("change", () => {
         if (ack.checked) {
           btn.disabled = false;
-          btn.style.background = "#1e5799";
+          btn.style.background = "#1565c0";
           btn.style.color = "#ffffff";
           btn.style.cursor = "pointer";
         } else {
           btn.disabled = true;
-          btn.style.background = "#2a4060";
-          btn.style.color = "#7a9ab0";
+          btn.style.background = "#c4d3e2";
+          btn.style.color = "#566673";
           btn.style.cursor = "not-allowed";
         }
       });
@@ -1558,19 +1558,19 @@ function buildBioWorldTrials(c) {
   /* ── Screen-share consent + recording start ── */
   const startRec = {
     type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
-    stimulus:`<div style="max-width:680px;margin:9% auto;text-align:left;color:#c8d8e8;font-family:'Segoe UI',Arial,sans-serif;">
-        <h2 style="color:#5ab0f0;">Case ${c.id}: ${c.patientName}</h2>
+    stimulus:`<div style="max-width:680px;margin:9% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+        <h2 style="color:#1565c0;">Case ${c.id}: ${c.patientName}</h2>
         <p style="font-size:17px;line-height:1.7;">We will record this browser tab while you review the chart, so you can narrate over it afterward. The recording stays on your computer — only transcribed text is uploaded.</p>
 
-        <div style="background:#1d3450;border-left:4px solid #5ab0f0;padding:16px 20px;border-radius:6px;margin:18px 0;">
+        <div style="background:#d3e4f5;border-left:4px solid #1565c0;padding:16px 20px;border-radius:6px;margin:18px 0;">
           <p style="margin:0;font-size:16px;">Click the button below. The window will go <strong>fullscreen first</strong>, then your browser will ask you to <strong>select a tab to share</strong> — choose <strong>this experiment's tab</strong> (not Window or Entire Screen).</p>
         </div>
 
         <button id="rec_${c.id}"
-          style="margin-top:6px;padding:14px 30px;background:#27ae60;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">
+          style="margin-top:6px;padding:14px 30px;background:#1e8e4e;color:#ffffff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">
           Start Recording &amp; Open Case ${c.id}
         </button>
-        <p id="err_${c.id}" style="color:#e05a5a;margin-top:10px;"></p>
+        <p id="err_${c.id}" style="color:#c0392b;margin-top:10px;"></p>
       </div>`,
     on_load: function () {
       const recBtn = document.getElementById("rec_"+c.id);
@@ -1607,8 +1607,8 @@ function buildBioWorldTrials(c) {
             warn.id = "bw_stream_warn_"+c.id;
             warn.style.cssText = "position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.82);";
             warn.innerHTML = `
-              <div style="background:#1a2332;border:2px solid #e05a5a;border-radius:10px;padding:32px 36px;max-width:500px;text-align:left;font-family:'Segoe UI',Arial,sans-serif;color:#c8d8e8;">
-                <h3 style="color:#e05a5a;margin:0 0 14px;">Screen recording stopped</h3>
+              <div style="background:#ffffff;border:2px solid #c0392b;border-radius:10px;padding:32px 36px;max-width:500px;text-align:left;font-family:'Segoe UI',Arial,sans-serif;color:#1d2a38;">
+                <h3 style="color:#c0392b;margin:0 0 14px;">Screen recording stopped</h3>
                 <p style="font-size:15px;line-height:1.7;margin:0 0 20px;">
                   The screen recording was interrupted — this usually happens when you switch to another tab or window, or stop sharing from the browser toolbar.
                 </p>
@@ -1617,10 +1617,10 @@ function buildBioWorldTrials(c) {
                   You can submit what you have completed, or return to the case to finish.
                 </p>
                 <div style="display:flex;gap:12px;flex-wrap:wrap;">
-                  <button id="bw_warn_submit_${c.id}" style="padding:11px 22px;background:#c0392b;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer;">
+                  <button id="bw_warn_submit_${c.id}" style="padding:11px 22px;background:#c0392b;color:#ffffff;border:none;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer;">
                     Submit case as-is
                   </button>
-                  <button id="bw_warn_dismiss_${c.id}" style="padding:11px 22px;background:#1e4a6e;color:#5ab0f0;border:1px solid #2a6090;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer;">
+                  <button id="bw_warn_dismiss_${c.id}" style="padding:11px 22px;background:#d3e4f5;color:#1565c0;border:1px solid #7fb0dc;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer;">
                     Return to case
                   </button>
                 </div>
@@ -2191,31 +2191,31 @@ function buildBioWorldTrials(c) {
   /* ── RTA (retrospective think-aloud) — identical pattern to original ── */
   const rtaTrial = {
     type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
-    stimulus:`<div style="position:fixed;inset:0;background:#000;">
-        <div style="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10;background:#fff;padding:10px 16px;border:2px solid #2b9fd6;border-radius:6px;text-align:center;display:flex;align-items:center;gap:14px;white-space:nowrap;">
-          <span><strong>Retrospective Review</strong> <span style="color:#c0392b;margin-left:6px;">&#127908; narrate your reasoning as you re-watch</span></span>
-          <select id="rta_mic_sel_${c.id}" style="font-size:12px;padding:3px 6px;border:1px solid #b8c6d6;border-radius:4px;color:#16263d;background:#f0f4f8;max-width:200px;" aria-label="Select microphone"></select>
+    stimulus:`<div style="position:fixed;inset:0;background:#000000;">
+        <div style="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10;background:#ffffff;padding:10px 16px;border:2px solid #1565c0;border-radius:6px;text-align:center;display:flex;align-items:center;gap:14px;white-space:nowrap;">
+          <span><strong>Retrospective Review</strong> <span style="color:#c0392b;margin-left:6px;">&#0e6606; narrate your reasoning as you re-watch</span></span>
+          <select id="rta_mic_sel_${c.id}" style="font-size:12px;padding:3px 6px;border:1px solid #9fb3c4;border-radius:4px;color:#16263d;background:#f0f4f8;max-width:200px;" aria-label="Select microphone"></select>
         </div>
-        <video id="rv_${c.id}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;" muted playsinline></video>
+        <video id="rv_${c.id}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000000;" muted playsinline></video>
         <canvas id="ro_${c.id}" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;"></canvas>
         <!-- Playback progress bar -->
         <div style="position:fixed;bottom:0;left:0;right:0;z-index:10;padding:10px 16px 12px;background:linear-gradient(transparent,rgba(0,0,0,0.75));">
           <div style="display:flex;align-items:center;gap:10px;max-width:900px;margin:0 auto;">
-            <span id="rta_cur_${c.id}" style="font-size:13px;color:#cdd9e5;font-family:'Segoe UI',monospace;min-width:38px;text-align:right;">0:00</span>
+            <span id="rta_cur_${c.id}" style="font-size:13px;color:#1d2a38;font-family:'Segoe UI',monospace;min-width:38px;text-align:right;">0:00</span>
             <div style="flex:1;background:rgba(255,255,255,0.2);border-radius:3px;height:5px;overflow:hidden;">
-              <div id="rta_bar_${c.id}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Video playback progress" style="height:100%;width:0%;background:#2b9fd6;border-radius:3px;transition:width 0.25s linear;"></div>
+              <div id="rta_bar_${c.id}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Video playback progress" style="height:100%;width:0%;background:#1565c0;border-radius:3px;transition:width 0.25s linear;"></div>
             </div>
-            <span id="rta_dur_${c.id}" style="font-size:13px;color:#8aa0b6;font-family:'Segoe UI',monospace;min-width:38px;">-:--</span>
+            <span id="rta_dur_${c.id}" style="font-size:13px;color:#44545f;font-family:'Segoe UI',monospace;min-width:38px;">-:--</span>
           </div>
         </div>
         <!-- Mic level meter — shows participant mic is active and picking up voice -->
         <div style="position:fixed;bottom:60px;left:24px;z-index:11;display:flex;align-items:center;gap:8px;">
-          <span style="font-size:11px;color:#8aa0b6;font-family:'Segoe UI',Arial,sans-serif;">&#127908;</span>
+          <span style="font-size:11px;color:#44545f;font-family:'Segoe UI',Arial,sans-serif;">&#0e6606;</span>
           <div style="width:80px;height:5px;background:rgba(255,255,255,0.15);border-radius:3px;overflow:hidden;">
-            <div id="rta_mic_bar_${c.id}" style="height:100%;width:0%;background:#27ae60;border-radius:3px;transition:width 0.08s;"></div>
+            <div id="rta_mic_bar_${c.id}" style="height:100%;width:0%;background:#1e8e4e;border-radius:3px;transition:width 0.08s;"></div>
           </div>
         </div>
-        <button id="rd_${c.id}" disabled style="position:fixed;bottom:36px;right:24px;z-index:11;padding:14px 28px;background:#7f8c8d;color:#fff;border:none;border-radius:6px;font-weight:700;">Done narrating</button>
+        <button id="rd_${c.id}" disabled style="position:fixed;bottom:36px;right:24px;z-index:11;padding:14px 28px;background:#5a6470;color:#ffffff;border:none;border-radius:6px;font-weight:700;">Done narrating</button>
       </div>`,
     data: { trial_tag:"rta", case_id:c.id },
     on_finish: function () {
@@ -2393,7 +2393,7 @@ function buildBioWorldTrials(c) {
             /* Scale: RMS of 0.02 (quiet speech) → ~40% width; 0.1 (normal) → ~100% */
             micBar.style.width = Math.min(100, rms * 1400).toFixed(1) + "%";
             /* Colour: green when active, amber when very quiet */
-            micBar.style.background = rms > SILENCE_THRESHOLD ? "#27ae60" : "#e0a040";
+            micBar.style.background = rms > SILENCE_THRESHOLD ? "#1e8e4e" : "#b86e00";
 
             if (rms < SILENCE_THRESHOLD) {
               silentMs += 80;
@@ -2401,8 +2401,8 @@ function buildBioWorldTrials(c) {
                 silenceWarnShown = true;
                 const w = document.createElement("div");
                 w.id = "rta_silence_warn_"+c.id;
-                w.style.cssText = "position:fixed;bottom:110px;left:50%;transform:translateX(-50%);z-index:30;background:#3a2800;border:2px solid #e0a040;border-radius:8px;padding:12px 20px;color:#f0d080;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;text-align:center;max-width:480px;line-height:1.6;";
-                w.innerHTML = "&#127908; <strong>No audio detected.</strong> Please speak clearly — or use the microphone selector above to switch to a different input device.";
+                w.style.cssText = "position:fixed;bottom:110px;left:50%;transform:translateX(-50%);z-index:30;background:#fdf3dc;border:2px solid #b86e00;border-radius:8px;padding:12px 20px;color:#7a5c10;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;text-align:center;max-width:480px;line-height:1.6;";
+                w.innerHTML = "&#0e6606; <strong>No audio detected.</strong> Please speak clearly — or use the microphone selector above to switch to a different input device.";
                 document.body.appendChild(w);
                 silenceBannerEl = w;
                 /* Auto-dismiss when audio returns */
@@ -2475,7 +2475,7 @@ function buildBioWorldTrials(c) {
       } catch(e) {
         console.error("mic failed", e);
         const micWarn = document.createElement("div");
-        micWarn.style.cssText = "position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:20;background:#3a1010;border:2px solid #e05a5a;border-radius:8px;padding:12px 20px;color:#f0b0b0;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;text-align:center;max-width:520px;line-height:1.6;";
+        micWarn.style.cssText = "position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:20;background:#fbe4e1;border:2px solid #c0392b;border-radius:8px;padding:12px 20px;color:#7a1c12;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;text-align:center;max-width:520px;line-height:1.6;";
         micWarn.innerHTML = "<strong>Microphone access was denied.</strong><br>Your narration cannot be recorded. Please check your browser microphone permissions, then reload and try again.";
         document.body.appendChild(micWarn);
       }
@@ -2620,13 +2620,13 @@ function buildBioWorldTrials(c) {
       let videoHasPlayed = false;
       video.addEventListener("play",    () => { videoHasPlayed = true; });
       video.addEventListener("ended",   () => {
-        if (videoHasPlayed) { done.disabled=false; done.style.background="#27ae60"; }
+        if (videoHasPlayed) { done.disabled=false; done.style.background="#1e8e4e"; }
       });
       /* Safety unlock: after RTA_MAX_SECONDS, enable Done regardless —
          but only if the video actually started playing at some point. */
       setTimeout(() => {
         if (videoHasPlayed && done.disabled) {
-          done.disabled=false; done.style.background="#27ae60";
+          done.disabled=false; done.style.background="#1e8e4e";
         }
       }, CONFIG.RTA_MAX_SECONDS*1000);
       try {
@@ -2636,10 +2636,10 @@ function buildBioWorldTrials(c) {
            Show an error rather than silently enabling Done with no video. */
         console.error("RTA video.play() failed:", e);
         const errDiv = document.createElement("div");
-        errDiv.style.cssText = "position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:20;background:#3a1010;border:2px solid #e05a5a;border-radius:8px;padding:14px 22px;color:#f0b0b0;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;text-align:center;max-width:500px;";
+        errDiv.style.cssText = "position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:20;background:#fbe4e1;border:2px solid #c0392b;border-radius:8px;padding:14px 22px;color:#7a1c12;font-family:'Segoe UI',Arial,sans-serif;font-size:14px;text-align:center;max-width:500px;";
         errDiv.innerHTML = "<strong>Recording could not be loaded for playback.</strong><br>Click Done to continue — your typed responses and interaction data are still saved.";
         document.body.appendChild(errDiv);
-        done.disabled=false; done.style.background="#e07030";
+        done.disabled=false; done.style.background="#b85a1e";
       }
 
       done.addEventListener("click", async () => {
@@ -2650,14 +2650,14 @@ function buildBioWorldTrials(c) {
 
         /* Progress indicator — worker runs off main thread so UI stays responsive */
         const progressDiv = document.createElement("div");
-        progressDiv.style.cssText = "position:fixed;bottom:80px;right:24px;z-index:20;background:#16263d;color:#cdd9e5;padding:14px 20px;border-radius:8px;border:1px solid #2b9fd6;font-size:14px;font-family:'Segoe UI',Arial,sans-serif;max-width:340px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.4);";
+        progressDiv.style.cssText = "position:fixed;bottom:80px;right:24px;z-index:20;background:#16263d;color:#1d2a38;padding:14px 20px;border-radius:8px;border:1px solid #1565c0;font-size:14px;font-family:'Segoe UI',Arial,sans-serif;max-width:340px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.4);";
         progressDiv.innerHTML = `
-          <div style="font-weight:600;margin-bottom:6px;">&#127908; Transcribing narration…</div>
-          <div style="font-size:12px;color:#8aa0b6;margin-bottom:10px;">Running locally. Page stays responsive.</div>
-          <div style="background:#0f1923;border-radius:4px;height:6px;overflow:hidden;">
-            <div id="trans_bar" style="background:#2b9fd6;height:100%;width:0%;transition:width .4s;border-radius:4px;"></div>
+          <div style="font-weight:600;margin-bottom:6px;">&#0e6606; Transcribing narration…</div>
+          <div style="font-size:12px;color:#44545f;margin-bottom:10px;">Running locally. Page stays responsive.</div>
+          <div style="background:#e3e9f0;border-radius:4px;height:6px;overflow:hidden;">
+            <div id="trans_bar" style="background:#1565c0;height:100%;width:0%;transition:width .4s;border-radius:4px;"></div>
           </div>
-          <div id="trans_pct" style="font-size:12px;color:#5ab0f0;margin-top:6px;">0%</div>`;
+          <div id="trans_pct" style="font-size:12px;color:#1565c0;margin-top:6px;">0%</div>`;
         document.body.appendChild(progressDiv);
 
         /* Poll worker progress into the bar */
@@ -2742,16 +2742,16 @@ function buildBioWorldTrials(c) {
 /* ── Stimulated recall instructions (Gass & Mackey, 2017) ── */
 timeline.push({
   type: jsPsychHtmlKeyboardResponse,
-  stimulus:`<div style="max-width:700px;margin:6% auto;color:#c8d8e8;text-align:left;padding:0 20px;font-family:'Segoe UI',Arial,sans-serif;">
-      <h2 style="color:#5ab0f0;">How this study works: Stimulated Recall</h2>
+  stimulus:`<div style="max-width:700px;margin:6% auto;color:#1d2a38;text-align:left;padding:0 20px;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#1565c0;">How this study works: Stimulated Recall</h2>
       <p style="font-size:16px;line-height:1.7;">After you finish each patient case, we will play back a recording of your screen so you can tell us what you were <strong>thinking</strong> as you worked through it.</p>
-      <div style="background:#1d3450;border-left:4px solid #5ab0f0;padding:16px 20px;border-radius:6px;margin:18px 0;">
-        <p style="margin:0 0 10px;font-weight:700;color:#5ab0f0;">The key rule — and the hardest part:</p>
+      <div style="background:#d3e4f5;border-left:4px solid #1565c0;padding:16px 20px;border-radius:6px;margin:18px 0;">
+        <p style="margin:0 0 10px;font-weight:700;color:#1565c0;">The key rule — and the hardest part:</p>
         <p style="margin:0;font-size:15px;">Tell us what you were thinking <strong>at the time</strong>, not what you think <strong>now</strong> as you watch. It is easy to slip into describing what you see on screen. Try to go back to the moment.</p>
       </div>
       <p style="font-size:15px;line-height:1.7;"><strong>Good example:</strong> <em>"I was looking at the FIM scores and thinking this ruled out task-specific training as the primary approach because…"</em></p>
       <p style="font-size:15px;line-height:1.7;"><strong>Less useful:</strong> <em>"I can see I clicked on the Chart tab here."</em> — This describes the video, not your thinking.</p>
-      <div style="background:#141e2b;border:1px solid #2a3a4a;border-radius:6px;padding:14px 18px;margin:18px 0;">
+      <div style="background:#f2f5f9;border:1px solid #d0d9e3;border-radius:6px;padding:14px 18px;margin:18px 0;">
         <p style="margin:0 0 8px;font-weight:700;">A few other things:</p>
         <ul style="margin:0;padding-left:20px;font-size:15px;line-height:1.9;">
           <li>Speak continuously. If you are not sure what you were thinking at a moment, say so.</li>
@@ -2760,8 +2760,8 @@ timeline.push({
           <li>Do not evaluate your performance — just recall.</li>
         </ul>
       </div>
-      <p style="font-size:15px;color:#7a9ab0;">You will do a short practice run before the real cases begin.</p>
-      <p style="text-align:center;margin-top:28px;color:#7a9ab0;">Press any key to continue to the practice.</p>
+      <p style="font-size:15px;color:#566673;">You will do a short practice run before the real cases begin.</p>
+      <p style="text-align:center;margin-top:28px;color:#566673;">Press any key to continue to the practice.</p>
     </div>`,
   choices:"ALL_KEYS"
 });
@@ -2772,11 +2772,11 @@ timeline.push({
    learn the mechanics without rehearsing OT clinical reasoning. */
 const practiceNavWarn = {
   type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
-  stimulus:`<div style="max-width:660px;margin:7% auto;text-align:left;color:#c8d8e8;font-family:'Segoe UI',Arial,sans-serif;">
-      <h2 style="color:#5ab0f0;">Before the Practice Run</h2>
+  stimulus:`<div style="max-width:660px;margin:7% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#1565c0;">Before the Practice Run</h2>
 
-      <div style="background:#2a1a1a;border-left:4px solid #e05a5a;padding:18px 22px;border-radius:6px;margin:18px 0;">
-        <p style="margin:0 0 10px;font-weight:700;font-size:16px;color:#e8a0a0;">&#9888;&nbsp; Do not navigate away once the practice begins</p>
+      <div style="background:#fbe4e1;border-left:4px solid #c0392b;padding:18px 22px;border-radius:6px;margin:18px 0;">
+        <p style="margin:0 0 10px;font-weight:700;font-size:16px;color:#8a241a;">&#9888;&nbsp; Do not navigate away once the practice begins</p>
         <p style="margin:0;font-size:15px;line-height:1.7;">
           The practice uses the same recording and eye-tracking setup as the real cases.
           Once it starts, <strong>do not switch tabs, open other windows, or leave this browser.</strong>
@@ -2784,21 +2784,21 @@ const practiceNavWarn = {
         </p>
       </div>
 
-      <div style="background:#141e2b;border:1px solid #2a3a4a;border-radius:6px;padding:16px 20px;margin:18px 0;font-size:15px;line-height:1.8;">
-        <p style="margin:0 0 8px;font-weight:700;color:#5ab0f0;">The practice takes about 3–5 minutes.</p>
+      <div style="background:#f2f5f9;border:1px solid #d0d9e3;border-radius:6px;padding:16px 20px;margin:18px 0;font-size:15px;line-height:1.8;">
+        <p style="margin:0 0 8px;font-weight:700;color:#1565c0;">The practice takes about 3–5 minutes.</p>
         <p style="margin:0;">If you need a moment before starting, take it now — before clicking the button on the next screen.</p>
       </div>
 
-      <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin-top:22px;padding:14px 18px;background:#1a2a3a;border:1px solid #2a5080;border-radius:6px;">
+      <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin-top:22px;padding:14px 18px;background:#1a2a3a;border:1px solid #a9c8e6;border-radius:6px;">
         <input type="checkbox" id="nav_ack_pr"
-          style="width:20px;height:20px;margin-top:2px;accent-color:#5ab0f0;cursor:pointer;flex-shrink:0;" />
+          style="width:20px;height:20px;margin-top:2px;accent-color:#1565c0;cursor:pointer;flex-shrink:0;" />
         <span style="font-size:15px;line-height:1.6;">
           I understand. I will not switch tabs or navigate away once the practice begins.
         </span>
       </label>
 
       <button id="nav_ack_btn_pr" disabled
-        style="margin-top:18px;padding:13px 32px;background:#2a4060;color:#7a9ab0;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:not-allowed;transition:background 0.2s,color 0.2s;">
+        style="margin-top:18px;padding:13px 32px;background:#c4d3e2;color:#566673;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:not-allowed;transition:background 0.2s,color 0.2s;">
         Continue to Practice &rarr;
       </button>
     </div>`,
@@ -2808,13 +2808,13 @@ const practiceNavWarn = {
     ack.addEventListener("change", () => {
       if (ack.checked) {
         btn.disabled = false;
-        btn.style.background = "#1e5799";
+        btn.style.background = "#1565c0";
         btn.style.color = "#ffffff";
         btn.style.cursor = "pointer";
       } else {
         btn.disabled = true;
-        btn.style.background = "#2a4060";
-        btn.style.color = "#7a9ab0";
+        btn.style.background = "#c4d3e2";
+        btn.style.color = "#566673";
         btn.style.cursor = "not-allowed";
       }
     });
@@ -2824,16 +2824,16 @@ const practiceNavWarn = {
 
 const practiceStartRec = {
   type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
-  stimulus:`<div style="max-width:680px;margin:11% auto;text-align:left;color:#c8d8e8;font-family:'Segoe UI',Arial,sans-serif;">
-      <h2 style="color:#5ab0f0;">Practice Run</h2>
+  stimulus:`<div style="max-width:680px;margin:11% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#1565c0;">Practice Run</h2>
       <p style="font-size:17px;line-height:1.7;">This is a short practice — <strong>not</strong> a real OT case. It is just to help you get comfortable with the process.</p>
-      <div style="background:#1d3450;border-left:4px solid #5fb0e0;padding:16px 20px;border-radius:6px;margin:16px 0;">
+      <div style="background:#d3e4f5;border-left:4px solid #1565c0;padding:16px 20px;border-radius:6px;margin:16px 0;">
         <p style="margin:0;font-size:16px;">Click the button below. The window will go <strong>fullscreen first</strong>, then your browser will ask you to <strong>select a tab to share</strong> — choose <strong>this experiment's tab</strong>.</p>
       </div>
       <button id="rec_pr"
-        style="margin-top:6px;padding:14px 28px;background:#27ae60;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">
+        style="margin-top:6px;padding:14px 28px;background:#1e8e4e;color:#ffffff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">
         Start Practice Recording</button>
-      <p id="err_pr" style="color:#e05a5a;margin-top:10px;"></p></div>`,
+      <p id="err_pr" style="color:#c0392b;margin-top:10px;"></p></div>`,
   on_load: function () {
     const recBtn = document.getElementById("rec_pr");
     const errEl  = document.getElementById("err_pr");
@@ -2860,12 +2860,12 @@ const practiceStartRec = {
           const warn = document.createElement("div");
           warn.style.cssText = "position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.82);";
           warn.innerHTML = `
-            <div style="background:#1a2332;border:2px solid #e05a5a;border-radius:10px;padding:28px 32px;max-width:460px;font-family:'Segoe UI',Arial,sans-serif;color:#c8d8e8;">
-              <h3 style="color:#e05a5a;margin:0 0 12px;">Screen recording stopped</h3>
+            <div style="background:#ffffff;border:2px solid #c0392b;border-radius:10px;padding:28px 32px;max-width:460px;font-family:'Segoe UI',Arial,sans-serif;color:#1d2a38;">
+              <h3 style="color:#c0392b;margin:0 0 12px;">Screen recording stopped</h3>
               <p style="font-size:15px;line-height:1.7;margin:0 0 20px;">The recording was interrupted (you may have switched tabs). You can finish the practice and continue, or submit it now.</p>
               <div style="display:flex;gap:12px;">
-                <button id="pr_warn_submit" style="padding:10px 20px;background:#c0392b;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer;">Submit practice</button>
-                <button id="pr_warn_dismiss" style="padding:10px 20px;background:#1e4a6e;color:#5ab0f0;border:1px solid #2a6090;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer;">Return to practice</button>
+                <button id="pr_warn_submit" style="padding:10px 20px;background:#c0392b;color:#ffffff;border:none;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer;">Submit practice</button>
+                <button id="pr_warn_dismiss" style="padding:10px 20px;background:#d3e4f5;color:#1565c0;border:1px solid #7fb0dc;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer;">Return to practice</button>
               </div>
             </div>`;
           document.body.appendChild(warn);
@@ -2886,7 +2886,7 @@ const practiceCase = {
   stimulus:`
     <div class="bw-root" id="bw_root_pr">
       <div class="bw-topbar">
-        <button class="bw-tab active" style="border-bottom-color:#5ab0f0;color:#5ab0f0;">Problem</button>
+        <button class="bw-tab active" style="border-bottom-color:#1565c0;color:#1565c0;">Problem</button>
         <span class="bw-patient-label">ALEX CHEN — PRACTICE ONLY</span>
       </div>
       <div class="bw-main">
@@ -3082,13 +3082,13 @@ const practiceCase = {
 const practiceRTA = {
   type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
   data: { trial_tag:"practice_rta" },
-  stimulus:`<div style="position:fixed;inset:0;background:#000;">
-      <div style="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10;background:#fff;padding:10px 18px;border:2px solid #2b9fd6;border-radius:6px;text-align:center;max-width:640px;">
+  stimulus:`<div style="position:fixed;inset:0;background:#000000;">
+      <div style="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10;background:#ffffff;padding:10px 18px;border:2px solid #1565c0;border-radius:6px;text-align:center;max-width:640px;">
         <strong>Practice: Stimulated Recall</strong><br>
-        <span style="color:#c0392b;font-size:14px;">&#127908; Speak aloud — tell us what you were <em>thinking</em>, not just what you see.</span>
+        <span style="color:#c0392b;font-size:14px;">&#0e6606; Speak aloud — tell us what you were <em>thinking</em>, not just what you see.</span>
       </div>
-      <video id="rv_pr" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;" muted playsinline></video>
-      <button id="rd_pr" disabled style="position:fixed;bottom:24px;right:24px;z-index:10;padding:14px 28px;background:#7f8c8d;color:#fff;border:none;border-radius:6px;font-weight:700;">Done narrating</button>
+      <video id="rv_pr" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000000;" muted playsinline></video>
+      <button id="rd_pr" disabled style="position:fixed;bottom:24px;right:24px;z-index:10;padding:14px 28px;background:#5a6470;color:#ffffff;border:none;border-radius:6px;font-weight:700;">Done narrating</button>
     </div>`,
   on_load: async function () {
     const m=caseMedia["practice"]; const video=document.getElementById("rv_pr"); const done=document.getElementById("rd_pr");
@@ -3110,9 +3110,9 @@ const practiceRTA = {
       aRec.ondataavailable=e=>{if(e.data&&e.data.size)aChunks.push(e.data);};
       aRec.start(1000);
     }catch(e){}
-    video.addEventListener("ended",()=>{done.disabled=false;done.style.background="#27ae60";});
-    setTimeout(()=>{done.disabled=false;done.style.background="#27ae60";},90000);
-    try{await video.play();}catch(e){done.disabled=false;done.style.background="#27ae60";}
+    video.addEventListener("ended",()=>{done.disabled=false;done.style.background="#1e8e4e";});
+    setTimeout(()=>{done.disabled=false;done.style.background="#1e8e4e";},90000);
+    try{await video.play();}catch(e){done.disabled=false;done.style.background="#1e8e4e";}
     done.addEventListener("click",()=>{
       try{video.pause();}catch(e){}
       if(aRec&&aRec.state!=="inactive")aRec.stop();
@@ -3124,10 +3124,10 @@ const practiceRTA = {
 };
 const practiceDebrief = {
   type: jsPsychHtmlKeyboardResponse,
-  stimulus:`<div style="max-width:680px;margin:8% auto;color:#c8d8e8;text-align:left;padding:0 20px;font-family:'Segoe UI',Arial,sans-serif;">
-      <h2 style="color:#5ac070;">Practice complete.</h2>
+  stimulus:`<div style="max-width:680px;margin:8% auto;color:#1d2a38;text-align:left;padding:0 20px;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#16692f;">Practice complete.</h2>
       <p style="font-size:16px;line-height:1.7;">Before you begin the real cases, a quick reminder:</p>
-      <div style="background:#1d3450;border-left:4px solid #5ac070;padding:16px 20px;border-radius:6px;margin:16px 0;">
+      <div style="background:#d3e4f5;border-left:4px solid #16692f;padding:16px 20px;border-radius:6px;margin:16px 0;">
         <ul style="margin:0;padding-left:20px;font-size:15px;line-height:2.1;">
           <li><strong>Focus on your thinking at the time</strong>, not your current reaction to the video.</li>
           <li><strong>Say "I was thinking…"</strong> to anchor yourself in the past moment.</li>
@@ -3135,8 +3135,8 @@ const practiceDebrief = {
           <li><strong>Do not evaluate yourself.</strong> There are no right or wrong answers.</li>
         </ul>
       </div>
-      <p style="font-size:15px;color:#7a9ab0;">The next screen will begin Case 1 — a real OT clinical scenario with the full BioWorld interface.</p>
-      <p style="text-align:center;margin-top:28px;color:#7a9ab0;">Press any key when you are ready.</p>
+      <p style="font-size:15px;color:#566673;">The next screen will begin Case 1 — a real OT clinical scenario with the full BioWorld interface.</p>
+      <p style="text-align:center;margin-top:28px;color:#566673;">Press any key when you are ready.</p>
     </div>`,
   choices:"ALL_KEYS"
 };
@@ -3178,12 +3178,12 @@ timeline.push({
    Records mid_session calibration_pct for analytical comparison with initial score. */
 timeline.push({
   type: jsPsychHtmlKeyboardResponse,
-  stimulus:`<div style="max-width:680px;margin:10% auto;text-align:left;color:#c8d8e8;font-family:'Segoe UI',Arial,sans-serif;">
-      <h3 style="color:#5ab0f0;">Quick eye-tracking re-check</h3>
+  stimulus:`<div style="max-width:680px;margin:10% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <h3 style="color:#1565c0;">Quick eye-tracking re-check</h3>
       <p style="font-size:16px;">Before Case 2 we do a brief recalibration to maintain accuracy. This takes about 30 seconds.</p>
-      <p style="font-size:16px;background:#1d3450;padding:12px;border-left:4px solid #5fb0e0;border-radius:4px;">
+      <p style="font-size:16px;background:#d3e4f5;padding:12px;border-left:4px solid #1565c0;border-radius:4px;">
         Sit in the same position as before. Make sure your face is well-lit and centered in the webcam.</p>
-      <p style="color:#7a9ab0;margin-top:20px;">Press any key to begin.</p></div>`,
+      <p style="color:#566673;margin-top:20px;">Press any key to begin.</p></div>`,
   choices:"ALL_KEYS"
 });
 timeline.push({
@@ -3215,10 +3215,10 @@ timeline.push({
   timeline: [{
     type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
     stimulus:`<div style="width:100vw;height:100vh;display:flex;flex-direction:column;">
-        <div style="padding:14px;background:#16263d;color:#fff;display:flex;justify-content:space-between;align-items:center;">
+        <div style="padding:14px;background:#16263d;color:#ffffff;display:flex;justify-content:space-between;align-items:center;">
           <h3 style="margin:0;">Clinical Reasoning Feedback</h3>
-          <button id="cont2" style="padding:10px 20px;font-weight:700;background:#27ae60;color:#fff;border:none;border-radius:6px;cursor:pointer;">Continue to Case 2 &#9654;</button></div>
-        <iframe src="./dashboard/index.html" style="flex-grow:1;border:none;background:#fff;"></iframe></div>`,
+          <button id="cont2" style="padding:10px 20px;font-weight:700;background:#1e8e4e;color:#ffffff;border:none;border-radius:6px;cursor:pointer;">Continue to Case 2 &#9654;</button></div>
+        <iframe src="./dashboard/index.html" style="flex-grow:1;border:none;background:#ffffff;"></iframe></div>`,
     on_load: () => document.getElementById("cont2").addEventListener("click", () => jsPsych.finishTrial())
   }],
   conditional_function: () => study.experimental_condition === "dashboard"
