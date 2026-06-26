@@ -1798,6 +1798,19 @@ function buildBioWorldTrials(c) {
                  Partial gaze and click data collected before the drop is preserved. */
             });
           });
+          /* ── Settle delay (borrowed from the fullscreen plugin's delay_after) ──
+             Entering fullscreen and starting the share both trigger transient
+             browser notifications ("X is sharing your screen", "press Esc to
+             exit fullscreen"). Pausing briefly lets those clear before the EHR
+             renders, so the participant isn't reading the chart — or being gaze-
+             tracked — while a banner is still fading at the top of the viewport.
+             A short "Preparing…" message keeps the screen from looking frozen. */
+          const settle = document.createElement("div");
+          settle.style.cssText = "position:fixed;inset:0;z-index:50;background:#ffffff;display:flex;align-items:center;justify-content:center;font-family:'Segoe UI',Arial,sans-serif;color:#1565c0;font-size:18px;font-weight:600;";
+          settle.textContent = "Preparing the case…";
+          document.body.appendChild(settle);
+          await new Promise(res => setTimeout(res, 700));
+          if (settle.parentNode) settle.parentNode.removeChild(settle);
           jsPsych.finishTrial();
         } catch (e) {
           recBtn.disabled = false;
@@ -3128,6 +3141,13 @@ const practiceStartRec = {
           document.getElementById("pr_warn_submit").addEventListener("click", () => { warn.remove(); if(sub && sub.dataset.submitted !== "true") sub.click(); });
           document.getElementById("pr_warn_dismiss").addEventListener("click", () => { warn.remove(); });
         });
+        /* Settle delay so fullscreen/share banners clear before practice renders. */
+        const settle = document.createElement("div");
+        settle.style.cssText = "position:fixed;inset:0;z-index:50;background:#ffffff;display:flex;align-items:center;justify-content:center;font-family:'Segoe UI',Arial,sans-serif;color:#1565c0;font-size:18px;font-weight:600;";
+        settle.textContent = "Preparing the practice…";
+        document.body.appendChild(settle);
+        await new Promise(res => setTimeout(res, 700));
+        if (settle.parentNode) settle.parentNode.removeChild(settle);
         jsPsych.finishTrial();
       } catch(e) {
         recBtn.disabled = false;
