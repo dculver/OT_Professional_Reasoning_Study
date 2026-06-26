@@ -19,6 +19,7 @@
   <script src="js/plugin-webgazer-validate.js"></script>
   <script src="js/plugin-initialize-microphone.js"></script>
   <script src="js/plugin-virtual-chinrest.js"></script>
+  <script src="js/plugin-browser-check.js"></script>
 
   <!-- Whisper transcription via inline Blob Worker (no external file needed, no CORS issues) -->
   <script>
@@ -493,24 +494,70 @@
 <script>
 /* =====================================================================
    BROWSER COMPATIBILITY GATE
-   Required APIs: tab-level getDisplayMedia, WebM MediaRecorder, WebAssembly.
-   Known incompatible: Firefox (no tab-level screen share), Safari (no WebM),
-   all mobile browsers (no getDisplayMedia).
-   Chromium-based browsers — Chrome, Edge, Arc, Brave, Vivaldi, Opera, etc. —
-   all support the required APIs and are permitted.
+   The study needs three hard capabilities:
+     1. Tab-level getDisplayMedia (screen recording of this tab)
+     2. WebM MediaRecorder (the recording container)
+     3. WebAssembly (Whisper speech-to-text runs as a WASM module)
+   Plus a webcam (WebGazer) and getUserMedia (microphone for RTA).
+
+   We gate on CAPABILITY, not browser NAME. Checking the user-agent for
+   "chrome" (as the jsPsych browser-check example does) would wrongly reject
+   Edge, Brave, Arc, Vivaldi, and Opera — all Chromium browsers that support
+   these APIs. Feature detection is also immune to UA spoofing and to a browser
+   that reports the right name but lacks a working API in a locked-down context.
+
+   We still use the UA only to produce a HELPFUL message naming the likely
+   culprit (Firefox/Safari/mobile), but the pass/fail decision is purely the
+   capability tests below.
    ===================================================================== */
 (function checkBrowser() {
   const ua        = navigator.userAgent;
   const isMobile  = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
   const isFirefox = /Firefox\//.test(ua);
-  const isSafari  = /Safari\//.test(ua) && !/Chrome\//.test(ua);
+  const isSafari  = /Safari\//.test(ua) && !/Chrome\//.test(ua) && !/Chromium\//.test(ua);
 
-  if (isMobile || isFirefox || isSafari) {
-    const reason = isMobile
-      ? "mobile browsers"
-      : isFirefox
-        ? "Firefox (tab-level screen recording is not supported)"
-        : "Safari (the required audio/video format is not supported)";
+  /* ── Capability probes ── */
+  const missing = [];
+  // 1. Tab-level screen capture
+  if (!(navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === "function")) {
+    missing.push("screen recording (getDisplayMedia)");
+  }
+  // 2. Microphone / camera capture
+  if (!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function")) {
+    missing.push("microphone/camera access (getUserMedia)");
+  }
+  // 3. MediaRecorder with a usable WebM codec
+  let webmOK = false;
+  if (typeof MediaRecorder !== "undefined" && typeof MediaRecorder.isTypeSupported === "function") {
+    webmOK = MediaRecorder.isTypeSupported("video/webm") ||
+             MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ||
+             MediaRecorder.isTypeSupported("video/webm;codecs=vp8");
+  }
+  if (!webmOK) missing.push("WebM video recording (MediaRecorder)");
+  // 4. WebAssembly (Whisper transcription)
+  if (typeof WebAssembly !== "object" || typeof WebAssembly.instantiate !== "function") {
+    missing.push("local speech processing (WebAssembly)");
+  }
+  // 5. Fullscreen API (the case runs fullscreen)
+  const el = document.documentElement;
+  if (!(el.requestFullscreen || el.webkitRequestFullscreen)) {
+    missing.push("fullscreen mode");
+  }
+
+  /* Mobile is unsupported regardless of probes (no reliable tab share, small
+     viewport, WebGazer unreliable). Otherwise, only fail if a probe failed. */
+  if (isMobile || missing.length > 0) {
+    /* Build a helpful, specific reason. */
+    let reason;
+    if (isMobile) {
+      reason = "mobile browsers (this study must run on a desktop or laptop)";
+    } else if (isFirefox) {
+      reason = "Firefox, which does not support tab-level screen recording";
+    } else if (isSafari) {
+      reason = "Safari, which does not support the required recording format";
+    } else {
+      reason = "this browser, which is missing: " + missing.join(", ");
+    }
     document.body.style.background = "#e3e9f0";
     document.body.innerHTML = `
       <div style="max-width:580px;margin:12% auto;text-align:left;color:#1d2a38;
@@ -522,7 +569,8 @@
            speech processing that are not supported in ${reason}.
            Please reopen this link in a supported browser on a desktop or laptop computer.</p>
       </div>`;
-    throw new Error("Unsupported browser — study halted.");
+    throw new Error("Unsupported browser — study halted (" +
+      (isMobile ? "mobile" : missing.join("; ") || "ua") + ").");
   }
 })();
 
@@ -549,6 +597,7 @@ const study = {
   calibration: {},
   calibration_viewport: null,
   screen_geometry: {},
+  browser_check: null,
   unlinked_session: false,
   cases: {},
   user_agent: navigator.userAgent,
@@ -642,6 +691,7 @@ function uploadCaseInBackground(caseId) {
     calibration: study.calibration,
     screen_geometry: study.screen_geometry,
     calibration_viewport: study.calibration_viewport,
+    browser_check: study.browser_check,
     case_id: caseId, partial: true,
     "case": sanitiseCaseForUpload(study.cases[caseId] || {}),
     started_at: study.started_at,
@@ -668,6 +718,7 @@ var jsPsych = initJsPsych({
       calibration: study.calibration,
       screen_geometry: study.screen_geometry,
     calibration_viewport: study.calibration_viewport,
+    browser_check: study.browser_check,
       cases: Object.fromEntries(
         Object.entries(study.cases).map(([k, v]) => [k, sanitiseCaseForUpload(v)])
       ),
@@ -693,6 +744,53 @@ var jsPsych = initJsPsych({
 });
 
 var timeline = [];
+
+/* =====================================================================
+   BROWSER CHECK (window size + metadata)
+   Requires the v7-compatible browser-check plugin: version 1.0.3
+   (js/plugin-browser-check.js). Do NOT use 2.x — that is the v8 build and
+   calls jsPsych APIs renamed in v8 (abortExperiment), which will break on
+   this v7 core. The parameters used below (minimum_width/height,
+   allow_window_resize, inclusion_function) and the data fields are identical
+   across 1.0.3 and 2.x, so only the downloaded file version matters.
+
+   The hard browser/capability gate already ran above (checkBrowser).
+   This plugin trial is used for two complementary jobs the native gate
+   does NOT do:
+     1. Enforce a minimum window size with an interactive resize prompt —
+        the BioWorld layout (280px left panel + content + AOIs) needs room;
+        a cramped window degrades gaze-to-AOI validity.
+     2. Log browser/OS/refresh-rate/device metadata into the dataset for
+        reporting and for diagnosing any per-participant anomalies.
+
+   inclusion_function is intentionally permissive for BROWSER (the native
+   capability gate already decided that). It only blocks if the participant
+   refuses/can't reach the minimum window size. Browser NAME is not used to
+   exclude here, so Edge/Brave/Arc/etc. are not wrongly rejected.
+   ===================================================================== */
+timeline.push({
+  type: jsPsychBrowserCheck,
+  minimum_width: 1000,
+  minimum_height: 600,
+  allow_window_resize: true,
+  inclusion_function: () => true,   // browser gating handled by native checkBrowser()
+  on_finish: function(data) {
+    study.browser_check = {
+      browser:         data.browser,
+      browser_version: data.browser_version,
+      os:              data.os,
+      mobile:          data.mobile,
+      width:           data.width,
+      height:          data.height,
+      webaudio:        data.webaudio,
+      fullscreen:      data.fullscreen,
+      vsync_rate:      data.vsync_rate,
+      webcam:          data.webcam,
+      microphone:      data.microphone
+    };
+  }
+});
+
 /* =====================================================================
    BLOCK RANDOMIZATION
    Randomly permuted blocks (sizes 2 and 4, mixed at random) ensure
