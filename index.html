@@ -1911,7 +1911,7 @@ function clickToTransitions(clickSeq) {
    pre-register the value, and gate gaze inclusion on it. A provisional
    value in the 1.0-1.5 range is a defensible starting point.
    ===================================================================== */
-function gazeQualityMetrics(rawSamples, dwells, snapshots, meanOffsetPx) {
+function gazeQualityMetrics(rawSamples, dwells, snapshots, meanOffsetPx, caseSnapshots) {
   const nRaw = (rawSamples || []).length;
   const nOnAoi = (dwells || []).reduce((k, d) => k + 1, 0);
   let minDim = null;
@@ -1921,6 +1921,40 @@ function gazeQualityMetrics(rawSamples, dwells, snapshots, meanOffsetPx) {
     if (minDim === null || d < minDim) minDim = d;
   }));
   const dwellMs = (dwells || []).reduce((k, d) => k + (d.dwell_ms || 0), 0);
+
+  /* ── Off-AOI diagnostic ──
+     Samples that hit no AOI — gutters, the tab strip, the bottom bar, or
+     simply off-panel — are dropped, and the sequence closes over the gap.
+     That is invisible in the transition matrix (a same-symbol pair either
+     side of a gap is already skipped) but it does affect LAM, because two
+     adjacent same-symbol dwells in the sequence fed to crqa contribute a
+     vertical line that would not exist had the glance been captured.
+
+     These counters let the pilot measure that instead of assuming it:
+     off_aoi_rate is the share of samples landing nowhere, and
+     n_bridged_gaps counts how often a dropped run sits between two dwells
+     on the SAME symbol — the specific case that inflates LAM. If both are
+     small, dropping is safe and the gutters cost nothing. If not, the
+     forward-fill or off-AOI-as-symbol alternatives need a second look. */
+  let offRuns = 0, offSamples = 0, bridged = 0, longestRunMs = 0;
+  const sorted = (rawSamples || []).filter(s => s && s.x != null).sort((a,b) => a.t - b.t);
+  let runStart = null, prevAoi = null, lastT = null;
+  for (const smp of sorted) {
+    const hit = pointToAOI(smp.x, smp.y, rectsAtTime(snapshots, smp.t));
+    if (!hit) {
+      if (runStart === null) { runStart = smp.t; offRuns++; }
+      offSamples++;
+    } else {
+      if (runStart !== null) {
+        longestRunMs = Math.max(longestRunMs, (lastT || smp.t) - runStart);
+        if (prevAoi !== null && prevAoi === hit.id) bridged++;
+        runStart = null;
+      }
+      prevAoi = hit.id;
+    }
+    lastT = smp.t;
+  }
+
   return {
     n_raw_samples:      nRaw,
     n_dwells:           nOnAoi,
@@ -1928,6 +1962,11 @@ function gazeQualityMetrics(rawSamples, dwells, snapshots, meanOffsetPx) {
     min_aoi_dimension:  minDim,
     mean_offset_px:     meanOffsetPx != null ? meanOffsetPx : null,
     aoi_adequacy:       (minDim != null && meanOffsetPx) ? +(minDim / meanOffsetPx).toFixed(3) : null,
+    off_aoi_samples:    offSamples,
+    off_aoi_rate:       nRaw ? +(offSamples / nRaw).toFixed(4) : null,
+    n_off_aoi_runs:     offRuns,
+    longest_off_run_ms: Math.round(longestRunMs),
+    n_bridged_gaps:     bridged,
     /* Realised alphabet size: symbols this participant actually visited.
        Smaller realised alphabets inflate %REC for reasons unrelated to
        search strategy, so this is needed to interpret RQA across people. */
@@ -3551,12 +3590,39 @@ const practiceCase = {
         <span class="bw-patient-label">ALEX CHEN — PRACTICE ONLY</span>
       </div>
       <div class="bw-main">
-        <!-- Practice mirrors the real cases' RIGHT COLUMN: content above,
-             evidence table below. The hypothesis and confidence panels are
-             introduced in Case 1 rather than here, but the evidence table must
-             occupy the same relative position in both — otherwise participants
-             learn one layout in practice and spend the opening of Case 1
-             re-orienting, and Case 1 is real data. -->
+
+        <!-- Practice reproduces the FULL case layout and every interaction the
+             real cases use: hypothesis manager, confidence meter, evidence
+             table, content area. Nothing is introduced for the first time in
+             Case 1 — Case 1 is real data, and a participant meeting a control
+             for the first time there would spend the opening of the case
+             learning the interface rather than reasoning. -->
+        <div class="bw-left">
+
+          <div class="bw-panel-section" id="pr_hyp_panel" role="region" aria-label="Hypothesis Manager">
+            <div class="bw-panel-label" aria-hidden="true">Hypothesis Manager</div>
+            <div class="bw-hyp-list" id="pr_hyp_list" role="list" aria-label="Your hypotheses" aria-live="polite"></div>
+            <div class="bw-hyp-input-row">
+              <label for="pr_hyp_input" class="sr-only">New hypothesis</label>
+              <input type="text" class="bw-hyp-input" id="pr_hyp_input" placeholder="Add a hypothesis…" maxlength="80" aria-label="New hypothesis" />
+              <button class="bw-hyp-add" id="pr_hyp_add" aria-label="Add hypothesis">+ Add</button>
+            </div>
+          </div>
+
+          <div class="bw-panel-section" id="pr_belief_panel" role="region" aria-label="Confidence Meter">
+            <div class="bw-panel-label" aria-hidden="true">Confidence Meter</div>
+            <label for="pr_belief_sel" class="sr-only">Select hypothesis to rate</label>
+            <select class="bw-belief-select" id="pr_belief_sel" aria-label="Select hypothesis to rate">
+              <option value="">— Select hypothesis —</option>
+            </select>
+            <label for="pr_belief_slider" class="sr-only">Confidence level</label>
+            <input type="range" class="bw-belief-slider" id="pr_belief_slider" min="0" max="100" value="50" aria-label="Confidence level" aria-valuetext="50% — moderate confidence">
+            <div class="bw-belief-labels" aria-hidden="true"><span>Not confident</span><span>Very confident</span></div>
+            <div class="bw-belief-value" id="pr_belief_val" aria-live="polite" aria-atomic="true">Confidence: 50%</div>
+          </div>
+
+        </div>
+
         <div class="bw-right">
         <div class="bw-content">
 
@@ -3566,6 +3632,8 @@ const practiceCase = {
               aria-label="Dismiss instructions" title="Dismiss instructions">&#x2715;</button>
             <h4>Practice — try these steps</h4>
             <ul>
+              <li><strong>Add a hypothesis</strong> — type anything in the Hypothesis Manager (left panel) and click + Add.</li>
+              <li><strong>Rate your confidence</strong> — pick your hypothesis in the Confidence Meter and drag the slider. You can change it as often as you like.</li>
               <li><strong>Highlight text</strong> — click and drag to select any text in the paragraphs below. A popup will appear — click <em>＋ Add to Evidence</em> to save it.</li>
               <li><strong>Select a time slot</strong> — choose either the 9:00 AM or 2:00 PM option.</li>
               <li><strong>Confirm</strong> — click <em>Confirm &amp; Continue</em> in the bottom bar when ready.</li>
@@ -3621,6 +3689,73 @@ const practiceCase = {
     const caseStart=performance.now();
     const prEv=[];
     let   prEvCounter=0;
+
+    /* ── Practice hypothesis manager + confidence meter ──
+       Behaviourally identical to the real cases, including the revision-
+       recording logic on the slider, so nothing about the interaction is new
+       in Case 1. Practice state is intentionally NOT written to study.cases —
+       this is rehearsal, not data. */
+    const prHyp = [];
+    const PR_BELIEF_MERGE_MS = 800;
+
+    const prHypList  = document.getElementById("pr_hyp_list");
+    const prHypInput = document.getElementById("pr_hyp_input");
+    const prHypAdd   = document.getElementById("pr_hyp_add");
+    const prBelSel   = document.getElementById("pr_belief_sel");
+    const prBelSlide = document.getElementById("pr_belief_slider");
+    const prBelVal   = document.getElementById("pr_belief_val");
+
+    function renderPrHyp() {
+      if (!prHypList || !prBelSel) return;
+      prHypList.innerHTML = prHyp.map(h =>
+        `<div class="bw-hyp-row" role="listitem">
+           <span class="bw-hyp-name" title="${h.text}">${h.text}</span>
+           <button class="bw-hyp-rm" data-hyp-id="${h.id}" aria-label="Remove hypothesis: ${h.text}">&times;</button>
+         </div>`).join("");
+      prHypList.querySelectorAll(".bw-hyp-rm").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const i = prHyp.findIndex(x => x.id === btn.dataset.hypId);
+          if (i >= 0) prHyp.splice(i, 1);
+          renderPrHyp();
+        });
+      });
+      const keep = prBelSel.value;
+      prBelSel.innerHTML = `<option value="">— Select hypothesis —</option>` +
+        prHyp.map(h => `<option value="${h.id}">${h.text}</option>`).join("");
+      if (prHyp.some(h => h.id === keep)) prBelSel.value = keep;
+    }
+
+    function prAddHyp() {
+      if (!prHypInput) return;
+      const text = prHypInput.value.trim(); if (!text) return;
+      prHyp.push({ id:String(Date.now()), text, belief:50, belief_rated:false });
+      prHypInput.value = "";
+      renderPrHyp();
+    }
+    if (prHypAdd)   prHypAdd.addEventListener("click", prAddHyp);
+    if (prHypInput) prHypInput.addEventListener("keydown", e => { if (e.key === "Enter") prAddHyp(); });
+
+    if (prBelSlide) {
+      prBelSlide.addEventListener("input", () => {
+        const val = parseInt(prBelSlide.value);
+        if (prBelVal) prBelVal.textContent = "Confidence: "+val+"%";
+        const vt = val<=25?"low confidence":val<=50?"moderate confidence":val<=75?"high confidence":"very high confidence";
+        prBelSlide.setAttribute("aria-valuenow", val);
+        prBelSlide.setAttribute("aria-valuetext", val+"% — "+vt);
+      });
+      prBelSlide.addEventListener("change", () => {
+        if (!prBelSel || !prBelSel.value) return;
+        const h = prHyp.find(x => x.id === prBelSel.value);
+        if (!h) return;
+        h.belief = parseInt(prBelSlide.value);
+        h.belief_rated = true;
+      });
+      if (prBelSel) prBelSel.addEventListener("change", () => {
+        const h = prHyp.find(x => x.id === prBelSel.value);
+        if (h) { prBelSlide.value = h.belief; if (prBelVal) prBelVal.textContent = "Confidence: "+h.belief+"%"; }
+      });
+    }
+    renderPrHyp();
     const tick=setInterval(()=>{
       const el=document.getElementById("pr_elapsed"); if(!el) return;
       const sec=Math.floor((performance.now()-caseStart)/1000);
