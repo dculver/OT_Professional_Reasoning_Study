@@ -224,15 +224,47 @@
     .bw-tab.active { color:#1565c0; border-bottom-color:#1565c0; }
     .bw-patient-label { margin-left:auto; font-size:12px; color:#44545f; letter-spacing:.06em; }
 
-    /* Main layout */
-    .bw-main { display:flex; flex:1; overflow:hidden; }
+    /* ================================================================
+       MAIN LAYOUT — four gaze AOI regions separated by explicit gutters.
 
-    /* Left panel */
-    .bw-left {
-      width:280px; flex-shrink:0; background:#f2f5f9;
-      border-right:1px solid #d0d9e3; display:flex; flex-direction:column; overflow:hidden;
+       --bw-gutter is a MEASUREMENT parameter, not a style choice. It creates
+       uncoded dead space between adjacent AOIs so that a gaze sample landing
+       near a boundary falls outside both rects and is dropped, rather than
+       being confidently assigned to the wrong one. WebGazer's reported error
+       is ~130-210px (Papoutsaki et al., 2016; Slim & Hartsuiker, 2023), so
+       adjacent AOIs sharing a 1px border are not separable at all.
+
+       Layout is FROZEN for the duration of the study. Panel geometry shapes
+       the gaze transition matrix, which is the RQA input — changing it
+       mid-study would make RQA values non-comparable across participants.
+       ================================================================ */
+    :root { --bw-gutter: 36px; }
+
+    .bw-main {
+      display:flex; flex:1; overflow:hidden;
+      background:#e2e8ef;                        /* gutter colour */
+      gap:var(--bw-gutter); padding:var(--bw-gutter);
     }
-    .bw-panel-section { border-bottom:1px solid #d0d9e3; padding:12px 14px; }
+
+    /* Left column — hypothesis manager + confidence meter only.
+       The evidence table moved to the right column so these two panels
+       split the full column height instead of sharing it three ways. */
+    .bw-left {
+      width:340px; flex-shrink:0;
+      display:flex; flex-direction:column; gap:var(--bw-gutter); overflow:hidden;
+    }
+
+    /* Right column — main content (2/3) + evidence table (1/3) */
+    .bw-right {
+      flex:1; min-width:0;
+      display:flex; flex-direction:column; gap:var(--bw-gutter); overflow:hidden;
+    }
+
+    /* Shared panel chrome. Every gaze AOI is exactly one of these boxes. */
+    .bw-panel-section, .bw-evidence-section {
+      background:#f2f5f9; border:1px solid #d0d9e3; border-radius:8px;
+      flex:1; padding:14px 16px; overflow-y:auto; min-height:0;
+    }
     .bw-panel-label {
       font-size:11px; font-weight:600; letter-spacing:.1em;
       text-transform:uppercase; color:#566673; margin-bottom:8px;
@@ -279,13 +311,14 @@
     .bw-belief-labels span { font-size:11px; color:#566673; }
     .bw-belief-value { text-align:center; font-size:12px; color:#1565c0; margin-top:4px; font-weight:500; }
 
-    /* Evidence table */
-    .bw-evidence-section { flex:1; overflow-y:auto; padding:12px 14px; min-height:0; }
+    /* Evidence table — now full-width under the content area, so items are
+       laid out as real table rows (tag | excerpt | remove) rather than as a
+       cramped vertical list sized for a 280px column. */
     .bw-ev-list { display:flex; flex-direction:column; gap:5px; }
     .bw-ev-item {
-      background:#f4f7fa; border:1px solid #d0d9e3; border-left:3px solid #16692f;
-      border-radius:5px; padding:6px 10px; font-size:12px; color:#33424f;
-      display:flex; align-items:flex-start; gap:8px;
+      background:#ffffff; border:1px solid #d0d9e3; border-left:3px solid #16692f;
+      border-radius:5px; padding:8px 12px; font-size:12px; color:#33424f;
+      display:grid; grid-template-columns:84px 1fr 28px; align-items:start; gap:14px;
     }
     .bw-ev-tag {
       flex-shrink:0; font-size:10px; padding:1px 5px; border-radius:3px;
@@ -294,12 +327,15 @@
     .tag-patient { background:#d3e4f5; color:#0d5aa7; }
     .tag-assess  { background:#dcefc4; color:#2f6618; }
     .tag-obs     { background:#f3e4c4; color:#6e5210; }
-    .bw-ev-rm { margin-left:auto; background:transparent; border:none; color:#566673; cursor:pointer; font-size:14px; line-height:1; flex-shrink:0; min-width:24px; min-height:24px; display:flex; align-items:center; justify-content:center; }
+    .bw-ev-rm { background:transparent; border:none; color:#566673; cursor:pointer; font-size:14px; line-height:1; min-width:24px; min-height:24px; display:flex; align-items:center; justify-content:center; }
     .bw-ev-rm:hover { color:#c0392b; }
     .bw-ev-empty { font-size:12px; color:#566673; font-style:italic; padding:8px 0; }
 
-    /* Content area */
-    .bw-content { flex:1; overflow-y:auto; padding:24px 28px; min-width:0; text-align:left; }
+    /* Content area — 2/3 of the right column height; evidence table takes 1/3 */
+    .bw-content {
+      flex:2; overflow-y:auto; padding:24px 28px; min-width:0; text-align:left;
+      background:#ffffff; border:1px solid #d0d9e3; border-radius:8px; min-height:0;
+    }
     .bw-panel { display:none; }
     .bw-panel.active { display:block; }
     /* hidden attribute on tabpanels is managed by JS; .active overrides it */
@@ -583,7 +619,15 @@ const CONFIG = {
   FORCE_CONDITION: null,           // set to "dashboard" or "control" to override randomization
   MIN_DWELL_MS: 150,
   SCREEN_FPS: 15,
-  RTA_MAX_SECONDS: 240
+  RTA_MAX_SECONDS: 240,
+  /* Administrative bypass key.
+     >>> SET THIS TO null BEFORE DATA COLLECTION BEGINS. <<<
+     null or "" disables DEV mode entirely, regardless of URL parameters.
+     The repo is public, so this key is readable in source by anyone who
+     looks — it is a guard against accidental triggering, not security. The
+     real protections are the upload block in postToDataPipe() and the
+     persistent red banner. */
+  DEV_KEY: "rC1oon5liFE4UF7uFYkUnZ3ljXaY7uFy"
 };
 
 /* =====================================================================
@@ -601,7 +645,11 @@ const study = {
   unlinked_session: false,
   cases: {},
   user_agent: navigator.userAgent,
-  started_at: new Date().toISOString()
+  started_at: new Date().toISOString(),
+  /* Recorded unconditionally so a bypassed session is identifiable in the
+     data even if the banner was missed or a screenshot was cropped. */
+  dev_mode: false,
+  dev_params: null
 };
 const caseMedia = {};
 
@@ -651,6 +699,59 @@ function stopScreenRecording(id) {
 }
 
 /* =====================================================================
+   DEV / ADMINISTRATIVE BYPASS
+
+   Purpose: reach the cases during development without sitting through
+   calibration every time. NOT a participant-facing feature.
+
+   Three properties this must have, in priority order:
+     1. Impossible to trigger accidentally — gated on a long random key.
+     2. Impossible to miss — persistent red banner + title marker, so a
+        bypassed session can never be mistaken for a real one.
+     3. Cannot contaminate the dataset — uploads are suppressed outright
+        (see postToDataPipe), and study.dev_mode is recorded either way.
+
+   Usage:
+     ?devkey=KEY&skip=calib,practice
+     ?devkey=KEY&skip=all&cond=dashboard
+     ?devkey=KEY&skip=all&start=2
+
+   Skip flags: chinrest, calib, webcam, whisper, practice, rtaintro,
+               midcal, case1, all
+     calib   — camera still initialises; calibration grid skipped. Gaze will
+               be untrained and RQA meaningless, but the interface runs.
+     webcam  — camera not initialised at all. This ALSO strips the WebGazer
+               extension from the case trials; without that, the extension
+               would attach to nothing and the case would appear to run fine
+               while silently producing zero gaze samples.
+   ===================================================================== */
+const DEV = (function () {
+  const p   = new URLSearchParams(location.search);
+  const on  = p.get("devkey") === CONFIG.DEV_KEY && !!CONFIG.DEV_KEY;
+  const set = new Set((p.get("skip") || "").split(",").map(x => x.trim()).filter(Boolean));
+  return {
+    active: on,
+    skip:   id => on && (set.has(id) || set.has("all")),
+    cond:   on ? p.get("cond")  : null,
+    start:  on ? p.get("start") : null,
+    raw:    on ? location.search : null
+  };
+})();
+
+if (DEV.active) {
+  document.title = "DEV MODE — " + document.title;
+  window.addEventListener("DOMContentLoaded", () => {
+    const b = document.createElement("div");
+    b.id = "dev_banner";
+    b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2147483647;" +
+      "background:#c0392b;color:#fff;font:600 12px/22px 'Segoe UI',sans-serif;" +
+      "text-align:center;pointer-events:none;letter-spacing:.06em;";
+    b.textContent = "DEV MODE — uploads suppressed — this session is not study data";
+    document.body.appendChild(b);
+  });
+}
+
+/* =====================================================================
    OSF / DataPipe
    ===================================================================== */
 function uniqueName(tag) {
@@ -660,6 +761,14 @@ function uniqueName(tag) {
   return id + "_" + tag + "_" + stamp + "_" + rand + ".json";
 }
 function postToDataPipe(filename, dataObj) {
+  /* Hard block. A dev run must never reach the real OSF component. Note this
+     means the upload path itself goes untested in dev — if you need to
+     exercise it, point CONFIG.OSF_EXPERIMENT_ID at a separate test component
+     rather than removing this guard. */
+  if (DEV.active) {
+    console.warn("[DEV] upload suppressed:", filename, dataObj);
+    return Promise.resolve({ ok:true, status:0, body:{ dev_suppressed:true } });
+  }
   return fetch("https://pipe.jspsych.org/api/data/", {
     method:"POST",
     headers:{ "Content-Type":"application/json", "Accept":"*/*" },
@@ -745,6 +854,13 @@ var jsPsych = initJsPsych({
 
 var timeline = [];
 
+/* DEV flags are parsed from the URL before the timeline is built, so gating is
+   a plain build-time decision — no conditional_function needed. */
+function pushUnless(flag, node) { if (!DEV.skip(flag)) timeline.push(node); }
+
+study.dev_mode   = DEV.active;
+study.dev_params = DEV.raw;
+
 /* =====================================================================
    BROWSER CHECK (window size + metadata)
    Requires the v7-compatible browser-check plugin: version 1.0.3
@@ -771,7 +887,12 @@ var timeline = [];
 timeline.push({
   type: jsPsychBrowserCheck,
   minimum_width: 1000,
-  minimum_height: 600,
+  /* Raised from 600. AOI height scales with viewport, and at 600px the
+     evidence table renders ~184px tall — inside WebGazer's error band, so it
+     stops being separable from its neighbours. 700 keeps every AOI above the
+     band without excluding 1366x768 laptops. Per-participant adequacy is
+     still checked empirically in gazeQualityMetrics(). */
+  minimum_height: 700,
   allow_window_resize: true,
   inclusion_function: () => true,   // browser gating handled by native checkBrowser()
   on_finish: function(data) {
@@ -812,6 +933,11 @@ timeline.push({
 const BLOCK_SEQ = ["control", "dashboard", "control", "dashboard", "dashboard", "control", "control", "dashboard", "control", "dashboard", "control", "dashboard", "control", "dashboard", "control", "dashboard", "dashboard", "dashboard", "control", "control", "control", "dashboard", "control", "dashboard", "control", "dashboard", "dashboard", "control", "control", "dashboard", "control", "dashboard", "control", "dashboard", "control", "control", "dashboard", "dashboard", "dashboard", "control", "dashboard", "control", "control", "dashboard", "dashboard", "control", "control", "dashboard", "control", "dashboard", "control", "dashboard", "dashboard", "control", "control", "dashboard", "dashboard", "control", "dashboard", "control", "dashboard", "control", "control", "dashboard", "control", "dashboard", "dashboard", "dashboard", "control", "control", "control", "dashboard", "control", "dashboard", "dashboard", "dashboard", "control", "control", "dashboard", "control", "dashboard", "control", "dashboard", "control", "dashboard", "control", "control", "dashboard", "dashboard", "control", "dashboard", "control", "dashboard", "control", "dashboard", "control", "control", "dashboard", "control", "dashboard", "dashboard", "control", "dashboard", "control", "dashboard", "control", "dashboard", "control", "control", "dashboard", "control", "control", "dashboard", "dashboard", "dashboard", "dashboard", "control", "control", "control", "dashboard", "dashboard", "control", "dashboard", "control", "dashboard", "control", "control", "dashboard", "control", "dashboard", "dashboard", "control", "control", "control", "dashboard", "dashboard", "control", "dashboard", "dashboard", "control", "control", "dashboard", "dashboard", "control", "dashboard", "control", "control", "dashboard", "dashboard", "control", "dashboard", "control", "dashboard", "control", "control", "dashboard", "dashboard", "control", "control", "dashboard", "control", "control", "dashboard", "dashboard", "control", "dashboard", "control", "dashboard", "control", "dashboard", "dashboard", "control", "control", "dashboard", "control", "dashboard", "dashboard", "control", "dashboard", "dashboard", "control", "control", "control", "dashboard", "dashboard", "control", "dashboard", "dashboard", "control", "control", "control", "dashboard", "dashboard", "control", "control", "dashboard", "control", "dashboard", "dashboard", "control"];
 
 (function assignCondition() {
+  if (DEV.cond === "dashboard" || DEV.cond === "control") {
+    study.experimental_condition = DEV.cond;
+    study.randomization_method   = "dev_override";
+    return;
+  }
   if (CONFIG.FORCE_CONDITION) {
     study.experimental_condition = CONFIG.FORCE_CONDITION;
     study.randomization_method   = "forced";
@@ -871,7 +997,7 @@ timeline.push({
     }
   }
 });
-timeline.push({
+pushUnless("webcam", {
   type: jsPsychWebgazerInitCamera,
   instructions:"<p>Center your face in the webcam window. Sit ~50cm away, ensure even lighting, and keep your head still during the study.</p>",
   button_text:"Continue",
@@ -901,7 +1027,7 @@ timeline.push({
 
    blindspot_reps must be > 0 or px2deg / view_dist_mm are never computed.
    ===================================================================== */
-timeline.push({
+pushUnless("chinrest", {
   type: jsPsychVirtualChinrest,
   blindspot_reps: 5,
   resize_units: "none",          // measure only — never rescale the page
@@ -1016,7 +1142,7 @@ var calibration_stabilise = {
   </div>`
 };
 
-timeline.push({
+pushUnless("calib", {
   timeline: [calibration_instructions, calibration_grid, calibration_stabilise, validation_instructions, {
     type: jsPsychWebgazerValidate,
     validation_points: calib_points,
@@ -1068,7 +1194,7 @@ timeline.push({
 });
 
 /* model warm-up gate — worker loads Whisper in background while participant reads instructions */
-timeline.push({
+pushUnless("whisper", {
   type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
   stimulus:`<div style="max-width:580px;margin:12% auto;text-align:center;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
     <h3 style="color:#1565c0;margin-bottom:16px;">Preparing speech analysis tools</h3>
@@ -1130,19 +1256,39 @@ const BW_CASES = {
        These IDs must match the element IDs rendered in the BioWorld template.
        Emic codes (Schell): SCIENTIFIC, NARRATIVE, PRAGMATIC
        Etic codes (Winne & Hadwin): TASK-DEF, GOAL-SET, ENACTING, MONITOR        */
-    aoi_map: [
-      { id:"bw_hyp_panel",     emic:"",            etic:"GOAL-SET",  label:"Hypothesis Manager" },
-      { id:"bw_belief_panel",  emic:"",            etic:"GOAL-SET",  label:"Belief Meter" },
-      { id:"bw_ev_panel",      emic:"",            etic:"MONITOR",   label:"Evidence Table" },
-      { id:"bw_para_h1",       emic:"NARRATIVE",   etic:"TASK-DEF",  label:"Patient History Para 1" },
-      { id:"bw_para_h2",       emic:"NARRATIVE",   etic:"TASK-DEF",  label:"Patient History Para 2" },
-      { id:"bw_para_a1",       emic:"SCIENTIFIC",  etic:"TASK-DEF",  label:"ADL Observation Para 1" },
-      { id:"bw_para_a2",       emic:"NARRATIVE",   etic:"TASK-DEF",  label:"ADL Observation Para 2" },
-      { id:"bw_para_f1",       emic:"PRAGMATIC",   etic:"TASK-DEF",  label:"Functional Status" },
-      { id:"bw_panel_chart",   emic:"SCIENTIFIC",  etic:"ENACTING",  label:"Chart / Assessments Tab" },
-      { id:"bw_panel_library", emic:"SCIENTIFIC",  etic:"ENACTING",  label:"Library Tab" },
-      { id:"bw_panel_plan",    emic:"PRAGMATIC",   etic:"ENACTING",  label:"Intervention Plan Tab" }
+    /* ── GAZE AOIs — the RQA alphabet ─────────────────────────────────
+       Seven regions; exactly four exist at any instant (three persistent
+       panels plus whichever content tab is active). Hidden tab panels have
+       zero-size rects and are excluded automatically by snapshotAOIRects.
+
+       NO emic/etic codes here, deliberately. A fixation cannot tell us what
+       a student was thinking, only where attention was allocated. Gaze feeds
+       RQA only, never T/ONA. Codes were retired from this table in June;
+       the paragraph-level AOIs that existed solely to carry them have been
+       removed with them.                                                 */
+    gaze_aois: [
+      { id:"bw_hyp_panel",     label:"Hypothesis Manager" },
+      { id:"bw_belief_panel",  label:"Confidence Meter" },
+      { id:"bw_ev_panel",      label:"Evidence Table" },
+      { id:"bw_panel_problem", label:"Problem Tab" },
+      { id:"bw_panel_chart",   label:"Chart / Assessments Tab" },
+      { id:"bw_panel_library", label:"Library Tab" },
+      { id:"bw_panel_plan",    label:"Intervention Plan Tab" }
     ],
+
+    /* ── REASONING-PRODUCT CODES — T/ONA input, NOT gaze regions ───────
+       Applied when a student sends a passage to the evidence table. That
+       act is construct-bearing, so it carries the Schell emic track and the
+       Winne & Hadwin phase of its source paragraph. Keyed by DOM id; the
+       paragraph <div>s still exist in the markup, they are simply no longer
+       gaze AOIs. Never use this table to subdivide the AOI set.           */
+    evidence_source_codes: {
+      bw_para_h1: { emic:"NARRATIVE",  etic:"TASK-DEF" },
+      bw_para_h2: { emic:"NARRATIVE",  etic:"TASK-DEF" },
+      bw_para_a1: { emic:"SCIENTIFIC", etic:"TASK-DEF" },
+      bw_para_a2: { emic:"NARRATIVE",  etic:"TASK-DEF" },
+      bw_para_f1: { emic:"PRAGMATIC",  etic:"TASK-DEF" }
+    },
 
     paragraphs: {
       bw_para_h1: "Patient History: 74yo retired schoolteacher, ischemic stroke (L MCA), right hemiparesis, mild expressive aphasia, reduced right grip strength. Previously fully independent, lives alone.",
@@ -1232,19 +1378,39 @@ const BW_CASES = {
     setting: "Inpatient Rehab",
     referral: "Physiatry",
 
-    aoi_map: [
-      { id:"bw_hyp_panel",     emic:"",            etic:"GOAL-SET",  label:"Hypothesis Manager" },
-      { id:"bw_belief_panel",  emic:"",            etic:"GOAL-SET",  label:"Belief Meter" },
-      { id:"bw_ev_panel",      emic:"",            etic:"MONITOR",   label:"Evidence Table" },
-      { id:"bw_para_h1",       emic:"NARRATIVE",   etic:"TASK-DEF",  label:"Patient History Para 1" },
-      { id:"bw_para_h2",       emic:"NARRATIVE",   etic:"TASK-DEF",  label:"Patient History Para 2" },
-      { id:"bw_para_a1",       emic:"SCIENTIFIC",  etic:"TASK-DEF",  label:"ADL Observation Para 1" },
-      { id:"bw_para_a2",       emic:"NARRATIVE",   etic:"TASK-DEF",  label:"ADL Observation Para 2" },
-      { id:"bw_para_f1",       emic:"PRAGMATIC",   etic:"TASK-DEF",  label:"Functional Status" },
-      { id:"bw_panel_chart",   emic:"SCIENTIFIC",  etic:"ENACTING",  label:"Chart / Assessments Tab" },
-      { id:"bw_panel_library", emic:"SCIENTIFIC",  etic:"ENACTING",  label:"Library Tab" },
-      { id:"bw_panel_plan",    emic:"PRAGMATIC",   etic:"ENACTING",  label:"Intervention Plan Tab" }
+    /* ── GAZE AOIs — the RQA alphabet ─────────────────────────────────
+       Seven regions; exactly four exist at any instant (three persistent
+       panels plus whichever content tab is active). Hidden tab panels have
+       zero-size rects and are excluded automatically by snapshotAOIRects.
+
+       NO emic/etic codes here, deliberately. A fixation cannot tell us what
+       a student was thinking, only where attention was allocated. Gaze feeds
+       RQA only, never T/ONA. Codes were retired from this table in June;
+       the paragraph-level AOIs that existed solely to carry them have been
+       removed with them.                                                 */
+    gaze_aois: [
+      { id:"bw_hyp_panel",     label:"Hypothesis Manager" },
+      { id:"bw_belief_panel",  label:"Confidence Meter" },
+      { id:"bw_ev_panel",      label:"Evidence Table" },
+      { id:"bw_panel_problem", label:"Problem Tab" },
+      { id:"bw_panel_chart",   label:"Chart / Assessments Tab" },
+      { id:"bw_panel_library", label:"Library Tab" },
+      { id:"bw_panel_plan",    label:"Intervention Plan Tab" }
     ],
+
+    /* ── REASONING-PRODUCT CODES — T/ONA input, NOT gaze regions ───────
+       Applied when a student sends a passage to the evidence table. That
+       act is construct-bearing, so it carries the Schell emic track and the
+       Winne & Hadwin phase of its source paragraph. Keyed by DOM id; the
+       paragraph <div>s still exist in the markup, they are simply no longer
+       gaze AOIs. Never use this table to subdivide the AOI set.           */
+    evidence_source_codes: {
+      bw_para_h1: { emic:"NARRATIVE",  etic:"TASK-DEF" },
+      bw_para_h2: { emic:"NARRATIVE",  etic:"TASK-DEF" },
+      bw_para_a1: { emic:"SCIENTIFIC", etic:"TASK-DEF" },
+      bw_para_a2: { emic:"NARRATIVE",  etic:"TASK-DEF" },
+      bw_para_f1: { emic:"PRAGMATIC",  etic:"TASK-DEF" }
+    },
 
     paragraphs: {
       bw_para_h1: "Patient History: 27yo graphic designer, C6 SCI incomplete (AIS D) 6 weeks post-MVC. Reduced bilateral grip strength; tenodesis grasp intact. Currently uses wheelchair, transfers independently.",
@@ -1398,15 +1564,10 @@ function buildBioWorldUI(c) {
           <div class="bw-belief-value" id="bw_belief_val_${c.id}" aria-live="polite" aria-atomic="true">Confidence: 50%</div>
         </div>
 
-        <!-- Evidence Table -->
-        <div class="bw-evidence-section" id="bw_ev_panel" role="region" aria-label="Evidence Table">
-          <div class="bw-panel-label" aria-hidden="true">Evidence Table</div>
-          <div class="bw-ev-list" id="bw_ev_list_${c.id}" role="list" aria-label="Collected evidence" aria-live="polite">
-            <div class="bw-ev-empty" id="bw_ev_empty_${c.id}">No evidence collected yet. Select and highlight text in the Problem tab to add excerpts.</div>
-          </div>
-        </div>
-
       </div>
+
+      <!-- RIGHT COLUMN — main content (2/3) above evidence table (1/3) -->
+      <div class="bw-right">
 
       <!-- CENTER CONTENT -->
       <div class="bw-content">
@@ -1473,6 +1634,18 @@ function buildBioWorldUI(c) {
         </div>
 
       </div>
+      <!-- /.bw-content -->
+
+        <!-- EVIDENCE TABLE — full width beneath the content area -->
+        <div class="bw-evidence-section" id="bw_ev_panel" role="region" aria-label="Evidence Table">
+          <div class="bw-panel-label" aria-hidden="true">Evidence Table</div>
+          <div class="bw-ev-list" id="bw_ev_list_${c.id}" role="list" aria-label="Collected evidence" aria-live="polite">
+            <div class="bw-ev-empty" id="bw_ev_empty_${c.id}">No evidence collected yet. Select and highlight text in the Problem tab to add excerpts.</div>
+          </div>
+        </div>
+
+      </div>
+      <!-- /.bw-right -->
     </div>
 
     <!-- BOTTOM BAR -->
@@ -1492,7 +1665,7 @@ function buildBioWorldUI(c) {
 function snapshotAOIRects(caseConfig, caseStart) {
   const rects = [];
   const cid = caseConfig.id;
-  caseConfig.aoi_map.forEach(aoi => {
+  caseConfig.gaze_aois.forEach(aoi => {
     /* Resolve the element for this AOI id. Tab-panel AOIs are suffixed with the
        case id in the DOM (e.g. bw_panel_chart -> bw_panel_chart_2); always-present
        left-panel AOIs use their bare id. Try both forms. */
@@ -1507,8 +1680,11 @@ function snapshotAOIRects(caseConfig, caseStart) {
     const r = el.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) return;
     rects.push({
-      id: aoi.id, emic: aoi.emic, etic: aoi.etic, label: aoi.label,
-      left:r.left, right:r.right, top:r.top, bottom:r.bottom
+      id: aoi.id, label: aoi.label,
+      left:r.left, right:r.right, top:r.top, bottom:r.bottom,
+      /* Stored so the per-participant AOI adequacy check can be computed in R
+         against this participant's actual rendered geometry, not assumed sizes. */
+      w: Math.round(r.width), h: Math.round(r.height)
     });
   });
   return { t: Math.round(performance.now() - caseStart), rects };
@@ -1518,10 +1694,8 @@ function snapshotAOIRects(caseConfig, caseStart) {
    GAZE → DWELL EVENTS
    Each event in the output represents one unbroken AOI visit:
      t          — onset time (ms from case start)
-     aoi        — element id (e.g. "bw_para_h1")
-     label      — human-readable AOI name from aoi_map (e.g. "Patient History Para 1")
-     emic       — Schell emic code (SCIENTIFIC / NARRATIVE / PRAGMATIC)
-     etic       — Winne & Hadwin etic code (TASK-DEF / GOAL-SET / ENACTING / MONITOR)
+     aoi        — element id (e.g. "bw_panel_chart") — this is the RQA symbol
+     label      — human-readable AOI name from gaze_aois
      dwell_ms   — duration of this AOI visit in milliseconds
      aoi_from   — aoi id of the immediately preceding visit (null for first event)
      aoi_to     — aoi id of the immediately following visit (null for last event, filled by post-pass)
@@ -1577,8 +1751,6 @@ function gazeToDwells(samples, snapshots) {
         visits.push({
           aoi:   cur,
           label: r ? (r.label || cur) : cur,
-          emic:  r ? r.emic : null,
-          etic:  r ? r.etic : null,
           start: curStart,
           end:   lastT
         });
@@ -1593,15 +1765,18 @@ function gazeToDwells(samples, snapshots) {
     visits.push({
       aoi:   cur,
       label: r ? (r.label || cur) : cur,
-      emic:  r ? r.emic : null,
-      etic:  r ? r.etic : null,
       start: curStart,
       end:   lastT
     });
   }
 
-  /* ── Pass 2: keep only coded AOIs, then add dwell_ms + transition fields ── */
-  const coded = visits.filter(v => v.emic || v.etic);
+  /* ── Pass 2: keep AOI-matched visits, then add dwell_ms + transition fields ──
+     Filter is on AOI membership, NOT on emic/etic codes. (The previous version
+     filtered `v.emic || v.etic`; once codes were removed from the AOI table that
+     predicate would have silently dropped every dwell and returned an empty
+     gaze stream with no error.) A null aoi means the sample fell in a gutter or
+     off-panel — deliberately uncoded dead space, correctly excluded here. */
+  const coded = visits.filter(v => v.aoi !== null && v.aoi !== undefined);
 
   return coded.map((v, i) => {
     const prev = i > 0             ? coded[i - 1] : null;
@@ -1610,8 +1785,6 @@ function gazeToDwells(samples, snapshots) {
       t:          Math.round(v.start),
       aoi:        v.aoi,
       label:      v.label,
-      emic:       v.emic,
-      etic:       v.etic,
       dwell_ms:   Math.round(v.end - v.start),
       aoi_from:   prev ? prev.aoi   : null,
       from_label: prev ? prev.label : null,
@@ -1626,8 +1799,7 @@ function gazeToDwells(samples, snapshots) {
    GAZE → TRANSITION SUMMARY
    Extracts all consecutive AOI pairs from the dwell event list as a
    flat array for direct use in transition-rate analysis.
-   Each entry: { t, from, from_label, from_emic, from_etic,
-                      to,   to_label,   to_emic,   to_etic }
+   Each entry: { t, from, from_label, to, to_label }
    ===================================================================== */
 function gazeToTransitions(dwellEvents) {
   const transitions = [];
@@ -1642,15 +1814,123 @@ function gazeToTransitions(dwellEvents) {
       t:          a.t + a.dwell_ms,   // transition occurs at end of the departing dwell
       from:       a.aoi,
       from_label: a.label,
-      from_emic:  a.emic,
-      from_etic:  a.etic,
       to:         b.aoi,
-      to_label:   b.label,
-      to_emic:    b.emic,
-      to_etic:    b.etic
+      to_label:   b.label
     });
   }
   return transitions;
+}
+
+/* =====================================================================
+   CLICK → AOI SEQUENCE  (second RQA stream)
+
+   Produces a categorical sequence over the SAME seven-symbol alphabet as the
+   gaze stream, so %DET and LAM computed on each are directly comparable.
+
+   Role: gaze is the primary RQA stream (RQ3/RQ4); clicks are reported in
+   every scenario as convergent evidence from an exactly-measured stream, and
+   become the inferential stream only if gaze data quality fails the
+   pre-specified threshold. That switch rule must be fixed before data
+   collection — see gazeQualityMetrics() below.
+
+   Caveat to carry into analysis: click sequences are short (tens of events
+   per case, versus hundreds of gaze dwells). RQA on short categorical
+   sequences is unstable, and %DET/LAM degrade as length drops. The pilot
+   must report observed click counts per case before this stream is relied
+   on for anything inferential.
+   ===================================================================== */
+const GAZE_ALPHABET = [
+  "bw_hyp_panel","bw_belief_panel","bw_ev_panel",
+  "bw_panel_problem","bw_panel_chart","bw_panel_library","bw_panel_plan"
+];
+
+/* Normalise a logged click AOI id onto the seven-symbol alphabet.
+   Click ids arrive in three forms:
+     bare            "bw_hyp_panel"
+     case-suffixed   "bw_panel_chart_2"
+     paragraph ids   "bw_para_a1"   (live inside the Problem tab)
+   Anything outside the alphabet (e.g. the instructions banner) returns null
+   and is excluded, mirroring how off-AOI gaze samples are dropped. */
+function normaliseClickAOI(rawId) {
+  if (!rawId) return null;
+  let id = String(rawId).replace(/_\d+$/, "");     // strip case suffix
+  if (id.indexOf("bw_para_") === 0) id = "bw_panel_problem";
+  return GAZE_ALPHABET.indexOf(id) !== -1 ? id : null;
+}
+
+function clickToSequence(clickEvents, gazeAois) {
+  const labelOf = {};
+  (gazeAois || []).forEach(a => { labelOf[a.id] = a.label; });
+  const seq = [];
+  (clickEvents || []).slice().sort((a,b) => a.t - b.t).forEach(ev => {
+    const aoi = normaliseClickAOI(ev.aoi);
+    if (!aoi) return;
+    seq.push({
+      t: ev.t, aoi, label: labelOf[aoi] || aoi,
+      action: ev.action || null, source: "click"
+    });
+  });
+  return seq.map((v, i) => ({
+    t: v.t, aoi: v.aoi, label: v.label, action: v.action,
+    aoi_from:   i > 0               ? seq[i-1].aoi   : null,
+    from_label: i > 0               ? seq[i-1].label : null,
+    aoi_to:     i < seq.length - 1  ? seq[i+1].aoi   : null,
+    to_label:   i < seq.length - 1  ? seq[i+1].label : null,
+    source: "click"
+  }));
+}
+
+/* Consecutive-pair transitions, matching gazeToTransitions in shape.
+   Same-symbol repeats are retained here (unlike gaze, where they cannot
+   occur by construction) because two successive clicks in one panel are a
+   real behavioural repetition, not a measurement artefact. */
+function clickToTransitions(clickSeq) {
+  const out = [];
+  for (let i = 0; i < clickSeq.length - 1; i++) {
+    out.push({
+      t: clickSeq[i+1].t,
+      from: clickSeq[i].aoi,   from_label: clickSeq[i].label,
+      to:   clickSeq[i+1].aoi, to_label:   clickSeq[i+1].label
+    });
+  }
+  return out;
+}
+
+/* =====================================================================
+   GAZE DATA-QUALITY METRICS  (participant-level inclusion criterion)
+
+   adequacy = smallest rendered AOI dimension / this participant's measured
+   validation error. It combines instrument error and actual rendered
+   geometry into one number, which is what determines whether THIS
+   participant's gaze can resolve THEIR AOIs. Window size varies across
+   participants, so AOI sizes do too — assumed geometry is not sufficient.
+
+   Threshold is intentionally left unset here. Calibrate it in the pilot,
+   pre-register the value, and gate gaze inclusion on it. A provisional
+   value in the 1.0-1.5 range is a defensible starting point.
+   ===================================================================== */
+function gazeQualityMetrics(rawSamples, dwells, snapshots, meanOffsetPx) {
+  const nRaw = (rawSamples || []).length;
+  const nOnAoi = (dwells || []).reduce((k, d) => k + 1, 0);
+  let minDim = null;
+  (snapshots || []).forEach(sn => (sn.rects || []).forEach(r => {
+    const d = Math.min(r.w != null ? r.w : (r.right - r.left),
+                       r.h != null ? r.h : (r.bottom - r.top));
+    if (minDim === null || d < minDim) minDim = d;
+  }));
+  const dwellMs = (dwells || []).reduce((k, d) => k + (d.dwell_ms || 0), 0);
+  return {
+    n_raw_samples:      nRaw,
+    n_dwells:           nOnAoi,
+    total_dwell_ms:     dwellMs,
+    min_aoi_dimension:  minDim,
+    mean_offset_px:     meanOffsetPx != null ? meanOffsetPx : null,
+    aoi_adequacy:       (minDim != null && meanOffsetPx) ? +(minDim / meanOffsetPx).toFixed(3) : null,
+    /* Realised alphabet size: symbols this participant actually visited.
+       Smaller realised alphabets inflate %REC for reasons unrelated to
+       search strategy, so this is needed to interpret RQA across people. */
+    realised_alphabet:  Array.from(new Set((dwells || []).map(d => d.aoi))).length
+  };
 }
 
 /* =====================================================================
@@ -1825,7 +2105,13 @@ function buildBioWorldTrials(c) {
     type: jsPsychHtmlKeyboardResponse,
     stimulus: buildBioWorldUI(c),
     choices: "NO_KEYS",
-    extensions: [{ type: jsPsychExtensionWebgazer, params:{ targets:["#bw_root_"+c.id] } }],
+    /* If DEV skipped camera init, WebGazer was never started and the extension
+       would have nothing to attach to — the case would appear to run normally
+       while silently producing zero gaze samples. Strip it instead, so the
+       absence of gaze data is structural and obvious rather than a silent gap. */
+    extensions: DEV.skip("webcam")
+      ? []
+      : [{ type: jsPsychExtensionWebgazer, params:{ targets:["#bw_root_"+c.id] } }],
     data: { trial_tag:"bw_ehr_case", case_id:c.id },
 
     on_load: function () {
@@ -1984,7 +2270,7 @@ function buildBioWorldTrials(c) {
         list.innerHTML = evState.map(e =>
           `<div class="bw-ev-item" role="listitem">
              <span class="bw-ev-tag tag-${e.tag}" aria-label="Source: ${e.tag}">${e.tag}</span>
-             <span style="flex:1;font-size:12px;line-height:1.4;">${e.text}</span>
+             <span style="font-size:12px;line-height:1.4;">${e.text}</span>
              <button class="bw-ev-rm" data-ev-id="${e.id}" aria-label="Remove evidence: ${e.text.substring(0,40)}">&times;</button>
            </div>`).join("");
         list.querySelectorAll(".bw-ev-rm").forEach(btn => {
@@ -2136,11 +2422,14 @@ function buildBioWorldTrials(c) {
           });
 
           addBtn.addEventListener("click", () => {
-            const aoi = c.aoi_map.find(a => a.id === paraId);
+            /* Reasoning-product codes come from evidence_source_codes, NOT from
+               the gaze AOI table. Sending a passage to the evidence table is a
+               construct-bearing act and carries its source paragraph's codes. */
+            const src = c.evidence_source_codes[paraId];
             addEvidence(
               selectedText, "patient", paraId,
-              aoi ? aoi.emic : "NARRATIVE",
-              aoi ? aoi.etic : "TASK-DEF"
+              src ? src.emic : "NARRATIVE",
+              src ? src.etic : "TASK-DEF"
             );
             paraEl.classList.add("para-added");
             try { window.getSelection().removeAllRanges(); } catch(e) {}
@@ -2304,13 +2593,21 @@ function buildBioWorldTrials(c) {
         });
       });
 
-      /* ── AOI click logging on left panel regions ── */
-      ["bw_hyp_panel","bw_belief_panel","bw_ev_panel"].forEach(panelId => {
+      /* ── Click logging on the three persistent panel regions ──
+         Etic phase is a property of the PANEL'S FUNCTION (what the interface
+         affords there), not of the gaze AOI table, which no longer carries
+         codes. Emic is left empty: a panel click does not identify a Schell
+         reasoning track. */
+      const PANEL_ETIC = {
+        bw_hyp_panel:    "GOAL-SET",
+        bw_belief_panel: "GOAL-SET",
+        bw_ev_panel:     "MONITOR"
+      };
+      Object.keys(PANEL_ETIC).forEach(panelId => {
         const el = document.getElementById(panelId);
         if (!el) return;
-        const aoi = c.aoi_map.find(a=>a.id===panelId);
         el.addEventListener("click", () => {
-          logClick(panelId, aoi?aoi.emic:"", aoi?aoi.etic:"GOAL-SET","panel_click",panelId);
+          logClick(panelId, "", PANEL_ETIC[panelId], "panel_click", panelId);
         });
       });
 
@@ -2371,7 +2668,7 @@ function buildBioWorldTrials(c) {
       study.cases[c.id].selected_equipment  = data.selected_equipment  || [];
       study.cases[c.id].case_summary        = data.case_summary        || "";
       study.cases[c.id].choice              = data.selected_plan;      // dashboard compat
-      study.cases[c.id].aoi_map             = c.aoi_map;
+      study.cases[c.id].gaze_aois           = c.gaze_aois;
       /* Time-windowed AOI snapshots: array of {t, rects}. Each gaze sample is
          matched against the snapshot valid at its timestamp, so tab switches no
          longer cause the whole case's gaze to be matched against end-of-case
@@ -2382,6 +2679,18 @@ function buildBioWorldTrials(c) {
       study.cases[c.id].gaze_events         = dwells;
       study.cases[c.id].gaze_transitions    = gazeToTransitions(dwells);
       study.cases[c.id]._gaze_raw           = data.webgazer_data       || [];
+
+      /* ── Click stream: same seven-symbol alphabet, second RQA input ── */
+      const clickSeq = clickToSequence(study.cases[c.id].click_events || [], c.gaze_aois);
+      study.cases[c.id].click_sequence      = clickSeq;
+      study.cases[c.id].click_transitions   = clickToTransitions(clickSeq);
+
+      /* ── Participant-level gaze usability, for the pre-registered
+            inclusion rule and the gaze-vs-click role switch ── */
+      study.cases[c.id].gaze_quality = gazeQualityMetrics(
+        data.webgazer_data || [], dwells, snapshots,
+        (study.calibration && study.calibration.mean_offset_px) || null
+      );
 
       const taskVp = { w: data.captureW || window.innerWidth, h: data.captureH || window.innerHeight };
       study.cases[c.id].viewport            = taskVp;
@@ -3009,7 +3318,7 @@ function buildBioWorldTrials(c) {
    ===================================================================== */
 
 /* ── Stimulated recall instructions (Gass & Mackey, 2017) ── */
-timeline.push({
+pushUnless("rtaintro", {
   type: jsPsychHtmlKeyboardResponse,
   stimulus:`<div style="max-width:700px;margin:6% auto;color:#1d2a38;text-align:left;padding:0 20px;font-family:'Segoe UI',Arial,sans-serif;">
       <h2 style="color:#1565c0;">How this study works: Stimulated Recall</h2>
@@ -3166,14 +3475,13 @@ const practiceCase = {
         <span class="bw-patient-label">ALEX CHEN — PRACTICE ONLY</span>
       </div>
       <div class="bw-main">
-        <div class="bw-left">
-          <div class="bw-evidence-section" id="bw_ev_panel">
-            <div class="bw-panel-label">Evidence Table</div>
-            <div class="bw-ev-list" id="pr_ev_list">
-              <div class="bw-ev-empty" id="pr_ev_empty">No evidence yet. Select and highlight text in the paragraphs to add excerpts.</div>
-            </div>
-          </div>
-        </div>
+        <!-- Practice mirrors the real cases' RIGHT COLUMN: content above,
+             evidence table below. The hypothesis and confidence panels are
+             introduced in Case 1 rather than here, but the evidence table must
+             occupy the same relative position in both — otherwise participants
+             learn one layout in practice and spend the opening of Case 1
+             re-orienting, and Case 1 is real data. -->
+        <div class="bw-right">
         <div class="bw-content">
 
           <!-- PRACTICE INSTRUCTIONS BANNER -->
@@ -3214,6 +3522,17 @@ const practiceCase = {
               <div><div class="bw-plan-option-name">2:00 PM (Afternoon)</div></div></label>
           </div>
         </div>
+        <!-- /.bw-content -->
+
+          <div class="bw-evidence-section" id="bw_ev_panel">
+            <div class="bw-panel-label">Evidence Table</div>
+            <div class="bw-ev-list" id="pr_ev_list">
+              <div class="bw-ev-empty" id="pr_ev_empty">No evidence yet. Select and highlight text in the paragraphs to add excerpts.</div>
+            </div>
+          </div>
+
+        </div>
+        <!-- /.bw-right -->
       </div>
       <div class="bw-bottom">
         <span class="bw-elapsed" id="pr_elapsed">00:00</span>
@@ -3239,7 +3558,7 @@ const practiceCase = {
       if(empty) empty.style.display="none";
       list.innerHTML=prEv.map(e=>`<div class="bw-ev-item" role="listitem">
         <span class="bw-ev-tag tag-patient">patient</span>
-        <span style="flex:1;font-size:12px;line-height:1.4;">${e.text.substring(0,80)}${e.text.length>80?"…":""}</span>
+        <span style="font-size:12px;line-height:1.4;">${e.text.substring(0,80)}${e.text.length>80?"…":""}</span>
         <button class="bw-ev-rm" data-evid="${e.id}" aria-label="Remove evidence">&times;</button></div>`).join("");
       list.querySelectorAll(".bw-ev-rm").forEach(b=>b.addEventListener("click",()=>{
         prEv.splice(prEv.findIndex(x=>x.id===parseInt(b.dataset.evid)),1); renderPrEv();
@@ -3416,10 +3735,14 @@ const practiceDebrief = {
     </div>`,
   choices:"ALL_KEYS"
 };
-[practiceNavWarn, practiceStartRec, practiceCase, practiceRTA, practiceDebrief].forEach(t => timeline.push(t));
+if (!DEV.skip("practice")) {
+  [practiceNavWarn, practiceStartRec, practiceCase, practiceRTA, practiceDebrief].forEach(t => timeline.push(t));
+}
 
 /* Case 1 */
-buildBioWorldTrials(BW_CASES[1]).forEach(t => timeline.push(t));
+if (!DEV.skip("case1") && DEV.start !== "2") {
+  buildBioWorldTrials(BW_CASES[1]).forEach(t => timeline.push(t));
+}
 
 /* IDB handoff to dashboard */
 timeline.push({
@@ -3428,10 +3751,13 @@ timeline.push({
     const c1 = study.cases[1] || {};
     const handoff = {
       case_id:1, condition: study.experimental_condition,
-      aoi_map:            c1.aoi_map             || [],
+      gaze_aois:          c1.gaze_aois            || [],
       gaze_events:        c1.gaze_events          || [],
       gaze_transitions:   c1.gaze_transitions     || [],
+      gaze_quality:       c1.gaze_quality         || null,
       click_events:       c1.click_events         || [],
+      click_sequence:     c1.click_sequence       || [],
+      click_transitions:  c1.click_transitions    || [],
       transcript_segments:c1.transcript_segments  || [],
       hypotheses:         c1.hypotheses           || [],
       evidence_table:     c1.evidence_table       || [],
@@ -3452,7 +3778,7 @@ timeline.push({
 
 /* Mid-session recalibration (Yang & Krajbich, 2021) — single pass, no retry.
    Records mid_session calibration_pct for analytical comparison with initial score. */
-timeline.push({
+pushUnless("midcal", {
   type: jsPsychHtmlKeyboardResponse,
   stimulus:`<div style="max-width:680px;margin:10% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
       <h3 style="color:#1565c0;">Quick eye-tracking re-check</h3>
@@ -3462,7 +3788,7 @@ timeline.push({
       <p style="color:#566673;margin-top:20px;">Press any key to begin.</p></div>`,
   choices:"ALL_KEYS"
 });
-timeline.push({
+pushUnless("midcal", {
   timeline: [calibration_grid, calibration_stabilise, validation_instructions, {
     type: jsPsychWebgazerValidate,
     validation_points: calib_points,
