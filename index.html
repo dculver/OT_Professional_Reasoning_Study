@@ -1276,19 +1276,20 @@ const BW_CASES = {
       { id:"bw_panel_plan",    label:"Intervention Plan Tab" }
     ],
 
-    /* ── REASONING-PRODUCT CODES — T/ONA input, NOT gaze regions ───────
-       Applied when a student sends a passage to the evidence table. That
-       act is construct-bearing, so it carries the Schell emic track and the
-       Winne & Hadwin phase of its source paragraph. Keyed by DOM id; the
-       paragraph <div>s still exist in the markup, they are simply no longer
-       gaze AOIs. Never use this table to subdivide the AOI set.           */
-    evidence_source_codes: {
-      bw_para_h1: { emic:"NARRATIVE",  etic:"TASK-DEF" },
-      bw_para_h2: { emic:"NARRATIVE",  etic:"TASK-DEF" },
-      bw_para_a1: { emic:"SCIENTIFIC", etic:"TASK-DEF" },
-      bw_para_a2: { emic:"NARRATIVE",  etic:"TASK-DEF" },
-      bw_para_f1: { emic:"PRAGMATIC",  etic:"TASK-DEF" }
-    },
+    /* NOTE: no emic/etic codes appear anywhere in this file, by design.
+       Nothing the interface can observe — where a student looked, which panel
+       they clicked, which paragraph an excerpt came from — identifies a Schell
+       reasoning track or a Winne & Hadwin phase. Assigning codes at capture
+       time would make IRR undefined and would bake the interface's structure
+       into the T/ONA network.
+
+       Codes are applied downstream, to the reasoning artefacts (hypothesis
+       text, evidence excerpts, confidence ratings, assessment and plan
+       selections, reasoning summary) and the RTA transcript: hand-coded first
+       to develop and validate the scheme, then automated via nCoder regex
+       once IRR is established. Paragraph ids are still recorded on each
+       artefact as PROVENANCE, which is a fact about the stimulus, not a
+       judgement about the student.                                        */
 
     paragraphs: {
       bw_para_h1: "Patient History: 74yo retired schoolteacher, ischemic stroke (L MCA), right hemiparesis, mild expressive aphasia, reduced right grip strength. Previously fully independent, lives alone.",
@@ -1398,19 +1399,20 @@ const BW_CASES = {
       { id:"bw_panel_plan",    label:"Intervention Plan Tab" }
     ],
 
-    /* ── REASONING-PRODUCT CODES — T/ONA input, NOT gaze regions ───────
-       Applied when a student sends a passage to the evidence table. That
-       act is construct-bearing, so it carries the Schell emic track and the
-       Winne & Hadwin phase of its source paragraph. Keyed by DOM id; the
-       paragraph <div>s still exist in the markup, they are simply no longer
-       gaze AOIs. Never use this table to subdivide the AOI set.           */
-    evidence_source_codes: {
-      bw_para_h1: { emic:"NARRATIVE",  etic:"TASK-DEF" },
-      bw_para_h2: { emic:"NARRATIVE",  etic:"TASK-DEF" },
-      bw_para_a1: { emic:"SCIENTIFIC", etic:"TASK-DEF" },
-      bw_para_a2: { emic:"NARRATIVE",  etic:"TASK-DEF" },
-      bw_para_f1: { emic:"PRAGMATIC",  etic:"TASK-DEF" }
-    },
+    /* NOTE: no emic/etic codes appear anywhere in this file, by design.
+       Nothing the interface can observe — where a student looked, which panel
+       they clicked, which paragraph an excerpt came from — identifies a Schell
+       reasoning track or a Winne & Hadwin phase. Assigning codes at capture
+       time would make IRR undefined and would bake the interface's structure
+       into the T/ONA network.
+
+       Codes are applied downstream, to the reasoning artefacts (hypothesis
+       text, evidence excerpts, confidence ratings, assessment and plan
+       selections, reasoning summary) and the RTA transcript: hand-coded first
+       to develop and validate the scheme, then automated via nCoder regex
+       once IRR is established. Paragraph ids are still recorded on each
+       artefact as PROVENANCE, which is a fact about the stimulus, not a
+       judgement about the student.                                        */
 
     paragraphs: {
       bw_para_h1: "Patient History: 27yo graphic designer, C6 SCI incomplete (AIS D) 6 weeks post-MVC. Reduced bilateral grip strength; tenodesis grasp intact. Currently uses wheelchair, transfers independently.",
@@ -1735,7 +1737,7 @@ function lastValidRect(snapshots, aoiId, t) {
 function gazeToDwells(samples, snapshots) {
   /* ── Pass 1: segment raw samples into candidate dwell visits ──
      Each sample is matched against the time-valid AOI snapshot. */
-  const visits = [];   // { aoi, label, emic, etic, start, end }
+  const visits = [];   // { aoi, label, start, end }
   let cur = null, curStart = null, lastT = null;
 
   const sorted = (samples || []).filter(s => s && s.x != null).sort((a, b) => a.t - b.t);
@@ -2142,7 +2144,7 @@ function buildBioWorldTrials(c) {
 
       const caseStart = performance.now();
       const clickEvents = [];
-      const hypState    = [];   // { id, text, belief }
+      const hypState    = [];   // { id, t, text, belief, belief_rated, belief_history[] }
       const evState     = [];   // { id, text, tag }
       const orderedAssessments = [];
       let   currentTab  = "problem";
@@ -2212,12 +2214,27 @@ function buildBioWorldTrials(c) {
         "hypothesis_added", "result_sent"
       ]);
 
-      function logClick(aoi, emic, etic, action, detail, x, y) {
+      /* Click events are BEHAVIOURAL RECORDS ONLY — no emic/etic codes.
+         An action's location in the interface does not reveal the reasoning
+         behind it: clicking the Chart tab does not make the student's thinking
+         SCIENTIFIC any more than looking at a paragraph does. Pre-assigning
+         codes here would (a) make IRR undefined, since two raters would agree
+         100% on a deterministic lookup, and (b) push the interface's own
+         structure into the T/ONA network as if it were a finding about
+         clinical reasoning.
+
+         Emic/etic codes are applied later, by hand during the pilot and then
+         via nCoder regex, to the REASONING ARTEFACTS (hypothesis text,
+         evidence excerpts, confidence ratings, assessment and plan
+         selections, reasoning summary) and to the RTA transcript — objects
+         that contain language a human can interpret and a second rater can
+         disagree about. */
+      function logClick(aoi, action, detail, x, y) {
         const cx = Math.round(x != null ? x : (_lastMouseX || 0));
         const cy = Math.round(y != null ? y : (_lastMouseY || 0));
         clickEvents.push({
           t:Math.round(performance.now()-caseStart),
-          aoi, emic, etic, source:"click", action, detail:detail||null,
+          aoi, source:"click", action, detail:detail||null,
           x: cx, y: cy
         });
         /* Implicit recalibration — feed click coordinates back into WebGazer
@@ -2254,7 +2271,7 @@ function buildBioWorldTrials(c) {
             const id = btn.dataset.hypId;
             const h = hypState.find(x=>x.id===id);
             hypState.splice(hypState.findIndex(x=>x.id===id),1);
-            logClick("bw_hyp_panel","","GOAL-SET","hypothesis_removed", h?h.text:id);
+            logClick("bw_hyp_panel","hypothesis_removed", h?h.text:id);
             renderHypotheses();
             checkSubmitReady();
           });
@@ -2278,17 +2295,28 @@ function buildBioWorldTrials(c) {
             const id = parseInt(btn.dataset.evId);
             const item = evState.find(x=>x.id===id);
             evState.splice(evState.findIndex(x=>x.id===id),1);
-            logClick("bw_ev_panel","","MONITOR","evidence_removed", item?item.text.substring(0,40):id);
+            logClick("bw_ev_panel","evidence_removed", item?item.text.substring(0,40):id);
             renderEvidence();
           });
         });
       }
 
-      function addEvidence(text, tag, aoiId, emic, etic) {
+      /* An evidence entry is a REASONING ARTEFACT — it will be hand-coded in
+         the pilot and later by nCoder. It therefore records what a coder needs
+         and nothing more: the excerpt text, where it came from, and when.
+         source_aoi is PROVENANCE (which paragraph or panel the excerpt was
+         taken from), not a reasoning code — a student may pull from the ADL
+         paragraph for narrative reasons as easily as scientific ones. */
+      function addEvidence(text, tag, aoiId) {
         if (evState.some(e=>e.text===text)) return;
-        const item = { id:Date.now(), text, tag };
+        const item = {
+          id: Date.now(),
+          t: Math.round(performance.now()-caseStart),
+          text, tag,
+          source_aoi: aoiId || null
+        };
         evState.push(item);
-        logClick(aoiId||"bw_ev_panel", emic||"", etic||"MONITOR", "evidence_added", text.substring(0,60));
+        logClick(aoiId||"bw_ev_panel", "evidence_added", text.substring(0,60));
         renderEvidence();
       }
 
@@ -2315,9 +2343,7 @@ function buildBioWorldTrials(c) {
           checkSubmitReady();
           aoiSnapshots.push(snapshotAOIRects(c, caseStart));   // re-snapshot on tab change
           const aoiMap = { problem:"bw_panel_problem", chart:"bw_panel_chart", library:"bw_panel_library", plan:"bw_panel_plan" };
-          const emicMap = { problem:"NARRATIVE", chart:"SCIENTIFIC", library:"SCIENTIFIC", plan:"PRAGMATIC" };
-          const eticMap = { problem:"TASK-DEF", chart:"ENACTING", library:"ENACTING", plan:"ENACTING" };
-          logClick(aoiMap[tab]+"_"+c.id, emicMap[tab]||"", eticMap[tab]||"ENACTING", "tab_switch", tab);
+          logClick(aoiMap[tab]+"_"+c.id, "tab_switch", tab);
         });
       });
 
@@ -2326,35 +2352,102 @@ function buildBioWorldTrials(c) {
       const hypInput  = document.getElementById("bw_hyp_input_"+c.id);
       function doAddHyp() {
         const text = hypInput.value.trim(); if (!text) return;
-        const h = { id: String(Date.now()), text, belief:50 };
+        /* t = case-relative onset, so this artefact can be placed on the same
+           in-case timeline as evidence entries and RTA segments when coded.
+           belief starts at the slider default but belief_rated stays false
+           until the participant actually commits a value — otherwise an
+           untouched slider is indistinguishable from a deliberate 50. */
+        const h = {
+          id: String(Date.now()),
+          t: Math.round(performance.now()-caseStart),
+          text,
+          belief: 50,
+          belief_rated: false,
+          belief_history: []
+        };
         hypState.push(h);
         hypInput.value = "";
-        logClick("bw_hyp_panel","","GOAL-SET","hypothesis_added",text);
+        logClick("bw_hyp_panel","hypothesis_added",text);
         renderHypotheses();
         checkSubmitReady();
       }
       if (hypAddBtn) hypAddBtn.addEventListener("click", doAddHyp);
       if (hypInput)  hypInput.addEventListener("keydown", e => { if(e.key==="Enter") doAddHyp(); });
 
-      /* ── Belief meter ── */
+      /* ── Confidence meter ──
+         What gets coded is the REVISION — did the participant raise or lower
+         their confidence, and by how much — not the absolute value. So the
+         artefact is a history of committed changes, each carrying from/to/delta.
+
+         Two capture problems this handles:
+
+         1. "input" fires on every pixel of a drag. Logging there would turn one
+            deliberate 50->75 adjustment into ~25 events of +1 each: noise in the
+            click stream and meaningless deltas. Display updates stay on "input"
+            (so the readout tracks the thumb); the RECORD is written on "change",
+            which fires once on release.
+
+         2. Keyboard users move the slider one step per arrow press, and each
+            press fires its own "change". Consecutive same-direction changes
+            within MERGE_MS are therefore merged into the preceding revision
+            rather than appended, so a burst of arrow presses reads as one
+            revision. Merging happens on write, so there is no pending timer to
+            flush if the participant submits immediately.
+
+         belief_rated distinguishes "deliberately set to 50" from "never touched"
+         — without it the 50 default is indistinguishable from a real rating. */
       const beliefSel    = document.getElementById("bw_belief_sel_"+c.id);
       const beliefSlider = document.getElementById("bw_belief_slider_"+c.id);
       const beliefVal    = document.getElementById("bw_belief_val_"+c.id);
+      const BELIEF_MERGE_MS = 800;
+
       if (beliefSlider) {
+        /* Live display only — never writes to hypState or the click log. */
         beliefSlider.addEventListener("input", () => {
           const val = parseInt(beliefSlider.value);
           if (beliefVal) beliefVal.textContent = "Confidence: "+val+"%";
           const vt = val<=25?"low confidence":val<=50?"moderate confidence":val<=75?"high confidence":"very high confidence";
           beliefSlider.setAttribute("aria-valuenow", val);
           beliefSlider.setAttribute("aria-valuetext", val+"% — "+vt);
-          if (beliefSel && beliefSel.value) {
-            const h = hypState.find(x=>x.id===beliefSel.value);
-            if (h) {
-              h.belief = val;
-              logClick("bw_belief_panel","","GOAL-SET","belief_updated", beliefSel.options[beliefSel.selectedIndex]?.text+":"+val+"%");
-            }
-          }
         });
+
+        /* Commit — fires once per deliberate adjustment. */
+        beliefSlider.addEventListener("change", () => {
+          if (!beliefSel || !beliefSel.value) return;
+          const h = hypState.find(x => x.id === beliefSel.value);
+          if (!h) return;
+
+          const to   = parseInt(beliefSlider.value);
+          const from = h.belief_rated ? h.belief : null;   // null = first rating
+          if (from === to) return;                          // no-op
+
+          const t = Math.round(performance.now()-caseStart);
+          h.belief_history = h.belief_history || [];
+          const prev = h.belief_history[h.belief_history.length - 1];
+          const delta = from === null ? null : to - from;
+          const dir = from === null ? "initial" : (delta > 0 ? "raised" : "lowered");
+
+          /* Merge a same-direction change that lands inside the window. */
+          if (prev && prev.direction === dir && dir !== "initial" &&
+              (t - prev.t) <= BELIEF_MERGE_MS) {
+            prev.to    = to;
+            prev.delta = to - prev.from;
+            prev.t     = t;
+          } else {
+            h.belief_history.push({ t, from, to, delta, direction: dir });
+          }
+
+          h.belief = to;
+          h.belief_rated = true;
+          logClick("bw_belief_panel", "belief_" + dir,
+                   (beliefSel.options[beliefSel.selectedIndex]?.text || "") +
+                   "|" + (from === null ? "-" : from) + "->" + to +
+                   "|" + (delta === null ? "-" : (delta > 0 ? "+" : "") + delta));
+        });
+
+        /* Switching the target hypothesis snaps the slider to that hypothesis's
+           stored value. Setting .value programmatically fires neither "input"
+           nor "change", so this cannot manufacture a spurious revision. */
         if (beliefSel) beliefSel.addEventListener("change", () => {
           const h = hypState.find(x=>x.id===beliefSel.value);
           if (h && beliefSlider) { beliefSlider.value=h.belief; if(beliefVal) beliefVal.textContent="Confidence: "+h.belief+"%"; }
@@ -2422,15 +2515,7 @@ function buildBioWorldTrials(c) {
           });
 
           addBtn.addEventListener("click", () => {
-            /* Reasoning-product codes come from evidence_source_codes, NOT from
-               the gaze AOI table. Sending a passage to the evidence table is a
-               construct-bearing act and carries its source paragraph's codes. */
-            const src = c.evidence_source_codes[paraId];
-            addEvidence(
-              selectedText, "patient", paraId,
-              src ? src.emic : "NARRATIVE",
-              src ? src.etic : "TASK-DEF"
-            );
+            addEvidence(selectedText, "patient", paraId);
             paraEl.classList.add("para-added");
             try { window.getSelection().removeAllRanges(); } catch(e) {}
             removePopover();
@@ -2510,7 +2595,7 @@ function buildBioWorldTrials(c) {
       const clearBtn = document.getElementById("bw_clear_ev_"+c.id);
       if (clearBtn) clearBtn.addEventListener("click", () => {
         evState.length = 0;
-        logClick("bw_ev_panel","","MONITOR","evidence_cleared",null);
+        logClick("bw_ev_panel","evidence_cleared",null);
         renderEvidence();
         document.querySelectorAll("#bw_root_"+c.id+" .bw-ev-para").forEach(p=>p.classList.remove("para-added"));
         /* Re-enable every "Send to Evidence" source button (assessment results
@@ -2541,7 +2626,7 @@ function buildBioWorldTrials(c) {
           const assessId = card.dataset.assessId;
           const assess   = c.assessments.find(a=>a.id===assessId);
           orderedAssessments.push(assessId);
-          logClick("bw_panel_chart_"+c.id,"SCIENTIFIC","ENACTING","assessment_ordered", assess?assess.name:assessId);
+          logClick("bw_panel_chart_"+c.id,"assessment_ordered", assess?assess.name:assessId);
 
           const area = document.getElementById("bw_result_area_"+c.id);
           const list = document.getElementById("bw_result_list_"+c.id);
@@ -2556,13 +2641,13 @@ function buildBioWorldTrials(c) {
           sendBtn.textContent = "+ Send to Evidence";
           sendBtn._evidenceText = assess.name+": "+assess.result;
           sendBtn.addEventListener("click", () => {
-            addEvidence(sendBtn._evidenceText, "assess", "bw_panel_chart_"+c.id, "SCIENTIFIC","ENACTING");
+            addEvidence(sendBtn._evidenceText, "assess", "bw_panel_chart_"+c.id);
             sendBtn.textContent = "✓ Added";
             sendBtn.disabled = true;
           });
           card2.appendChild(sendBtn);
           list.appendChild(card2);
-          logClick("bw_panel_chart_"+c.id,"SCIENTIFIC","ENACTING","assessment_result_shown", assess.name);
+          logClick("bw_panel_chart_"+c.id,"assessment_result_shown", assess.name);
         });
       });
 
@@ -2572,10 +2657,10 @@ function buildBioWorldTrials(c) {
         if (!btn) return;
         btn._evidenceText = entry.title+": "+entry.body.substring(0,120)+"...";
         btn.addEventListener("click", () => {
-          addEvidence(btn._evidenceText, "obs", "bw_panel_library_"+c.id, "SCIENTIFIC","ENACTING");
+          addEvidence(btn._evidenceText, "obs", "bw_panel_library_"+c.id);
           btn.textContent = "✓ Added";
           btn.disabled = true;
-          logClick("bw_panel_library_"+c.id,"SCIENTIFIC","ENACTING","library_sent", entry.title);
+          logClick("bw_panel_library_"+c.id,"library_sent", entry.title);
         });
       });
 
@@ -2584,30 +2669,21 @@ function buildBioWorldTrials(c) {
         r.addEventListener("change", () => {
           planSelected = true;
           checkSubmitReady();
-          logClick("bw_panel_plan_"+c.id,"PRAGMATIC","ENACTING","plan_selected",r.value);
+          logClick("bw_panel_plan_"+c.id,"plan_selected",r.value);
         });
       });
       document.querySelectorAll("#bw_panel_plan_"+c.id+" input[type='checkbox']").forEach(cb => {
         cb.addEventListener("change", () => {
-          logClick("bw_panel_plan_"+c.id,"PRAGMATIC","ENACTING",cb.checked?"equip_selected":"equip_deselected",cb.value);
+          logClick("bw_panel_plan_"+c.id,cb.checked?"equip_selected":"equip_deselected",cb.value);
         });
       });
 
-      /* ── Click logging on the three persistent panel regions ──
-         Etic phase is a property of the PANEL'S FUNCTION (what the interface
-         affords there), not of the gaze AOI table, which no longer carries
-         codes. Emic is left empty: a panel click does not identify a Schell
-         reasoning track. */
-      const PANEL_ETIC = {
-        bw_hyp_panel:    "GOAL-SET",
-        bw_belief_panel: "GOAL-SET",
-        bw_ev_panel:     "MONITOR"
-      };
-      Object.keys(PANEL_ETIC).forEach(panelId => {
+      /* ── Click logging on the three persistent panel regions ── */
+      ["bw_hyp_panel","bw_belief_panel","bw_ev_panel"].forEach(panelId => {
         const el = document.getElementById(panelId);
         if (!el) return;
         el.addEventListener("click", () => {
-          logClick(panelId, "", PANEL_ETIC[panelId], "panel_click", panelId);
+          logClick(panelId, "panel_click", panelId);
         });
       });
 
@@ -2620,7 +2696,7 @@ function buildBioWorldTrials(c) {
         const pickedPlan  = document.querySelector(`input[name="bw_plan_${c.id}"]:checked`);
         const pickedEquip = [...document.querySelectorAll("#bw_panel_plan_"+c.id+" input[type='checkbox']:checked")].map(cb=>cb.value);
         const summary     = document.getElementById("bw_summary_"+c.id).value.trim();
-        logClick("bw_panel_plan_"+c.id,"PRAGMATIC","ENACTING","case_submitted",pickedPlan?pickedPlan.value:"none");
+        logClick("bw_panel_plan_"+c.id,"case_submitted",pickedPlan?pickedPlan.value:"none");
         // Capture viewport dims while still in fullscreen (no browser chrome bias)
         const captureW = window.innerWidth, captureH = window.innerHeight;
         /* Final snapshot at submit time so the last-active layout is captured. */
@@ -2653,7 +2729,7 @@ function buildBioWorldTrials(c) {
       if (instrDismiss && instrBanner) {
         instrDismiss.addEventListener("click", () => {
           instrBanner.style.display = "none";
-          logClick("bw_instr_"+c.id, "", "TASK-DEF", "instructions_dismissed", null);
+          logClick("bw_instr_"+c.id, "instructions_dismissed", null);
         });
       }
     },
