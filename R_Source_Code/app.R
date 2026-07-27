@@ -1,3 +1,43 @@
+## =====================================================================
+## EXPERIMENTAL-ARM FEEDBACK DASHBOARD
+## Dissertation: clinical reasoning development in OT students
+## Delivered between Case 1 and Case 2, same session.
+##
+## WIRED AGAINST THE ACTUAL index.html HANDOFF PAYLOAD:
+##   case_id (scalar), condition,
+##   gaze_aois, gaze_events, gaze_transitions, gaze_quality,
+##   click_events, click_sequence, click_transitions,
+##   transcript_segments, hypotheses, evidence_table,
+##   assessments_ordered, selected_plan, selected_equipment,
+##   case_summary, choice
+##
+## KEY STRUCTURAL FACT
+## index.html has no separate reasoning-product stream. Reasoning products
+## and navigation are BOTH inside click_events, distinguished by $action.
+## This file splits them: product actions feed the network, navigation
+## actions are routed to RQA and never enter it.
+##
+## WHAT IS REAL HERE
+##   - ingestion of the live payload, stream split, case check
+##   - accumulation, sphere normalisation, proximal-zone selection
+##   - card lookup and rendering
+##
+## WHAT IS PLACEHOLDER (replace before collecting study data)
+##   - faculty reference profile      data/faculty_profile.csv
+##   - temporal impact function       data/tif_params.json
+##   - emic/etic code application     ACTION_CODE_MAP, EMIC_REGEX, CODE_REGEX
+##   - exemplar quotes in the cards   data/feedback_cards.csv
+##
+## DESIGN COMMITMENTS (do not change without revisiting Chapter 3):
+##   - 7 codes / 21 undirected edges. No MONITOR node.
+##   - Gaze and navigation clicks NEVER enter the network. RQA only.
+##   - No coordinates, no scores, no gauges, no faculty display.
+##   - Faculty reference is HIDDEN backend personalisation only.
+##   - Network attributed to the CASE, not the student.
+##   - Default view descriptive ("leaned on most"), never evaluative.
+##   - 1-3 flagged edges max, proximal-zone rule.
+## =====================================================================
+
 library(shiny)
 library(bslib)
 library(jsonlite)
@@ -5,307 +45,703 @@ library(dplyr)
 library(ggplot2)
 library(S7)   # ggplot2 WebAssembly fix (keep for shinylive/webR)
 
-## ======================================================================
-## CODES + PRETEND FACULTY MODEL (the only simulated piece).
-## The STUDENT network below is computed live from the real session.
-## ======================================================================
-codes <- c("CUE","FRAME","HYPO","PATIENT","INTERV","MONITOR")
-code_labels <- c(
-  CUE="Cue Acquisition", FRAME="Problem Framing", HYPO="Hypothesis Generation",
-  PATIENT="Patient-Centered Reasoning", INTERV="Intervention Selection",
-  MONITOR="Metacognitive Monitoring"
+`%||%` <- function(a, b) if (is.null(a) || length(a) == 0) b else a
+
+## =====================================================================
+## 1. CONFIG - OPEN RESEARCH DECISIONS
+## Defaults are my recommendation, not your ruling.
+## =====================================================================
+
+DEMO_MODE        <- FALSE   # TRUE = render from synthetic events, no jsPsych
+SHOW_DIAGNOSTICS <- TRUE    # MUST be FALSE for real participants
+
+CASE_ID <- 1L
+
+FLAG_DIRECTIONS   <- c("under")      # or c("under", "over")
+MAX_FLAGGED_EDGES <- 1L              # 1..3
+ELIGIBLE_EDGES    <- "cross"         # "cross" (12 emic-etic) or "all" (21)
+
+REDUCED_VIEW_RULE <- "threshold"     # or "topn"
+REDUCED_THRESHOLD <- 0.20
+REDUCED_TOPN      <- 6L
+
+GRADIENT_SCALING <- "relative"       # or "absolute"
+SHOW_SCALE_KEY   <- TRUE
+
+CLOSABILITY_EXPONENT <- 0.5
+
+## Without a floor, closability is exactly zero whenever the student never
+## made the connection at all - so a completely ABSENT connection could
+## never be flagged, however large the gap.
+##   0.00 - absent connections excluded from flagging
+##   0.05 - absent connections compete, but a foothold still helps
+##   1.00 - collapses to "largest gap overall", ignoring the proximal zone
+CLOSABILITY_FLOOR <- 0.05
+
+FACULTY_PROFILE_PATH <- "data/faculty_profile.csv"
+CARD_TABLE_PATH      <- "data/feedback_cards.csv"
+TIF_PARAMS_PATH      <- "data/tif_params.json"
+DEMO_EVENTS_PATH     <- "data/demo_student_events.csv"
+
+## IndexedDB handoff - matches index.html line ~4290.
+IDB_NAME  <- "OT_Simulation_DB"
+IDB_STORE <- "sessions"
+IDB_KEY   <- "active_session"
+
+## =====================================================================
+## 2. CODES
+## Emic: Schell's professional reasoning tracks
+## Etic: Winne & Hadwin phases (phase level only; COPES is not coded)
+## =====================================================================
+
+emic_codes <- c("NARRATIVE", "SCIENTIFIC", "PRAGMATIC")
+etic_codes <- c("TASK_DEF", "GOAL_SET", "ENACTING", "ADAPT")
+codes <- c(emic_codes, etic_codes)
+
+code_label <- c(
+  NARRATIVE = "Narrative", SCIENTIFIC = "Scientific", PRAGMATIC = "Pragmatic",
+  TASK_DEF = "Defining the task", GOAL_SET = "Setting goals",
+  ENACTING = "Carrying out", ADAPT = "Adapting"
 )
-n <- length(codes)
 
-faculty_mat <- matrix(c(
-  0.0,0.8,0.9,0.5,0.3,0.4,
-  0.3,0.0,0.8,0.6,0.2,0.5,
-  0.4,0.5,0.0,0.8,0.7,0.7,
-  0.3,0.4,0.6,0.0,0.8,0.6,
-  0.2,0.2,0.4,0.5,0.0,0.7,
-  0.4,0.4,0.6,0.6,0.7,0.0
-), nrow=n, byrow=TRUE, dimnames=list(codes,codes))
-
-## --- regex coding for the think-aloud (stand-in for nCoder/stringr) ----
-code_regex <- list(
-  CUE     = "vital|blood pressure|heart rate|\\blab|diagnos|stroke|injury|grip|strength|range of motion|sensation|imaging|i see|i notice|looking at|the chart|the data|MMT|MoCA",
-  FRAME   = "reason for referral|the problem is|the issue|referred for|main concern|occupational profile|the goal of therapy|what we need|the task here|frame",
-  HYPO    = "because|might be|could be|suggests|due to|probably|likely|caused by|indicates|consistent with|i think this is|my hypothesis|reasoning that",
-  PATIENT = "she wants|he wants|patient'?s goal|her goal|his goal|important to|meaningful|lives alone|with (his|her) partner|family|at home|daily life|what matters|independen|return to work|prior level",
-  INTERV  = "recommend|i would use|intervention|adaptive equipment|rocker knife|dycem|universal cuff|button hook|dressing stick|velcro|sign the order|the plan is|i'?ll choose|select the",
-  MONITOR = "i'?m not sure|wait|actually|let me reconsider|on second thought|i should check|double.?check|reconsider|hmm|maybe i'?m wrong|let me think|am i (right|sure)|i changed my mind"
+## Glosses are part of the intervention. The control arm must receive
+## identical vocabulary or condition differs in more than personalisation.
+code_gloss <- c(
+  NARRATIVE = "the client's story", SCIENTIFIC = "evidence and condition",
+  PRAGMATIC = "setting and resources", TASK_DEF = "what's being asked",
+  GOAL_SET = "what to aim for", ENACTING = "acting on the plan",
+  ADAPT = "adjusting as you go"
 )
 
-code_transcript <- function(segs) {
-  ev <- list()
-  if (is.null(segs) || nrow(segs) == 0) return(data.frame(t=numeric(0), code=character(0), source=character(0)))
-  for (i in seq_len(nrow(segs))) {
-    txt <- tolower(segs$text[i]); tt <- segs$start_ms[i]
-    if (is.na(tt)) next
-    for (cd in names(code_regex)) {
-      if (grepl(code_regex[[cd]], txt, ignore.case=TRUE, perl=TRUE))
-        ev[[length(ev)+1]] <- data.frame(t=tt, code=cd, source="verbal")
-    }
-  }
-  if (length(ev)==0) return(data.frame(t=numeric(0), code=character(0), source=character(0)))
-  bind_rows(ev)
+edge_id <- function(a, b) paste(pmin(a, b), pmax(a, b), sep = "~")
+
+all_edges <- local({
+  cmb <- t(combn(codes, 2))
+  data.frame(from = cmb[, 1], to = cmb[, 2],
+             edge_id = edge_id(cmb[, 1], cmb[, 2]),
+             stringsAsFactors = FALSE)
+})
+stopifnot(nrow(all_edges) == 21L)
+
+all_edges$kind <- with(all_edges, ifelse(
+  from %in% emic_codes & to %in% emic_codes, "emic-emic",
+  ifelse(from %in% etic_codes & to %in% etic_codes, "etic-etic", "cross")))
+
+## =====================================================================
+## 3. PLACEHOLDER CODE APPLICATION
+##
+## Stands in for nCoder until the pilot delivers validated classifiers.
+##
+## NAV_ACTIONS      - click actions that are navigation only. Routed to
+##                    RQA, never coded, never in the network.
+## ACTION_CODE_MAP  - click actions that ARE reasoning products. Each maps
+##                    to one etic phase and optionally a default emic track.
+## EMIC_FROM_DETAIL - actions whose emic track should be read from the
+##                    logged detail text rather than assumed. This is more
+##                    defensible than a blanket mapping: adding evidence
+##                    from a patient interview is NARRATIVE, from a lab
+##                    result is SCIENTIFIC, and the detail text says which.
+## CODE_REGEX       - applied to think-aloud text and to click detail.
+##
+## Every one of these mappings is my proposal, not your codebook. The
+## diagnostics panel lists any action string not covered here.
+## =====================================================================
+
+NAV_ACTIONS <- c("tab_switch", "panel_click", "instructions_dismissed")
+
+## action -> c(etic, emic_default). emic_default may be NA.
+ACTION_CODE_MAP <- list(
+  evidence_added          = c("ENACTING", NA),          # emic from detail
+  evidence_removed        = c("ADAPT",    NA),
+  evidence_cleared        = c("ADAPT",    NA),
+  hypothesis_added        = c("GOAL_SET", "SCIENTIFIC"),
+  hypothesis_removed      = c("ADAPT",    "SCIENTIFIC"),
+  assessment_ordered      = c("ENACTING", "SCIENTIFIC"),
+  assessment_result_shown = c("TASK_DEF", "SCIENTIFIC"),
+  library_sent            = c("ENACTING", "SCIENTIFIC"),
+  plan_selected           = c("GOAL_SET", "PRAGMATIC"),
+  equip_selected          = c("ENACTING", "PRAGMATIC"),
+  equip_deselected        = c("ADAPT",    "PRAGMATIC"),
+  case_submitted          = c("ENACTING", NA),
+  belief_initial          = c("GOAL_SET", NA),
+  belief_raised           = c("ADAPT",    NA),
+  belief_lowered          = c("ADAPT",    NA)
+)
+
+EMIC_FROM_DETAIL <- c("evidence_added", "evidence_removed",
+                      "library_sent", "assessment_ordered",
+                      "hypothesis_added", "plan_selected")
+
+CODE_REGEX <- list(
+  NARRATIVE  = "she (wants|said|told|mentioned|reports)|he (wants|said|told|reports)|her (goal|story|words|daughter|son|family|husband|wife)|his (goal|story|family)|important to (her|him)|meaningful|lives (alone|with)|at home|daily (life|routine)|what matters|used to|return to|grandchild|cook|garden|hobby|interview|occupational profile|client report|prior level",
+  SCIENTIFIC = "range of motion|\\bROM\\b|strength|\\bMMT\\b|grip|sensation|tone|spastic|vital|blood pressure|\\blab\\b|imaging|diagnos|stroke|\\bCVA\\b|hemi|neglect|apraxia|cognit|\\bMoCA\\b|\\bMMSE\\b|evidence|literature|assessment|score|measured|deficit|test|screen",
+  PRAGMATIC  = "insurance|reimburse|caseload|equipment|budget|discharge|the (home|house|apartment)|counter|stair|bathroom|doorway|support at home|resources|setting|realistic|billing|visit|adaptive|dycem|rocker knife|universal cuff|button hook|dressing stick|velcro|grab bar|tub bench",
+  TASK_DEF   = "referral|referred for|reason for (the )?(visit|referral)|the (problem|question|issue) (is|here)|main concern|occupational profile|scope|what i need to (find|figure)|the task",
+  GOAL_SET   = "the goal|goals? (is|are|will be)|aiming for|target|want (her|him) to be able|outcome|by (the end|discharge)|short.term|long.term|priorit",
+  ENACTING   = "i.m going to|i.ll (use|try|start|do)|let.s (start|try|do)|next i|first i|the plan is|i recommend|i.d (use|choose|select)|working on|practis|train|set (her|him) up|position",
+  ADAPT      = "i.m not sure|wait|actually|on second thought|let me reconsider|reconsider|double.?check|change (my|the) (mind|approach|plan)|instead|that (isn.t|is not) working|adjust|revise|rethink|hmm|maybe i.m wrong|different approach"
+)
+
+regex_hits <- function(s, which = names(CODE_REGEX)) {
+  if (is.null(s) || is.na(s) || !nzchar(s)) return(character(0))
+  s <- tolower(s)
+  which[vapply(CODE_REGEX[which], function(rx)
+    grepl(rx, s, perl = TRUE, ignore.case = TRUE), logical(1))]
 }
 
-## --- DIRECTED accumulation with PER-STREAM temporal windows ------------
-## Transmodal principle ("functions, not fusion"; Shaffer, Wang & Ruis 2025):
-## each modality stays "in context" for a different horizon. A prior event
-## connects to the current event only if it falls within ITS OWN stream's
-## window. These are first-approximation horizons -- tune/justify them, or
-## swap this for the tma package's decay functions in production.
-STREAM_WINDOW_MS <- c(gaze = 1500, click = 4000, verbal = 9000)
+## =====================================================================
+## 4. FIXED SCHEMATIC LAYOUT
+## Node positions are a pedagogical layout, NOT fitted geometry. The
+## dashboard needs no SVD. State this in the methods so the mismatch
+## isn't read as an error.
+## =====================================================================
 
-accumulate <- function(events) {            # events: data.frame(t, code, source) sorted
-  m <- matrix(0, n, n, dimnames=list(codes,codes))
-  if (nrow(events) < 2) return(m)
-  events <- events[order(events$t), ]
-  tt <- events$t; cc <- events$code; ss <- as.character(events$source)
-  maxwin <- max(STREAM_WINDOW_MS)
+node_pos <- data.frame(
+  code = codes,
+  x = c(0, 0, 0, 1, 1, 1, 1),
+  y = c(0.82, 0.50, 0.18, 0.92, 0.64, 0.36, 0.08),
+  stringsAsFactors = FALSE
+)
+
+## =====================================================================
+## 5. FROZEN FACULTY REFERENCE PROFILE
+## MUST be tma line.weights (sphere-normalised), NOT connection.counts.
+## =====================================================================
+
+load_faculty_profile <- function(path = FACULTY_PROFILE_PATH) {
+  if (!file.exists(path)) return(NULL)
+  fp <- utils::read.csv(path, stringsAsFactors = FALSE)
+  if (!all(c("edge_id", "weight") %in% names(fp)))
+    stop("faculty_profile.csv must have columns: edge_id, weight")
+  miss <- setdiff(all_edges$edge_id, fp$edge_id)
+  if (length(miss))
+    stop("faculty profile missing edges: ", paste(miss, collapse = ", "))
+  L <- sqrt(sum(fp$weight^2))
+  if (abs(L - 1) > 1e-6)
+    warning("Faculty profile is not unit length (L2 = ", round(L, 4),
+            "). Did you freeze connection.counts instead of line.weights?")
+  setNames(fp$weight, fp$edge_id)[all_edges$edge_id]
+}
+FACULTY <- load_faculty_profile()
+
+load_cards <- function(path = CARD_TABLE_PATH) {
+  if (!file.exists(path)) return(NULL)
+  cd <- utils::read.csv(path, stringsAsFactors = FALSE)
+  req <- c("case_id", "edge_id", "direction", "headline", "body",
+           "exemplar", "question")
+  if (!all(req %in% names(cd)))
+    stop("feedback_cards.csv must have columns: ", paste(req, collapse = ", "))
+  cd
+}
+CARDS <- load_cards()
+
+## =====================================================================
+## 6. INGESTION
+##
+## TIMELINE NOTE. click_events$t is ms from caseStart. transcript_segments
+## $start_ms is ms from vStart, the moment the RTA replay video began.
+## Because the replay runs straight through from the start of the case
+## with no scrub or pause controls, video position equals case time, so
+## the two streams share one clock. That equivalence is an ASSUMPTION
+## worth stating in the methods - if replay controls are ever added, it
+## breaks and the merge becomes invalid.
+## =====================================================================
+
+EMPTY_EVENTS <- data.frame(t_ms = numeric(0), code = character(0),
+                           source = character(0), action = character(0),
+                           detail = character(0), stringsAsFactors = FALSE)
+
+as_df <- function(x) {
+  if (is.null(x) || length(x) == 0) return(NULL)
+  if (is.data.frame(x)) return(if (nrow(x)) x else NULL)
+  out <- tryCatch(as.data.frame(x, stringsAsFactors = FALSE),
+                  error = function(e) NULL)
+  if (is.null(out) || nrow(out) == 0) NULL else out
+}
+
+## Split click_events into reasoning products (coded, network-bound) and
+## navigation (uncoded, RQA-bound).
+pull_products <- function(payload) {
+  x <- as_df(payload$click_events)
+  if (is.null(x) || !all(c("t", "action") %in% names(x))) return(EMPTY_EVENTS)
+
+  act <- as.character(x$action)
+  det <- if ("detail" %in% names(x)) as.character(x$detail)
+         else rep(NA_character_, nrow(x))
+  tms <- suppressWarnings(as.numeric(x$t))
+
+  rows <- list()
+  for (i in seq_along(act)) {
+    a <- act[i]
+    if (is.na(a) || a %in% NAV_ACTIONS) next
+    spec <- ACTION_CODE_MAP[[a]]
+    if (is.null(spec)) next
+
+    cs <- character(0)
+    if (!is.na(spec[1])) cs <- c(cs, spec[1])            # etic phase
+
+    emic <- NA_character_
+    if (a %in% EMIC_FROM_DETAIL) {
+      hit <- regex_hits(det[i], emic_codes)
+      if (length(hit)) emic <- hit[1]
+    }
+    if (is.na(emic) && !is.na(spec[2])) emic <- spec[2]  # fall back to default
+    if (!is.na(emic)) cs <- c(cs, emic)
+
+    if (!length(cs)) next
+    rows[[length(rows) + 1]] <- data.frame(
+      t_ms = rep(tms[i], length(cs)), code = cs, source = "product",
+      action = a, detail = det[i], stringsAsFactors = FALSE)
+  }
+  if (!length(rows)) return(EMPTY_EVENTS)
+  bind_rows(rows)
+}
+
+pull_verbal <- function(payload) {
+  x <- as_df(payload$transcript_segments)
+  if (is.null(x) || !all(c("start_ms", "text") %in% names(x)))
+    return(EMPTY_EVENTS)
+  txt <- as.character(x$text)
+  tms <- suppressWarnings(as.numeric(x$start_ms))
+  rows <- list()
+  for (i in seq_along(txt)) {
+    cs <- regex_hits(txt[i])
+    if (!length(cs)) next
+    rows[[length(rows) + 1]] <- data.frame(
+      t_ms = rep(tms[i], length(cs)), code = cs, source = "verbal",
+      action = NA_character_, detail = substr(txt[i], 1, 80),
+      stringsAsFactors = FALSE)
+  }
+  if (!length(rows)) return(EMPTY_EVENTS)
+  bind_rows(rows)
+}
+
+ingest <- function(payload) {
+  prod <- pull_products(payload)
+  verb <- pull_verbal(payload)
+  net <- bind_rows(prod, verb)
+  net <- net[net$code %in% codes & is.finite(net$t_ms), , drop = FALSE]
+  net <- net[order(net$t_ms), , drop = FALSE]
+
+  clicks <- as_df(payload$click_events)
+  nav_n <- if (!is.null(clicks) && "action" %in% names(clicks))
+    sum(as.character(clicks$action) %in% NAV_ACTIONS) else 0L
+
+  list(events = net,
+       n_product = nrow(prod), n_verbal = nrow(verb),
+       n_click_total = if (is.null(clicks)) 0L else nrow(clicks),
+       n_nav = nav_n,
+       n_gaze = nrow(as_df(payload$gaze_events) %||% data.frame()),
+       payload_case = payload$case_id %||% NA)
+}
+
+## =====================================================================
+## 7. ACCUMULATION
+##
+## PRODUCTION SEAM. Replace accumulate_tona() with the verified tma call.
+## I have not written tma API calls here because I have not verified the
+## package's function signatures; invented arguments would fail silently.
+##
+## Contract:
+##   in  : events data.frame(t_ms, code, source) sorted by t_ms
+##         tif   list of frozen temporal-impact-function parameters
+##   out : named numeric vector, length 21, names == all_edges$edge_id
+##
+## VALIDATION GATE: run one real Case 1 log through this and through
+## desktop tma. Confirm the 21 values match element by element.
+## =====================================================================
+
+accumulate_tona <- function(events, tif) {
+  stop("accumulate_tona() not implemented - wire to tma, then remove this stop().")
+}
+
+## Interim accumulation: symmetric co-occurrence in a fixed window.
+## NOT TMA. Valid for pipeline testing and demonstration only.
+INTERIM_WINDOW_MS <- 9000
+
+accumulate_interim <- function(events, window_ms = INTERIM_WINDOW_MS) {
+  w <- setNames(numeric(nrow(all_edges)), all_edges$edge_id)
+  if (is.null(events) || nrow(events) < 2) return(w)
+  tt <- events$t_ms; cc <- events$code
   for (i in seq_along(tt)) {
-    j <- i - 1
-    while (j >= 1 && (tt[i] - tt[j]) <= maxwin) {   # outer bound = widest window
-      win <- STREAM_WINDOW_MS[[ ss[j] ]]            # horizon of the PRIOR event's stream
-      if (is.null(win) || is.na(win)) win <- maxwin
-      if ((tt[i] - tt[j]) <= win && cc[j] != cc[i] && cc[j] %in% codes && cc[i] %in% codes)
-        m[cc[j], cc[i]] <- m[cc[j], cc[i]] + 1      # prior -> current (responds to)
-      j <- j - 1
+    j <- i - 1L
+    while (j >= 1L && (tt[i] - tt[j]) <= window_ms) {
+      if (cc[j] != cc[i]) {
+        k <- edge_id(cc[j], cc[i]); w[[k]] <- w[[k]] + 1
+      }
+      j <- j - 1L
     }
   }
-  if (max(m) > 0) m <- m / max(m)            # normalize 0..1
-  m
+  w
 }
 
-node_strength <- function(m) rowSums(m) + colSums(m)
-
-## --- fixed interpretable 2D projection (NOT an SVD rotation) ------------
-## x: procedural/premature (-)  <-->  patient-centered + framing (+)
-## y: premature closure (-)     <-->  reflective monitoring (+)
-Wx <- matrix(0,n,n,dimnames=list(codes,codes))
-Wy <- matrix(0,n,n,dimnames=list(codes,codes))
-for (a in codes) for (b in codes) if (a!=b) {
-  if (a=="PATIENT"||b=="PATIENT"||a=="FRAME"||b=="FRAME") Wx[a,b] <- Wx[a,b] + 1
-  if (a=="MONITOR"||b=="MONITOR")                          Wy[a,b] <- Wy[a,b] + 1
+## Sphere (L2) normalisation, across ALL 21 edges before any subsetting.
+sphere_normalize <- function(v) {
+  L <- sqrt(sum(v^2))
+  if (!is.finite(L) || L == 0) return(v)
+  v / L
 }
-Wx["CUE","INTERV"] <- -2; Wx["HYPO","INTERV"] <- -1
-Wy["CUE","INTERV"] <- -2; Wy["HYPO","INTERV"] <- -1
-project <- function(m) c(
-  x = sum(m*Wx)/sum(abs(Wx)),
-  y = sum(m*Wy)/sum(abs(Wy))
-)
 
-## --- pretend faculty cloud: perturb the faculty matrix, project each ----
-set.seed(42)
-fac_pts <- do.call(rbind, lapply(1:15, function(i) {
-  mm <- faculty_mat + matrix(rnorm(n*n, 0, 0.06), n, n)
-  mm[mm<0] <- 0; diag(mm) <- 0
-  p <- project(mm); data.frame(x=p["x"], y=p["y"])
-}))
+## =====================================================================
+## 8. PROXIMAL-ZONE SELECTION
+## Largest CLOSABLE gap, not largest gap overall.
+## =====================================================================
 
-prompts <- list(
-  "PATIENT|INTERV"="You moved toward equipment without firmly linking it to this patient's goals. Ask: how do this person's priorities shape which option fits?",
-  "HYPO|PATIENT"="Your reasoning about the impairment stayed separate from the patient's context. Ask: how does my hypothesis connect to what matters to them?",
-  "INTERV|MONITOR"="You committed to a plan with little self-checking. Ask: what would tell me this choice is wrong?",
-  "HYPO|MONITOR"="You generated a hypothesis without revisiting it. Ask: what evidence would change my mind?",
-  "CUE|FRAME"="You gathered cues but did not pause to frame the problem. Ask: what is the occupational problem before I act?",
-  "FRAME|HYPO"="Framing and hypothesis rarely connected. Ask: does my hypothesis address the problem I framed?",
-  "PATIENT|MONITOR"="Patient-centered thinking and self-monitoring stayed apart. Ask: am I checking my plan against their priorities?"
-)
-get_prompt <- function(a,b){ k1<-paste0(a,"|",b); k2<-paste0(b,"|",a)
-  if(!is.null(prompts[[k1]]))return(prompts[[k1]]); if(!is.null(prompts[[k2]]))return(prompts[[k2]])
-  paste0("Faculty linked ",code_labels[a]," and ",code_labels[b]," more than you did. How might these inform each other?") }
+select_flagged_edges <- function(student_w, faculty_w,
+                                 directions = FLAG_DIRECTIONS,
+                                 eligible = ELIGIBLE_EDGES,
+                                 max_n = MAX_FLAGGED_EDGES,
+                                 cards = CARDS, case_id = CASE_ID) {
+  if (is.null(faculty_w)) return(NULL)
+  el <- all_edges
+  if (identical(eligible, "cross")) el <- el[el$kind == "cross", ]
 
-bar <- function(v,color) sprintf('<div style="background:#eee;border-radius:3px;height:10px;width:120px;display:inline-block;vertical-align:middle;"><div style="background:%s;height:10px;border-radius:3px;width:%d%%;"></div></div>', color, as.integer(round(v*100)))
+  d <- data.frame(edge_id = el$edge_id, from = el$from, to = el$to,
+                  s = as.numeric(student_w[el$edge_id]),
+                  f = as.numeric(faculty_w[el$edge_id]),
+                  stringsAsFactors = FALSE)
+  d$gap <- d$f - d$s
+  d$direction <- ifelse(d$gap > 0, "under", "over")
+  d <- d[d$direction %in% directions, , drop = FALSE]
+  if (!nrow(d)) return(NULL)
 
-idb_js <- "
-async function getDataFromIDB(){return new Promise((resolve)=>{let req=indexedDB.open('OT_Simulation_DB',1);
- req.onsuccess=(e)=>{try{let db=e.target.result;let tx=db.transaction('sessions','readonly');let g=tx.objectStore('sessions').get('active_session');
- g.onsuccess=()=>resolve(g.result?g.result.data:'NO_DATA');g.onerror=()=>resolve('ERROR');}catch(err){resolve('NO_DATA');}};
+  d$closable <- abs(d$gap) *
+    (pmax(d$s, CLOSABILITY_FLOOR) ^ CLOSABILITY_EXPONENT)
+
+  ## An edge is only eligible if a card with an exemplar exists for it.
+  if (!is.null(cards)) {
+    have <- cards$edge_id[cards$case_id == case_id &
+                            cards$direction %in% directions]
+    d <- d[d$edge_id %in% have, , drop = FALSE]
+    if (!nrow(d)) return(NULL)
+  }
+  head(d[order(-d$closable), , drop = FALSE], max_n)
+}
+
+## =====================================================================
+## 9. PLOT
+## =====================================================================
+
+build_edge_frame <- function(student_w, flagged_ids = character(0)) {
+  ef <- all_edges
+  ef$w <- as.numeric(student_w[ef$edge_id])
+  denom <- switch(GRADIENT_SCALING,
+                  relative = max(ef$w, na.rm = TRUE), absolute = 1,
+                  max(ef$w, na.rm = TRUE))
+  if (!is.finite(denom) || denom <= 0) denom <- 1
+  ef$rel <- pmin(ef$w / denom, 1)
+  ef <- merge(ef, setNames(node_pos, c("from", "x0", "y0")), by = "from")
+  ef <- merge(ef, setNames(node_pos, c("to", "x1", "y1")), by = "to")
+  ef$flagged <- ef$edge_id %in% flagged_ids
+  ef$in_reduced <- if (identical(REDUCED_VIEW_RULE, "topn"))
+    ef$edge_id %in% head(ef$edge_id[order(-ef$rel)], REDUCED_TOPN)
+  else ef$rel >= REDUCED_THRESHOLD
+  ef$in_reduced <- ef$in_reduced | ef$flagged
+  ef
+}
+
+plot_network <- function(ef, show_all) {
+  dat <- if (show_all) ef else ef[ef$in_reduced, , drop = FALSE]
+  np <- node_pos
+  np$label <- code_label[np$code]; np$gloss <- code_gloss[np$code]
+  np$side <- ifelse(np$code %in% emic_codes, "emic", "etic")
+
+  g <- ggplot() +
+    geom_segment(data = dat[!dat$flagged, , drop = FALSE],
+                 aes(x = x0, y = y0, xend = x1, yend = y1,
+                     linewidth = rel, alpha = rel),
+                 colour = "#888780", lineend = "round") +
+    geom_segment(data = dat[dat$flagged, , drop = FALSE],
+                 aes(x = x0, y = y0, xend = x1, yend = y1),
+                 colour = "#7F77DD", linewidth = 2.2, lineend = "round") +
+    scale_linewidth_continuous(range = c(0.4, 2.4), guide = "none") +
+    scale_alpha_continuous(range = c(0.25, 0.95), guide = "none") +
+    geom_point(data = np, aes(x = x, y = y, fill = side),
+               shape = 21, size = 4, stroke = 0.6, colour = "#3D3D3A") +
+    scale_fill_manual(values = c(emic = "#5DCAA5", etic = "#B4B2A9"),
+                      guide = "none") +
+    geom_text(data = np[np$side == "emic", ],
+              aes(x = x - 0.045, y = y + 0.028, label = label),
+              hjust = 1, size = 3.6, colour = "#085041") +
+    geom_text(data = np[np$side == "emic", ],
+              aes(x = x - 0.045, y = y - 0.028, label = gloss),
+              hjust = 1, size = 3.1, colour = "#0F6E56") +
+    geom_text(data = np[np$side == "etic", ],
+              aes(x = x + 0.045, y = y + 0.028, label = label),
+              hjust = 0, size = 3.6, colour = "#444441") +
+    geom_text(data = np[np$side == "etic", ],
+              aes(x = x + 0.045, y = y - 0.028, label = gloss),
+              hjust = 0, size = 3.1, colour = "#5F5E5A") +
+    annotate("text", x = -0.045, y = 1.02, hjust = 1, size = 3.2,
+             colour = "#0F6E56", label = "Professional reasoning") +
+    annotate("text", x = 1.045, y = 1.02, hjust = 0, size = 3.2,
+             colour = "#5F5E5A", label = "Managing your own learning") +
+    coord_cartesian(xlim = c(-0.62, 1.62), ylim = c(-0.02, 1.08)) +
+    theme_void(base_size = 13)
+
+  if (SHOW_SCALE_KEY) {
+    key <- data.frame(x0 = c(-0.55, -0.42, -0.29), x1 = c(-0.45, -0.32, -0.19),
+                      y = -0.005, rel = c(0.25, 0.6, 1))
+    g <- g + geom_segment(data = key,
+                          aes(x = x0, xend = x1, y = y, yend = y,
+                              linewidth = rel, alpha = rel),
+                          colour = "#888780", lineend = "round") +
+      annotate("text", x = -0.15, y = -0.005, hjust = 0, size = 3,
+               colour = "#5F5E5A",
+               label = "came up less often \u2192 more often")
+  }
+  g
+}
+
+## =====================================================================
+## 10. HANDOFF JS
+## =====================================================================
+
+idb_js <- sprintf("
+async function getDataFromIDB(){return new Promise((resolve)=>{
+ let req=indexedDB.open('%s',1);
+ req.onsuccess=(e)=>{try{let db=e.target.result;
+   let tx=db.transaction('%s','readonly');
+   let g=tx.objectStore('%s').get('%s');
+   g.onsuccess=()=>resolve(g.result?g.result.data:'NO_DATA');
+   g.onerror=()=>resolve('ERROR');}catch(err){resolve('NO_DATA');}};
  req.onerror=()=>resolve('ERROR');});}
-$(document).on('shiny:connected',async function(){Shiny.setInputValue('jspsych_data',await getDataFromIDB());});"
+$(document).on('shiny:connected',async function(){
+  Shiny.setInputValue('jspsych_data', await getDataFromIDB());
+});
+window.addEventListener('message',function(ev){
+  if(ev.data && ev.data.type==='SESSION_DATA'){
+    Shiny.setInputValue('jspsych_data',
+      typeof ev.data.payload==='string'?ev.data.payload:JSON.stringify(ev.data.payload));
+  }
+});
+Shiny.addCustomMessageHandler('dashboard_complete',function(m){
+  try{ if(window.parent&&window.parent!==window)
+    window.parent.postMessage({type:'DASHBOARD_COMPLETE',goal_text:m.goal_text},'*'); }catch(e){}
+});", IDB_NAME, IDB_STORE, IDB_STORE, IDB_KEY)
 
-## ======================================================================
-## UI
-## ======================================================================
+## =====================================================================
+## 11. UI
+## =====================================================================
+
 ui <- page_fluid(
-  theme = bs_theme(version=5, primary="#16263d"),
+  theme = bs_theme(version = 5, primary = "#16263d"),
   tags$head(tags$script(HTML(idb_js))),
   tags$style(HTML("
-    .demo-banner{background:#16263d;color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;margin-bottom:10px;}
-    .callout{background:#eafaf1;border-left:4px solid #27ae60;padding:14px 18px;border-radius:6px;}
-    .gap-item{border-left:4px solid #c0392b;background:#fdf3f2;padding:10px 14px;margin-bottom:8px;border-radius:6px;}
-    .str-item{border-left:4px solid #27ae60;background:#eafaf1;padding:10px 14px;margin-bottom:8px;border-radius:6px;}
-    .conn-label{font-weight:700;}
+    body{background:#FAF9F5;}
+    .wrap{max-width:820px;margin:0 auto;padding:24px 16px 48px;}
+    .eyebrow{font-size:13px;color:#6E6D69;margin-bottom:4px;}
+    h1.hd{font-size:20px;font-weight:500;color:#141413;margin:0 0 6px;}
+    .sub{font-size:14px;color:#3D3D3A;line-height:1.6;margin:0 0 16px;}
+    .panel{background:#fff;border:1px solid #E8E6DC;border-radius:12px;padding:16px;}
+    .card2{background:#fff;border:1px solid #E8E6DC;border-radius:12px;padding:16px 20px;margin-top:20px;}
+    .cardhd{font-size:15px;font-weight:500;color:#141413;margin:0 0 10px;}
+    .swatch{display:inline-block;width:22px;height:4px;background:#7F77DD;border-radius:2px;margin-right:8px;vertical-align:middle;}
+    .body2{font-size:14px;color:#3D3D3A;line-height:1.7;margin:0 0 12px;}
+    .exwrap{background:#F5F4ED;border-radius:8px;padding:12px 14px;margin-bottom:12px;}
+    .exlab{font-size:12px;color:#6E6D69;margin:0 0 6px;}
+    .extxt{font-size:14px;color:#3D3D3A;line-height:1.7;font-style:italic;margin:0;}
+    .qtxt{font-size:14px;color:#141413;line-height:1.7;margin:0;}
+    .divider{border-top:1px solid #E8E6DC;margin:24px 0 20px;}
+    .note{font-size:13px;color:#3D3D3A;line-height:1.6;margin:0 0 12px;}
+    .warn{background:#FDECEA;border-left:4px solid #C0392B;padding:12px 16px;border-radius:6px;color:#922B21;font-size:14px;}
+    .diag{background:#F5F4ED;border:1px solid #E8E6DC;border-radius:8px;padding:12px 14px;margin-top:28px;font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#3D3D3A;white-space:pre-wrap;}
   ")),
-  div(class="demo-banner",
-      "Your network is computed live from this session using per-stream temporal windows (gaze 1.5s, clicks 4s, think-aloud 9s) \u2014 a transmodal-style accumulation, not a single fused window. The faculty model is simulated; the centroid uses fixed interpretive axes, not an SVD rotation."),
-  h2("Your Clinical Reasoning Feedback", style="color:#16263d;"),
-  uiOutput("status"),
-  uiOutput("personal_note"),
-  layout_columns(
-    col_widths=c(7,5),
-    card(card_header("Where your reasoning landed"), plotOutput("centroid", height="420px"), uiOutput("centroid_callout")),
-    card(card_header("What to work on"), uiOutput("plain_language"))
-  ),
-  navset_card_tab(
-    nav_panel("Reasoning profile", plotOutput("radar", height="440px")),
-    nav_panel("Connection map (heatmap)", plotOutput("heatmap", height="420px")),
-    nav_panel("Connection detail", uiOutput("conn_table")),
-    nav_panel("Data captured", uiOutput("data_summary"))
+  div(class = "wrap",
+      uiOutput("setup_warning"),
+      div(class = "eyebrow", textOutput("case_line", inline = TRUE)),
+      h1(class = "hd", "How reasoning unfolded in this case"),
+      p(class = "sub", "Each line is a link between two kinds of thinking that came up close together. Thicker, darker lines came up more often."),
+      div(style = "margin-bottom:12px;",
+          radioButtons("view_mode", NULL,
+                       choices = c("What this case leaned on most" = "reduced",
+                                   "Show every connection" = "all"),
+                       selected = "reduced", inline = TRUE)),
+      p(class = "note", textOutput("view_note", inline = TRUE)),
+      div(class = "panel", plotOutput("network", height = "380px")),
+      uiOutput("flagged_cards"),
+      div(class = "divider"),
+      h1(class = "hd", "Before the next case"),
+      p(class = "sub", "Name one thing you want to do differently as you work through it."),
+      textAreaInput("goal_text", NULL, width = "100%", rows = 3,
+                    placeholder = "In the next case, I want to\u2026"),
+      div(style = "text-align:right;margin-top:12px;",
+          actionButton("continue", "Continue to case 2", class = "btn-primary")),
+      uiOutput("diagnostics")
   )
 )
 
-## ======================================================================
-## SERVER
-## ======================================================================
+## =====================================================================
+## 12. SERVER
+## =====================================================================
+
 server <- function(input, output, session) {
 
-  # parse handoff -> merged coded event stream + student matrix (reactive)
-  session_data <- reactive({
+  output$case_line <- renderText(paste0("Case ", CASE_ID))
+
+  raw_payload <- reactive({
     raw <- input$jspsych_data
-    if (is.null(raw) || raw %in% c("NO_DATA","ERROR")) return(NULL)
-    tryCatch({
-      d <- fromJSON(raw, simplifyVector = TRUE)
-      gaze  <- d$gaze_events
-      click <- d$click_events
-      segs  <- d$transcript_segments
-      ev <- list()
-      if (!is.null(gaze)  && length(gaze)  && !is.null(gaze$t))  ev[[length(ev)+1]] <- data.frame(t=gaze$t,  code=gaze$code,  source="gaze")
-      if (!is.null(click) && length(click) && !is.null(click$t)) ev[[length(ev)+1]] <- data.frame(t=click$t, code=click$code, source="click")
-      verb <- code_transcript(segs)
-      if (nrow(verb)) ev[[length(ev)+1]] <- verb
-      events <- if (length(ev)) bind_rows(ev) else data.frame(t=numeric(0),code=character(0),source=character(0))
-      list(events=events, mat=accumulate(events), choice=d$choice)
-    }, error=function(e) NULL)
+    if (is.null(raw) || raw %in% c("NO_DATA", "ERROR")) return(NULL)
+    tryCatch(fromJSON(raw, simplifyVector = TRUE), error = function(e) NULL)
   })
 
-  output$status <- renderUI({
-    sd <- session_data()
-    if (is.null(sd)) return(div(style="color:#c0392b;","Waiting for session data from the case… (run a case first, or this is being viewed standalone)."))
-    div(style="color:#555;", sprintf("Built from %d coded events (gaze + clicks + think-aloud).", nrow(sd$events)))
+  demo_bundle <- reactive({
+    if (!DEMO_MODE || !file.exists(DEMO_EVENTS_PATH)) return(NULL)
+    ev <- utils::read.csv(DEMO_EVENTS_PATH, stringsAsFactors = FALSE)
+    ev$action <- NA_character_; ev$detail <- NA_character_
+    list(events = ev[ev$code %in% codes, , drop = FALSE],
+         n_product = NA, n_verbal = NA, n_click_total = NA,
+         n_nav = NA, n_gaze = NA, payload_case = CASE_ID)
   })
 
-  output$personal_note <- renderUI({
-    sd <- session_data(); if (is.null(sd)) return(NULL)
-    ev <- sd$events
-    if (nrow(ev)>0 && !("PATIENT" %in% ev$code[ev$source=="gaze"])) {
-      div(style="background:#fdecea;border-left:4px solid #c0392b;padding:12px 16px;margin-bottom:14px;border-radius:6px;color:#922b21;",
-          "You spent little or no visual attention on the patient-centered panels (goals / ADL observation). Notice how that shows up as weak Patient-Centered connections below.")
-    } else NULL
+  bundle <- reactive({
+    p <- raw_payload()
+    if (is.null(p)) return(demo_bundle())
+    ingest(p)
   })
 
-  output$centroid <- renderPlot({
-    sd <- session_data()
-    p <- if (is.null(sd)) c(x=NA,y=NA) else project(sd$mat)
-    g <- ggplot() +
-      annotate("rect", xmin=0, xmax=1.25, ymin=0, ymax=1.25, fill="#eafaf1") +
-      geom_hline(yintercept=0, color="grey70") + geom_vline(xintercept=0, color="grey70") +
-      stat_ellipse(data=fac_pts, aes(x,y), geom="polygon", alpha=0.15, fill="#3498db", color="#2980b9") +
-      geom_point(data=fac_pts, aes(x,y), color="#2980b9", alpha=0.55, size=2.5)
-    if (!is.na(p["x"])) g <- g +
-      geom_point(aes(x=p["x"], y=p["y"]), color="#d35400", size=6) +
-      annotate("text", x=p["x"], y=p["y"]-0.12, label="You", color="#d35400", fontface="bold", size=5)
-    g + annotate("text", x=0.62, y=1.12, label="Integrated & reflective\n(faculty region)", color="#1e8449", size=4) +
-      coord_cartesian(xlim=c(-1.2,1.25), ylim=c(-1.2,1.25)) +
-      labs(x="Procedural / premature   \u2190        \u2192   Patient-centered + framing",
-           y="Premature closure   \u2190        \u2192   Reflective monitoring") +
-      theme_minimal(base_size=13) + theme(panel.grid.minor=element_blank())
-  })
+  output$setup_warning <- renderUI({
+    msgs <- c()
+    if (is.null(FACULTY)) msgs <- c(msgs, "frozen faculty profile")
+    if (is.null(CARDS))   msgs <- c(msgs, "feedback card table")
+    if (!file.exists(TIF_PARAMS_PATH)) msgs <- c(msgs, "frozen TIF parameters")
 
-  output$centroid_callout <- renderUI({
-    sd <- session_data(); if (is.null(sd)) return(NULL)
-    p <- project(sd$mat)
-    msg <- if (p["x"] >= 0.2 && p["y"] >= 0.2) "Your network sits near the faculty region: you connected patient context and self-monitoring while reasoning."
-      else if (p["x"] < 0 && p["y"] < 0) "Your network sits opposite the faculty region: reasoning leaned procedural and moved toward a decision with little patient-centered or reflective connection."
-      else "Your network sits between the faculty region and the procedural/premature corner \u2014 some integration, room to connect patient context and monitoring more."
-    div(class="callout", style="margin-top:10px;", HTML(paste0("<strong>What this means:</strong> ", msg)))
-  })
-
-  dyads_r <- reactive({
-    sd <- session_data(); req(sd)
-    sm <- sd$mat
-    expand.grid(from=codes,to=codes,stringsAsFactors=FALSE) |>
-      filter(from!=to) |>
-      mutate(s=mapply(function(a,b) sm[a,b], from,to),
-             f=mapply(function(a,b) faculty_mat[a,b], from,to),
-             gap=f-s, pair=paste0(code_labels[from]," \u2192 ",code_labels[to]))
-  })
-
-  output$plain_language <- renderUI({
-    sd <- session_data(); if (is.null(sd)) return(HTML("<p>No session yet.</p>"))
-    d <- dyads_r()
-    strengths <- d |> arrange(desc(s)) |> filter(s>0) |> head(3)
-    gaps <- d |> arrange(desc(gap)) |> head(5)
-    str_html <- if (nrow(strengths)) paste0("<div class='str-item'><div class='conn-label' style='color:#1e8449'>",
-        strengths$pair,"</div><div>You connected these most.</div></div>", collapse="") else "<p>Few connections detected yet.</p>"
-    gap_html <- paste0("<div class='gap-item'><div class='conn-label' style='color:#922b21'>",
-        code_labels[gaps$from]," \u2194 ",code_labels[gaps$to],
-        "</div><div>", mapply(get_prompt, gaps$from, gaps$to), "</div></div>", collapse="")
-    HTML(paste0("<h5 style='color:#27ae60;'>Your strongest connections</h5>", str_html,
-                "<h5 style='color:#c0392b;margin-top:14px;'>Underdeveloped vs. faculty</h5>", gap_html))
-  })
-
-  output$radar <- renderPlot({
-    sd <- session_data(); req(sd)
-    fac_r <- node_strength(faculty_mat); stu_r <- node_strength(sd$mat)
-    mx <- max(c(fac_r, stu_r, 1e-6)); fac_r <- fac_r/mx; stu_r <- stu_r/mx
-    short <- c("Cue\nAcquisition","Problem\nFraming","Hypothesis","Patient-\nCentered","Intervention","Metacog.\nMonitoring")
-    ang <- seq(pi/2, pi/2-2*pi, length.out=n+1)[1:n]
-    par(mar=c(1,1,1,1)); plot.new(); plot.window(xlim=c(-1.4,1.4), ylim=c(-1.4,1.4), asp=1)
-    for (r in c(.25,.5,.75,1)) { a<-seq(0,2*pi,length.out=120); lines(r*cos(a), r*sin(a), col="grey88") }
-    for (i in 1:n) { lines(c(0,cos(ang[i])), c(0,sin(ang[i])), col="grey88")
-      adjx <- if (cos(ang[i])>.15) 0 else if (cos(ang[i])< -.15) 1 else .5
-      text(1.22*cos(ang[i]), 1.22*sin(ang[i]), short[i], cex=.85, col="#16263d", adj=c(adjx,.5)) }
-    dp <- function(v,fill,bd) polygon(v*cos(ang), v*sin(ang), col=fill, border=bd, lwd=2)
-    dp(fac_r, adjustcolor("#3498db",.25), "#2980b9")
-    dp(stu_r, adjustcolor("#e67e22",.30), "#d35400")
-    legend("bottomleft", legend=c("Faculty mean","You"),
-           fill=c(adjustcolor("#3498db",.5), adjustcolor("#e67e22",.6)), border=NA, bty="n", cex=1)
-  })
-
-  output$heatmap <- renderPlot({
-    sd <- session_data(); req(sd)
-    hm <- rbind(transform(as.data.frame(as.table(sd$mat)), who="You"),
-                transform(as.data.frame(as.table(faculty_mat)), who="Faculty"))
-    names(hm)[1:3] <- c("from","to","strength")
-    hm$from <- factor(as.character(hm$from), levels=rev(codes))
-    hm$to   <- factor(as.character(hm$to),   levels=codes)
-    hm$who  <- factor(hm$who, levels=c("You","Faculty"))
-    ggplot(hm, aes(to, from, fill=strength)) + geom_tile(color="white", linewidth=.6) + facet_wrap(~who) +
-      scale_fill_gradient(low="#f7fbff", high="#08519c", limits=c(0,1)) +
-      labs(x="To (target code)", y="From (source code)", fill="Strength") +
-      theme_minimal(base_size=12) + theme(axis.text.x=element_text(angle=45,hjust=1), panel.grid=element_blank())
-  })
-
-  output$conn_table <- renderUI({
-    sd <- session_data(); if (is.null(sd)) return(HTML("<p>No session yet.</p>"))
-    d <- dyads_r() |>
-      mutate(tier=case_when(s>=0.45 & gap<=0.2 ~ "Aligned with faculty", gap>=0.4 ~ "Underdeveloped vs. faculty", TRUE ~ "Emerging"))
-    tc <- c("Aligned with faculty"="#27ae60","Emerging"="#f39c12","Underdeveloped vs. faculty"="#c0392b")
-    rows <- ""
-    for (t in names(tc)) {
-      sub <- d[d$tier==t,]; if (nrow(sub)==0) next
-      sub <- sub[order(-sub$s),]
-      rows <- paste0(rows, "<h5 style='color:",tc[t],";margin-top:14px;'>",t,"</h5>",
-        "<table style='width:100%;border-collapse:collapse;font-size:13px;'><tr style='color:#777;text-align:left;'><th>Connection</th><th>You</th><th>Faculty</th></tr>")
-      for (i in seq_len(nrow(sub))) rows <- paste0(rows, "<tr style='border-top:1px solid #eee;'><td style='padding:6px 4px;'>",
-        sub$pair[i],"</td><td>",bar(sub$s[i],"#e67e22"),"</td><td>",bar(sub$f[i],"#3498db"),"</td></tr>")
-      rows <- paste0(rows, "</table>")
+    b <- bundle()
+    notes <- c()
+    if (is.null(b)) notes <- c(notes, "No session data received from the case.")
+    else {
+      if (nrow(b$events) == 0)
+        notes <- c(notes, "Session data received, but no codeable events found.")
+      if (!is.na(b$payload_case) && b$payload_case != CASE_ID)
+        notes <- c(notes, sprintf("Payload is case %s but dashboard is set to case %s.",
+                                  b$payload_case, CASE_ID))
     }
-    HTML(rows)
+    if (DEMO_MODE) notes <- c(notes, "DEMO_MODE is on: synthetic events.")
+
+    if (!length(msgs) && !length(notes)) return(NULL)
+    div(class = "warn", style = "margin-bottom:16px;",
+        strong("Not study-ready. "),
+        if (length(msgs)) paste0("Placeholder or missing: ",
+                                 paste(msgs, collapse = ", "), ". "),
+        paste(notes, collapse = " "),
+        " Accumulation is a fixed window, not the TMA temporal impact function.")
   })
 
-  output$data_summary <- renderUI({
-    sd <- session_data(); if (is.null(sd)) return(HTML("<p>No session yet.</p>"))
-    ev <- sd$events
-    by_src <- as.data.frame(table(ev$source)); by_code <- as.data.frame(table(ev$code))
-    HTML(paste0("<p><strong>",nrow(ev),"</strong> coded events.</p>",
-      "<p>By stream: ", paste(by_src$Var1, by_src$Freq, sep="=", collapse=", "), "</p>",
-      "<p>By code: ", paste(by_code$Var1, by_code$Freq, sep="=", collapse=", "), "</p>",
-      "<p>Equipment chosen: <strong>", ifelse(is.null(sd$choice)||is.na(sd$choice),"(none)",sd$choice), "</strong></p>"))
+  student_weights <- reactive({
+    b <- bundle(); req(b)
+    tif <- if (file.exists(TIF_PARAMS_PATH))
+      tryCatch(fromJSON(TIF_PARAMS_PATH), error = function(e) NULL) else NULL
+    w <- tryCatch(accumulate_tona(b$events, tif),
+                  error = function(e) accumulate_interim(b$events))
+    sphere_normalize(w)
+  })
+
+  flagged <- reactive(select_flagged_edges(student_weights(), FACULTY))
+
+  edge_frame <- reactive({
+    fl <- flagged()
+    build_edge_frame(student_weights(),
+                     if (is.null(fl)) character(0) else fl$edge_id)
+  })
+
+  output$view_note <- renderText({
+    if (identical(input$view_mode, "all"))
+      "Showing all 21 connections. Fainter, thinner lines came up less often in this case."
+    else
+      "Showing the connections that came up most often. This describes what happened in the case - it isn't a score."
+  })
+
+  output$network <- renderPlot(
+    plot_network(edge_frame(), identical(input$view_mode, "all")))
+
+  output$flagged_cards <- renderUI({
+    fl <- flagged()
+    if (is.null(fl) || !nrow(fl) || is.null(CARDS)) return(NULL)
+    tagList(
+      div(style = "margin-top:24px;", h1(class = "hd", "Worth a second look")),
+      lapply(seq_len(nrow(fl)), function(i) {
+        row <- CARDS[CARDS$case_id == CASE_ID &
+                       CARDS$edge_id == fl$edge_id[i] &
+                       CARDS$direction == fl$direction[i], ]
+        if (nrow(row) == 0) return(NULL)
+        row <- row[1, ]
+        div(class = "card2",
+            div(class = "cardhd", span(class = "swatch"), row$headline),
+            p(class = "body2", row$body),
+            div(class = "exwrap",
+                p(class = "exlab", "How another clinician worked through this"),
+                p(class = "extxt", row$exemplar)),
+            p(class = "qtxt", row$question))
+      })
+    )
+  })
+
+  ## -------------------------------------------------------------------
+  ## DIAGNOSTICS. Set SHOW_DIAGNOSTICS <- FALSE for real participants.
+  ## -------------------------------------------------------------------
+  output$diagnostics <- renderUI({
+    if (!SHOW_DIAGNOSTICS) return(NULL)
+    p <- raw_payload(); b <- bundle()
+    L <- c("--- PAYLOAD ---")
+    if (is.null(p)) L <- c(L, "no payload (IndexedDB empty or unreadable)")
+    else {
+      L <- c(L, paste("keys:", paste(names(p), collapse = ", ")),
+             paste("case_id:", p$case_id %||% "(absent)"),
+             paste("condition:", p$condition %||% "(absent)"))
+    }
+    L <- c(L, "", "--- STREAM ROUTING ---")
+    if (is.null(b)) L <- c(L, "nothing ingested")
+    else {
+      L <- c(L,
+        sprintf("  click_events total : %s", b$n_click_total),
+        sprintf("  -> navigation (RQA): %s", b$n_nav),
+        sprintf("  -> product (network): %s coded rows", b$n_product),
+        sprintf("  transcript (network): %s coded rows", b$n_verbal),
+        sprintf("  gaze (RQA only)    : %s", b$n_gaze),
+        sprintf("  NETWORK EVENTS     : %d", nrow(b$events)))
+      if (nrow(b$events)) {
+        tb <- table(b$events$code)
+        L <- c(L, paste0("  by code: ",
+                         paste(names(tb), tb, sep = "=", collapse = ", ")))
+        rng <- range(b$events$t_ms)
+        L <- c(L, sprintf("  time range: %.0f - %.0f ms", rng[1], rng[2]))
+      }
+      if (!is.null(p)) {
+        cl <- as_df(p$click_events)
+        if (!is.null(cl) && "action" %in% names(cl)) {
+          seen <- unique(as.character(cl$action))
+          unk <- setdiff(seen, c(names(ACTION_CODE_MAP), NAV_ACTIONS))
+          if (length(unk))
+            L <- c(L, "", "!! UNCLASSIFIED ACTIONS (add to ACTION_CODE_MAP or NAV_ACTIONS):",
+                   paste0("  ", paste(unk, collapse = ", ")))
+        }
+      }
+    }
+    L <- c(L, "", "--- WEIGHTS ---")
+    w <- tryCatch(student_weights(), error = function(e) NULL)
+    if (!is.null(w)) {
+      top <- sort(w, decreasing = TRUE)[1:6]
+      L <- c(L, sprintf("  L2 = %.6f (must be 1.0 or 0)", sqrt(sum(w^2))),
+             paste0("  top: ", paste(names(top), round(top, 3),
+                                     sep = "=", collapse = ", ")))
+    }
+    fl <- tryCatch(flagged(), error = function(e) NULL)
+    L <- c(L, if (is.null(fl) || !nrow(fl)) "  flagged: none"
+           else paste0("  flagged: ", paste(fl$edge_id, collapse = ", ")))
+    div(class = "diag", paste(L, collapse = "\n"))
+  })
+
+  ## Diagnostic logging only. Toggle use and dwell are engagement traces,
+  ## NOT dependent variables. Time is a post-randomisation collider.
+  observeEvent(input$view_mode, {
+    message(sprintf("[log] view_mode=%s t=%s", input$view_mode, Sys.time()))
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$continue, {
+    message(sprintf("[log] continue goal_chars=%d t=%s",
+                    nchar(input$goal_text %||% ""), Sys.time()))
+    session$sendCustomMessage("dashboard_complete",
+                              list(goal_text = input$goal_text %||% ""))
   })
 }
 
