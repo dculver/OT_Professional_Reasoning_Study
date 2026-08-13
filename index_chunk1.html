@@ -233,8 +233,8 @@ function permissionGate(kind) {
   const isMic = (kind === "microphone");
   const constraint = isMic ? { audio: true } : { video: true };
   const why = isMic
-    ? "After each case you'll talk through your reasoning while watching a replay. Only audio is recorded."
-    : "The study estimates where you're looking on screen. Video is processed on your own computer and is never uploaded.";
+    ? "Your microphone is used only for the think-aloud after each case. The audio is turned into text on your own computer. The recording itself is never uploaded, and only the text is kept."
+    : "Your webcam is used only to estimate where you are looking on screen. This happens entirely on your own computer. No video is recorded or uploaded.";
   return {
     type: jsPsychHtmlKeyboardResponse,
     choices: "NO_KEYS",
@@ -243,12 +243,12 @@ function permissionGate(kind) {
         <h3 style="color:#1565c0;margin:0 0 12px;">${isMic ? "Microphone access" : "Webcam access"}</h3>
         <p style="font-size:15px;line-height:1.7;margin:0 0 20px;">${why}</p>
         <p id="pg_msg" style="font-size:14px;line-height:1.7;color:#44545f;margin:0 0 20px;">
-          Click the button below. Your browser will ask for permission — choose <strong>Allow</strong>.</p>
+          Click the button below. Your browser will ask for permission. Choose <strong>Allow</strong>.</p>
         <button id="pg_btn" style="background:#1565c0;color:#fff;border:none;border-radius:6px;padding:11px 22px;font-size:15px;cursor:pointer;font-family:inherit;">
           Enable ${isMic ? "microphone" : "webcam"}</button>
         <div id="pg_exit_wrap" style="display:none;margin-top:22px;">
           <button id="pg_exit" style="background:transparent;color:#7a8894;border:none;font-size:13px;cursor:pointer;text-decoration:underline;font-family:inherit;">
-            I'm unable to enable this — end the session</button>
+            I'm unable to enable this. End the session</button>
         </div>
       </div>`,
     on_load: function () {
@@ -281,8 +281,8 @@ function permissionGate(kind) {
           btn.disabled = false; btn.style.opacity = "1"; btn.textContent = "Try again";
           const devWord = isMic ? "Microphone" : "Camera";
           const osHelp = `<br><br><strong>If no prompt appeared at all</strong>, your browser may not have permission from your operating system:<br>
-               &bull; <strong>macOS</strong> — System Settings &rsaquo; Privacy &amp; Security &rsaquo; ${devWord}, and switch on your browser.<br>
-               &bull; <strong>Windows</strong> — Settings &rsaquo; Privacy &amp; security &rsaquo; ${devWord}, and allow desktop apps.<br>
+               &bull; <strong>macOS</strong>: System Settings &rsaquo; Privacy &amp; Security &rsaquo; ${devWord}, and switch on your browser.<br>
+               &bull; <strong>Windows</strong>: Settings &rsaquo; Privacy &amp; security &rsaquo; ${devWord}, and allow desktop apps.<br>
                You may need to restart the browser afterwards.`;
           msg.innerHTML = pending
             ? `<strong style="color:#c0392b;">No response received.</strong> If a prompt appeared, choose <strong>Allow</strong>. If it is hidden, click the padlock icon at the left of the address bar and set <strong>${devWord}</strong> to <strong>Allow</strong>.${osHelp}`
@@ -422,10 +422,10 @@ timeline.push({
   data: { trial_tag: "session_screen_share" },
   stimulus: `<div style="max-width:680px;margin:8% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
       <h2 style="color:#1565c0;">Share your screen to begin</h2>
-      <p style="font-size:17px;line-height:1.7;">This browser tab is recorded for the whole session so you can narrate over a replay after each case. The recording stays on your computer — only transcribed text is uploaded.</p>
+      <p style="font-size:17px;line-height:1.7;">This tab is recorded so you can watch it back and talk through your reasoning after each case. The video stays on your computer and is never uploaded. Only your spoken reasoning (saved as text) and a record of your on-screen actions are kept. The recording is cleared at the end of the session.</p>
       <div style="background:#d3e4f5;border-left:4px solid #1565c0;padding:16px 20px;border-radius:6px;margin:18px 0;">
-        <p style="margin:0;font-size:16px;">Click the button. The window goes <strong>fullscreen first</strong>, then your browser asks you to <strong>select a tab to share</strong> — choose <strong>this experiment's tab</strong> (not Window or Entire Screen).</p>
-        <p style="margin:12px 0 0;font-size:15px;color:#3a4d5c;">Sharing now (before calibration) matters: it sets the final screen size the eye-tracking is calibrated against.</p>
+        <p style="margin:0;font-size:16px;">Click the button. The window goes <strong>fullscreen first</strong>, then your browser asks you to <strong>select a tab to share</strong>. Choose <strong>this experiment's tab</strong> (not Window or Entire Screen).</p>
+        <p style="margin:12px 0 0;font-size:15px;color:#3a4d5c;">Sharing now, before calibration, matters. It sets the final screen size the eye tracking is calibrated against.</p>
       </div>
       <button id="share_btn" style="margin-top:6px;padding:14px 30px;background:#1e8e4e;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">Go fullscreen &amp; start recording</button>
       <p id="share_err" style="color:#c0392b;margin-top:10px;"></p>
@@ -450,7 +450,7 @@ timeline.push({
         setTimeout(() => jsPsych.finishTrial(), 400);
       } catch (e) {
         btn.disabled = false;
-        err.textContent = "Screen share cancelled — click the button again and select this experiment's tab from the list.";
+        err.textContent = "Screen share cancelled. Click the button again and select this experiment's tab from the list.";
         console.warn("getDisplayMedia failed/cancelled:", e);
       }
     });
@@ -467,7 +467,7 @@ timeline.push({
   item_path: null,
   adjustment_prompt: `<div style="max-width:560px;margin:0 auto;color:#16263d;font-family:'Segoe UI',Arial,sans-serif;text-align:left;">
       <p style="font-size:16px;line-height:1.6;">Hold a <strong>credit card, driver's license, or any card of that size</strong> up to the screen. Click and drag the lower-right corner of the image until it is exactly the same size as your card.</p>
-      <p style="font-size:14px;color:#444;">No card handy? A standard card is 85.6&nbsp;mm wide (3.37&nbsp;inches) — you can measure with a ruler instead.</p>
+      <p style="font-size:14px;color:#444;">No card handy? A standard card is 85.6&nbsp;mm wide (3.37&nbsp;inches). You can measure with a ruler instead.</p>
     </div>`,
   blindspot_prompt: `<div style="max-width:560px;margin:0 auto;color:#16263d;font-family:'Segoe UI',Arial,sans-serif;text-align:left;">
       <p style="font-size:16px;line-height:1.6;">Your distance from the screen will now be measured quickly.</p>
@@ -507,7 +507,7 @@ var calibration_instructions = {
       <p style="font-size:15px;color:#44545f;margin-bottom:8px;">Tips for best accuracy:</p>
       <ul style="font-size:15px;color:#44545f;line-height:1.8;padding-left:20px;margin-bottom:24px;">
         <li>Sit approximately 50cm (20 inches) from your screen</li>
-        <li>Keep your head still — move only your eyes</li>
+        <li>Keep your head still, move only your eyes</li>
         <li>Ensure your face is evenly lit from the front</li>
         <li>Maximize your screen brightness</li>
       </ul>
