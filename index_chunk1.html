@@ -168,6 +168,11 @@ const CONFIG = {
   WHISPER_MODEL: "Xenova/whisper-small.en",
   SCREEN_FPS: 15,
   RTA_MAX_SECONDS: 240,
+  /* Fullscreen viewport height at/above which gaze tracking is collected.
+     Below this, calibration is skipped and the session runs no-gaze (all
+     other data streams unaffected). Measured against AOI separability vs.
+     the WebGazer error envelope; see the methods chapter. */
+  GAZE_MIN_HEIGHT: 660,
   /* Qualtrics survey the participant returns to (to upload the session file).
      Filled in when the save chunk is built. */
   QUALTRICS_UPLOAD_URL: "REPLACE_WITH_QUALTRICS_UPLOAD_URL"
@@ -177,6 +182,10 @@ const study = {
   sub_id_from_url: new URLSearchParams(location.search).get("sub_id"),
   calibration: {},
   calibration_viewport: null,
+  fullscreen_viewport: null,       // viewport measured right after programmatic fullscreen
+  gaze_enabled: true,              // set false when fullscreen height < GAZE_MIN_HEIGHT
+  gaze_skip_reason: null,
+  gaze_threshold_used: null,       // the height cutoff this session was judged against (self-documenting)
   screen_geometry: {},
   browser_check: null,
   permissions: {},
@@ -322,7 +331,7 @@ function attachStreamEndedHandler(stream) {
     warn.innerHTML = `<div class="box">
         <h2>Screen sharing stopped</h2>
         <p>The screen recording was interrupted, so nothing is being captured right now. The study can't continue until you resume sharing this tab.</p>
-        <p>Click below, then choose <strong>this experiment's tab</strong> in the browser's share picker.</p>
+        <p>Click below, then choose <strong>this study's tab</strong> in the browser's share picker.</p>
         <button id="session_reshare">Resume screen sharing</button>
       </div>`;
     document.body.appendChild(warn);
@@ -366,7 +375,11 @@ var jsPsych = initJsPsych({
         <pre style="background:#f2f6fa;border:1px solid #d5dee7;border-radius:8px;padding:14px;font-size:12px;overflow:auto;">${
           JSON.stringify({
             recording_started_at: study.recording_started_at,
+            fullscreen_viewport: study.fullscreen_viewport,
             recording_viewport: study.recording_viewport,
+            gaze_enabled: study.gaze_enabled,
+            gaze_skip_reason: study.gaze_skip_reason,
+            gaze_threshold_used: study.gaze_threshold_used,
             calibration_viewport: study.calibration_viewport,
             calibration: study.calibration,
             screen_geometry: study.screen_geometry,
@@ -383,14 +396,52 @@ var jsPsych = initJsPsych({
    ===================================================================== */
 var timeline = [];
 
-/* 1 — Browser-check: enforce minimum viewport + log metadata.
-   NOTE the raised minimum_height (700): AOI height scales with viewport,
-   and below this the panels fall inside WebGazer's error band. */
+/* 1 — ★ PROGRAMMATIC FULLSCREEN (button, no keyboard shortcut).
+   Participants can't be relied on to press F11/Fn+F11. A single button
+   enters fullscreen for them. We then measure the FULLSCREEN viewport and
+   decide the gaze branch on it (not the smaller windowed viewport). */
+timeline.push({
+  type: jsPsychHtmlKeyboardResponse,
+  choices: "NO_KEYS",
+  data: { trial_tag: "enter_fullscreen" },
+  stimulus: `<div style="max-width:640px;margin:9% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#1565c0;">Full screen to begin</h2>
+      <p style="font-size:17px;line-height:1.7;">This study runs in full screen so the whole interface fits and the eye tracking stays accurate. Click the button to continue in full screen.</p>
+      <button id="fs_btn" style="margin-top:10px;padding:14px 30px;background:#1565c0;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">Continue in full screen</button>
+      <p id="fs_err" style="color:#c0392b;margin-top:10px;"></p>
+    </div>`,
+  on_load: function () {
+    const btn = document.getElementById("fs_btn");
+    const err = document.getElementById("fs_err");
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try { await document.documentElement.requestFullscreen(); }
+      catch (fe) { console.warn("requestFullscreen (front) failed:", fe); }
+      /* let the fullscreen resize settle before measuring */
+      setTimeout(() => {
+        const vh = window.innerHeight, vw = window.innerWidth;
+        study.fullscreen_viewport = { w: vw, h: vh };
+        study.gaze_threshold_used = CONFIG.GAZE_MIN_HEIGHT;
+        study.gaze_enabled = vh >= CONFIG.GAZE_MIN_HEIGHT;
+        study.gaze_skip_reason = study.gaze_enabled ? null : "viewport_height_below_threshold";
+        jsPsych.finishTrial();
+      }, 350);
+    });
+  }
+});
+
+/* 2 — Browser-check: WIDTH is a hard gate (below 1000 the columns collide);
+   HEIGHT no longer rejects (minimum_height 0). Short screens proceed and run
+   no-gaze instead of being turned away. Runs AFTER fullscreen, so it measures
+   the real task viewport. Custom message wording uses "study", not the
+   plugin default. */
 timeline.push({
   type: jsPsychBrowserCheck,
   minimum_width: 1000,
-  minimum_height: 700,
+  minimum_height: 0,
   allow_window_resize: true,
+  window_resize_message: `<div style="max-width:620px;margin:10% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <p style="font-size:16px;line-height:1.7;">Your browser window is too narrow to complete this study. Please widen or maximize the window. The minimum width is 1000&nbsp;px.</p></div>`,
   inclusion_function: () => true,   // hard capability gating already handled by checkBrowser()
   on_finish: function (data) {
     study.browser_check = {
@@ -401,22 +452,17 @@ timeline.push({
   }
 });
 
-/* 2 — Permissions: microphone, then camera (+ init the WebGazer camera). */
+/* 3 — Microphone permission + init (ALWAYS — the RTA needs audio regardless
+   of the gaze branch). Camera is requested later, only in the gaze branch. */
 timeline.push(permissionGate("microphone"));
 timeline.push({
   type: jsPsychInitializeMicrophone,
   data: { trial_tag: "init_microphone" }
 });
-timeline.push(permissionGate("camera"));
-timeline.push({
-  type: jsPsychWebgazerInitCamera,
-  data: { trial_tag: "init_camera" }
-});
 
-/* 3 — ★ SCREEN SHARE + FULLSCREEN — FIRST, before chinrest/calibration.
-   This is the correction: the viewport is changed HERE, then everything
-   downstream (chinrest, calibration, the cases) runs at this same viewport.
-   Recording is one continuous session stream. */
+/* 4 — ★ SCREEN SHARE + FULLSCREEN re-assertion (ALWAYS). Recording is one
+   continuous session stream. Re-asserts fullscreen in case it dropped, and
+   captures recording_viewport (the definitive task viewport). */
 timeline.push({
   type: jsPsychHtmlKeyboardResponse,
   choices: "NO_KEYS",
@@ -425,10 +471,9 @@ timeline.push({
       <h2 style="color:#1565c0;">Share your screen to begin</h2>
       <p style="font-size:17px;line-height:1.7;">This tab is recorded so you can watch it back and talk through your reasoning after each case. The video stays on your computer and is never uploaded. Only your spoken reasoning (saved as text) and a record of your on-screen actions are kept. The recording is cleared at the end of the session.</p>
       <div style="background:#d3e4f5;border-left:4px solid #1565c0;padding:16px 20px;border-radius:6px;margin:18px 0;">
-        <p style="margin:0;font-size:16px;">Click the button. The window goes <strong>fullscreen first</strong>, then your browser asks you to <strong>select a tab to share</strong>. Choose <strong>this experiment's tab</strong> (not Window or Entire Screen).</p>
-        <p style="margin:12px 0 0;font-size:15px;color:#3a4d5c;">Sharing now, before calibration, matters. It sets the final screen size the eye tracking is calibrated against.</p>
+        <p style="margin:0;font-size:16px;">Click the button, then your browser asks you to <strong>select a tab to share</strong>. Choose <strong>this study's tab</strong> (not Window or Entire Screen).</p>
       </div>
-      <button id="share_btn" style="margin-top:6px;padding:14px 30px;background:#1e8e4e;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">Go fullscreen &amp; start recording</button>
+      <button id="share_btn" style="margin-top:6px;padding:14px 30px;background:#1e8e4e;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">Start recording</button>
       <p id="share_err" style="color:#c0392b;margin-top:10px;"></p>
     </div>`,
   on_load: function () {
@@ -439,29 +484,29 @@ timeline.push({
       try {
         /* requestFullscreen SYNCHRONOUSLY inside the gesture BEFORE any await —
            transient activation is consumed by the first await (getDisplayMedia). */
-        try { await document.documentElement.requestFullscreen(); } catch (fe) { console.warn("requestFullscreen (pre-share) failed:", fe); }
+        try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen(); } catch (fe) { console.warn("requestFullscreen (pre-share) failed:", fe); }
         const s = await startScreenRecording("session");
         study.recording_started_at = Date.now();
         /* Re-enter fullscreen if the share picker dismissed it (common on macOS). */
         if (!document.fullscreenElement) { try { await document.documentElement.requestFullscreen(); } catch (fe) { console.warn("requestFullscreen (post-share re-enter) failed:", fe); } }
-        /* Capture the viewport now that share+fullscreen have settled — this is
-           the viewport calibration and the task run in. */
         study.recording_viewport = { w: window.innerWidth, h: window.innerHeight };
         attachStreamEndedHandler(s);
         setTimeout(() => jsPsych.finishTrial(), 400);
       } catch (e) {
         btn.disabled = false;
-        err.textContent = "Screen share cancelled. Click the button again and select this experiment's tab from the list.";
+        err.textContent = "Screen share cancelled. Click the button again and select this study's tab from the list.";
         console.warn("getDisplayMedia failed/cancelled:", e);
       }
     });
   }
 });
 
-/* 4 — Virtual chinrest (from original, unchanged). Measures px2deg for
+/* Gaze steps as named consts, mounted inside the conditional block below. */
+
+/* Virtual chinrest (from original, unchanged). Measures px2deg for
    degrees-of-visual-angle gaze error. resize_units:"none" — measure only,
    never rescale (would move AOI coordinates). Runs at the shared viewport. */
-timeline.push({
+const GAZE_CHINREST = {
   type: jsPsychVirtualChinrest,
   blindspot_reps: 5,
   resize_units: "none",
@@ -490,9 +535,9 @@ timeline.push({
       measured: data.px2deg != null
     };
   }
-});
+};
 
-/* 5 — Calibration → stabilise → validate (from original, unchanged).
+/* Calibration → stabilise → validate (from original, unchanged).
    calibration_viewport is captured here and now MATCHES the task viewport,
    because share+fullscreen already happened above. */
 var calib_points = [[10,10],[50,10],[90,10],[10,50],[50,50],[90,50],[10,90],[50,90],[90,90],[30,30],[70,30],[30,70],[70,70]];
@@ -535,7 +580,7 @@ var validation_instructions = {
       <p style="color:#44545f;margin-top:24px;">Press any key to begin.</p>
     </div>`
 };
-timeline.push({
+const GAZE_CALIBRATION = {
   timeline: [ calibration_instructions, calibration_grid, calibration_stabilise, validation_instructions, {
     type: jsPsychWebgazerValidate,
     validation_points: calib_points,
@@ -565,6 +610,20 @@ timeline.push({
       };
     }
   }]
+};
+
+/* 5 — ★ GAZE BRANCH (conditional). Camera permission, camera init, chinrest,
+   and calibration/validation run ONLY when the fullscreen viewport cleared
+   GAZE_MIN_HEIGHT. Below it, this whole block is skipped: no webcam is even
+   requested, and the session proceeds no-gaze. All other streams unaffected. */
+timeline.push({
+  conditional_function: function () { return study.gaze_enabled; },
+  timeline: [
+    permissionGate("camera"),
+    { type: jsPsychWebgazerInitCamera, data: { trial_tag: "init_camera" } },
+    GAZE_CHINREST,
+    GAZE_CALIBRATION
+  ]
 });
 
 /* 6 — Whisper warmup (background). Loads the model while the participant
