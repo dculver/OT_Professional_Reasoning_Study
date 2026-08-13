@@ -1,0 +1,1833 @@
+<!DOCTYPE html>
+<!--
+  =====================================================================
+  OT PROFESSIONAL REASONING STUDY — jsPsych INTEGRATION, CHUNK 1
+  Session scaffolding: capability gate → browser-check → permissions →
+  ★ SCREEN SHARE + FULLSCREEN (moved FIRST) → chinrest → calibration.
+  ---------------------------------------------------------------------
+  WHY THIS ORDER (the correction from the original):
+    In the original index.html, screen recording started PER CASE, right
+    before each case ran, and therefore AFTER calibration. But entering
+    fullscreen and starting a tab share CHANGES THE VIEWPORT. WebGazer
+    calibration maps camera features to screen coordinates in ONE viewport;
+    if the viewport changes after calibration, every gaze estimate is
+    referred to the wrong coordinate space. So the viewport-changing steps
+    (fullscreen + getDisplayMedia) must happen BEFORE calibration, and
+    calibration then records that final viewport. This file does exactly
+    that: SHARE FIRST, then chinrest, then calibrate at the shared viewport.
+
+  Recording is now ONE continuous session stream (id "session"), not
+  per-case. study.recording_started_at anchors the recording clock so
+  each case's start offset can be computed later for RTA time-sync.
+
+  SCOPE: sink-agnostic and mount-agnostic. Ends at a "Chunk 1 complete"
+  placeholder. Chunk 2 mounts the renderCase engine (Option B wrapper
+  trial); Chunk 3 is the paused cued-RTA; save = Qualtrics file upload.
+
+  Reused VERBATIM from the original (proven, unchanged logic):
+    checkBrowser gate · permissionGate · pickVideoMime/startScreenRecording/
+    stopScreenRecording · virtual chinrest config · calibration/validation
+    trials + gaze scoring · Whisper warmup worker.
+  Requires the same js/ library folder as the original.
+  =====================================================================
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>OT Professional Reasoning Study</title>
+
+  <script src="js/jspsych.js"></script>
+  <link href="js/jspsych.css" rel="stylesheet" type="text/css" />
+  <script src="js/plugin-html-keyboard-response.js"></script>
+  <script src="js/plugin-survey-text.js"></script>
+  <script src="js/plugin-preload.js"></script>
+  <script src="js/plugin-call-function.js"></script>
+
+  <script src="js/webgazer.js"></script>
+  <script src="js/extension-webgazer.js"></script>
+  <script src="js/plugin-webgazer-init-camera.js"></script>
+  <script src="js/plugin-webgazer-init-calibrate.js"></script>
+  <script src="js/plugin-webgazer-validate.js"></script>
+  <script src="js/plugin-initialize-microphone.js"></script>
+  <script src="js/plugin-virtual-chinrest.js"></script>
+  <script src="js/plugin-browser-check.js"></script>
+
+  <style>
+    /* Calibration/validation dot styling (from original) */
+    .jspsych-webgazer-calibrate-point,.jspsych-webgazer-validate-point,
+    .calibration-point,.validation-point,
+    div[id^="calibration-point"],div[id^="validation-point"],#webgazerGazeDot { z-index: 2147483000 !important; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    /* Session-level stream-ended banner (never auto-advances) */
+    #session_stream_warn {
+      position: fixed; inset: 0; z-index: 2147483600; background: rgba(20,30,40,.94);
+      color: #fff; display: flex; align-items: center; justify-content: center; text-align: left;
+    }
+    #session_stream_warn .box { max-width: 620px; padding: 0 24px; }
+    #session_stream_warn h2 { color: #ffb4a2; margin: 0 0 14px; }
+    #session_stream_warn p { font-size: 16px; line-height: 1.7; }
+    #session_stream_warn button {
+      margin-top: 18px; padding: 12px 26px; background: #1e8e4e; color: #fff; border: none;
+      border-radius: 6px; font-weight: 700; font-size: 15px; cursor: pointer;
+    }
+  
+  /* ================= OT REASONING ENGINE STYLES (from verified prototype) ================= */
+  :root{
+    --page:#E7ECF1; --panel:#FFFFFF; --line:#D5DEE7; --line-soft:#E9EEF3;
+    --ink:#17232E; --ink-soft:#566574; --ink-faint:#8A9AA7;
+    --accent:#1E6BB8; --accent-ink:#12507f;
+    --occ:#6C4BB0; --occ-soft:#EFEBF8; --occ-line:#CBC0EB; --occ-ink:#4A3184;
+    --sup:#0F766E; --sup-soft:#E2F1EF; --sup-line:#A6D3CD; --sup-ink:#0B5750;
+    --bar:#C2540C; --bar-soft:#FBEADD; --bar-line:#E9BE9C; --bar-ink:#8A3B0C;
+    --gutter:36px; --r:9px;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  /* jsPsych owns <body>; the engine host is #ot_mount (fixed, full viewport). */
+  #ot_mount{background:var(--page);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;position:fixed;inset:0;display:flex;flex-direction:column;overflow:hidden;z-index:1}
+  button{font-family:inherit}
+  ::selection{background:#bcd7ef}
+  .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+
+  /* in-text classification marks — painted via CSS Custom Highlight API, no DOM mutation */
+  ::highlight(ot-support){background-color:#CFE9E4;}
+  ::highlight(ot-barrier){background-color:#F8DCC6;}
+
+  .proto{background:#22333f;color:#cfe0ec;font-size:12px;letter-spacing:.04em;padding:5px 16px;display:flex;align-items:center;gap:14px;flex-shrink:0}
+  .proto strong{color:#fff;font-weight:600}
+  .proto .sp{flex:1}
+  .proto button{background:transparent;color:#bcd0df;border:1px solid #3d5160;border-radius:5px;padding:4px 12px;font-size:12px;cursor:pointer}
+  .proto button:hover{background:#2c4150;color:#fff}
+  .case-switch{display:flex;gap:4px;margin-left:12px;padding-left:12px;border-left:1px solid #3d5160}
+  .case-switch button{padding:3px 11px;border-radius:5px;border:1px solid #3d5160;background:transparent;color:#9fb4c4;font-size:12px;cursor:pointer}
+  .case-switch button.active{background:#e7ecf1;color:#22333f;border-color:#e7ecf1;font-weight:600}
+  .banner .role-badge{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;padding:2px 9px;border-radius:20px;margin-left:2px}
+  .banner .role-badge.practice{font-size:13px;font-weight:800;letter-spacing:.1em;padding:4px 14px;margin-left:8px;background:#F5A623;color:#3a2600;border:1px solid #d98c0e;box-shadow:0 1px 3px rgba(245,166,35,.4)}
+  .banner .role-badge.real{background:var(--occ-soft);color:var(--occ-ink);border:1px solid var(--occ-line)}
+
+  .banner{background:var(--panel);border-bottom:1px solid var(--line);padding:12px 22px;display:flex;align-items:center;gap:18px;flex-shrink:0}
+  .banner h1{font-size:18px;margin:0;font-weight:650;letter-spacing:-.01em}
+  .banner .meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:3px}
+  .banner .chip{font-size:12px;color:var(--ink-soft);background:#F1F5F9;border:1px solid var(--line);border-radius:20px;padding:2px 11px}
+  .banner .chip b{color:var(--ink);font-weight:600}
+
+  /* Synthesis panel fields */
+  .syn-field{margin-bottom:16px}
+  .syn-field:last-child{margin-bottom:0}
+  .syn-lbl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--accent-ink);display:block;margin-bottom:3px}
+  .syn-hint{font-size:12px;color:var(--ink-faint);line-height:1.4;margin-bottom:7px}
+  #synthesis_impression{width:100%;resize:vertical;min-height:88px;border:1px solid var(--line);border-radius:7px;background:#fff;padding:9px 12px;font-family:inherit;font-size:14px;color:var(--ink);line-height:1.45}
+  #synthesis_impression:focus{outline:none;border-color:var(--accent)}
+  .syn-field .stamp{font-size:11px;color:var(--ink-faint);font-family:var(--mono);text-align:right;margin-top:4px}
+  .btn-syn{background:var(--occ);color:#fff}
+  .btn-syn:hover{background:#5c3f97}
+  .out-card{background:var(--occ-soft);border:1px solid var(--occ-line);border-radius:8px;padding:9px 11px;margin-bottom:8px}
+  .out-card .out-top{display:flex;align-items:center;gap:9px}
+  .out-card .dot{width:9px;height:9px;border-radius:50%;background:var(--occ);flex:none}
+  .out-card .nm{flex:1;font-size:13.5px;font-weight:600;color:var(--occ-ink);min-width:0}
+  .out-card .rm{background:none;border:none;color:var(--occ-ink);opacity:.55;cursor:pointer;font-size:17px;line-height:1;padding:0 2px;flex:none}
+  .out-card .rm:hover{opacity:1}
+  .out-card .out-tag{width:100%;margin-top:7px;border:1px solid var(--occ-line);border-radius:6px;padding:5px 8px;font-family:inherit;font-size:12.5px;background:#fff;color:var(--ink)}
+  .out-card .out-tag:focus{outline:none;border-color:var(--occ)}
+
+  /* #app is injected by renderCase and wraps banner + main.
+     It MUST be a flex column that fills the remaining body height, or the
+     height chain never reaches the panels and they grow with content
+     instead of scrolling internally — which would break AOI-rect stability. */
+  #app{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+  .main{flex:1;min-height:0;display:flex;gap:var(--gutter);padding:var(--gutter);background:var(--page);overflow:hidden}
+  .col{display:flex;flex-direction:column;gap:var(--gutter);min-width:0;min-height:0;overflow:hidden}
+  .col.case{flex:0 0 40%}
+  .col.mid{flex:0 0 27%}
+  .col.plan{flex:1}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;overflow:hidden;min-height:0}
+  .panel.grow{flex:1}
+  .panel-head{padding:11px 15px;border-bottom:1px solid var(--line-soft);flex-shrink:0;display:flex;align-items:center;gap:10px}
+  .panel-head .ey{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
+  .panel-head .count{margin-left:auto;font-size:11px;font-weight:600;color:var(--ink-faint);background:#F1F5F9;border-radius:20px;padding:1px 9px;font-family:var(--mono)}
+  .panel-body{padding:14px 15px;overflow-y:auto;flex:1;min-height:0}
+  .panel-body::-webkit-scrollbar{width:10px}
+  .panel-body::-webkit-scrollbar-thumb{background:#cdd8e2;border-radius:5px;border:3px solid var(--panel)}
+
+  .tabs{display:flex;gap:2px;padding:0 15px;border-bottom:1px solid var(--line-soft);flex-shrink:0;background:var(--panel)}
+  .tab{padding:11px 13px 9px;background:none;border:none;border-bottom:2.5px solid transparent;color:var(--ink-soft);font-size:12.5px;font-weight:600;letter-spacing:.01em;cursor:pointer;white-space:nowrap}
+  .tab:hover{color:var(--ink)}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .tabpage{display:none}
+  .tabpage.active{display:block}
+
+  .sect{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink);margin:20px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--line-soft)}
+  .sect:first-child{margin-top:0}
+  .clin{margin:0 0 11px}
+  .clin p{margin:0 0 9px}
+  .kv{display:flex;gap:10px;margin:0 0 6px;font-size:14px}
+  .kv .k{flex:none;width:150px;color:var(--ink-soft);font-weight:600}
+  .kv .v{flex:1}
+  .num{font-family:var(--mono);font-size:13px}
+  .dtbl{border-collapse:collapse;margin:8px 0 4px;font-size:13.5px}
+  .dtbl th,.dtbl td{border:1px solid var(--line);padding:5px 16px;text-align:left}
+  .dtbl th{background:#F4F8FB;font-weight:600;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-soft)}
+  .dtbl td.n{font-family:var(--mono)}
+  .libcard{border:1px solid var(--line);border-radius:8px;padding:13px 15px;margin:0 0 12px;background:#FCFDFE}
+  .libcard h4{margin:0 0 7px;font-size:14.5px;color:var(--ink);font-weight:650}
+  .libcard p{margin:0 0 8px;font-size:13.5px;color:#33424f}
+  .libcard .cite{font-size:11.5px;color:var(--ink-faint);font-style:italic;line-height:1.45;border-top:1px solid var(--line-soft);padding-top:7px;margin-top:9px}
+  .libcard.ref{background:var(--occ-soft);border-color:var(--occ-line)}
+  .libcard.ref h4{color:var(--occ-ink)}
+  .libcard ul{margin:6px 0;padding-left:20px}
+  .libcard li{margin:3px 0;font-size:13.5px;color:#33424f}
+  .interim{background:#FFF6E9;border:1px solid #EBD9B4;border-radius:7px;padding:10px 13px;margin:12px 0;font-size:13.5px}
+  .interim .tag{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#8a5a12;display:block;margin-bottom:3px}
+
+  .occ-add{display:flex;gap:7px;margin-bottom:12px}
+  .occ-add input{flex:1;min-width:0;border:1px solid var(--line);border-radius:7px;padding:8px 11px;font-family:inherit;font-size:13.5px}
+  .occ-add input:focus{outline:none;border-color:var(--occ)}
+  .btn{border:none;border-radius:7px;padding:8px 13px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .btn-occ{background:var(--occ);color:#fff}
+  .btn-occ:hover{background:#5c3f97}
+  .occ-card{display:flex;align-items:center;gap:9px;background:var(--occ-soft);border:1px solid var(--occ-line);border-radius:8px;padding:9px 11px;margin-bottom:8px}
+  .occ-card .dot{width:9px;height:9px;border-radius:50%;background:var(--occ);flex:none}
+  .occ-card .nm{flex:1;font-size:13.5px;font-weight:600;color:var(--occ-ink);min-width:0}
+  .occ-card .tally{font-size:11px;font-family:var(--mono);color:var(--occ-ink);opacity:.7;flex:none}
+  .occ-card .rm{background:none;border:none;color:var(--occ-ink);opacity:.55;cursor:pointer;font-size:17px;line-height:1;padding:0 2px;flex:none}
+  .occ-card .rm:hover{opacity:1}
+  .empty{color:var(--ink-faint);font-size:13px;line-height:1.5;text-align:center;padding:18px 8px}
+  .empty b{color:var(--ink-soft);display:block;margin-bottom:3px;font-weight:600}
+
+  .pa-occ{margin-bottom:15px}
+  .pa-occ-h{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--occ-ink);margin-bottom:6px}
+  .pa-occ-h .dot{width:8px;height:8px;border-radius:50%;background:var(--occ);flex:none}
+  .pa-entry{border-radius:7px;padding:8px 10px;margin-bottom:6px;font-size:12.5px;border:1px solid}
+  .pa-entry.sup{background:var(--sup-soft);border-color:var(--sup-line)}
+  .pa-entry.bar{background:var(--bar-soft);border-color:var(--bar-line)}
+  .pa-entry .top{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+  .pa-entry .glyph{font-size:11px;font-weight:800}
+  .pa-entry.sup .glyph,.pa-entry.sup .lab{color:var(--sup-ink)}
+  .pa-entry.bar .glyph,.pa-entry.bar .lab{color:var(--bar-ink)}
+  .pa-entry .lab{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  .pa-entry .aspect{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:1px 7px;border-radius:20px;border:1px solid currentColor;opacity:.85}
+  .pa-entry .rm{margin-left:auto;background:none;border:none;cursor:pointer;font-size:15px;line-height:1;padding:0 2px;opacity:.5}
+  .pa-entry .rm:hover{opacity:1}
+  .pa-entry .exc{color:#3a4650;font-style:italic;line-height:1.4}
+  .pa-entry .mech{margin-top:4px;font-size:11.5px}
+  .pa-entry.sup .mech{color:var(--sup-ink)}
+  .pa-entry.bar .mech{color:var(--bar-ink)}
+  .pa-entry .mech b{font-weight:700}
+  .unlinked{opacity:.75}
+
+  .ip-step{margin-bottom:16px}
+  .ip-step > .lbl{font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px;display:block}
+  .ip-step > .hint{font-size:12px;color:var(--ink-faint);margin:-2px 0 7px}
+  .ip-bar-pick{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border:1px solid var(--bar-line);background:var(--bar-soft);border-radius:7px;margin-bottom:6px;cursor:pointer}
+  .ip-bar-pick input{margin-top:3px;accent-color:var(--bar)}
+  .ip-bar-pick .txt{font-size:12.5px;color:var(--bar-ink)}
+  .ip-bar-pick .txt .mech{font-weight:700}
+  textarea.ip,.ip-card textarea{width:100%;resize:vertical;min-height:52px;border:1px solid var(--line);border-radius:7px;padding:8px 11px;font-family:inherit;font-size:13.5px;line-height:1.45}
+  textarea.ip:focus{outline:none;border-color:var(--accent)}
+  .ip-card{border:1px solid var(--line);border-left:3px solid var(--bar);border-radius:8px;padding:12px 13px;margin-bottom:11px;background:#FCFDFE}
+  .ip-card .cardh{font-size:12.5px;font-weight:700;color:var(--bar-ink);margin-bottom:9px;line-height:1.4}
+  .ip-field{margin-bottom:9px}
+  .ip-field label{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-soft);display:block;margin-bottom:4px}
+  select.ip{width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;font-family:inherit;font-size:13.5px;background:#fff;color:var(--ink)}
+  select.ip:focus{outline:none;border-color:var(--accent)}
+
+  .pop{position:fixed;z-index:1000;background:#fff;border:1px solid #cdd8e2;border-radius:10px;box-shadow:0 10px 34px rgba(20,40,60,.22);padding:12px;width:290px;font-size:13px;animation:pop .13s ease-out}
+  @keyframes pop{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .pop .exc{font-style:italic;color:#3a4650;background:#F4F8FB;border-radius:6px;padding:7px 9px;margin-bottom:10px;font-size:12.5px;line-height:1.4;max-height:70px;overflow:auto}
+  .pop .q{font-size:12px;font-weight:700;color:var(--ink);margin:8px 0 6px}
+  .pop .q .opt{font-weight:600;color:var(--ink-faint);text-transform:none;letter-spacing:0}
+  .pop .row2{display:flex;gap:8px}
+  .pop .pick{flex:1;border:1.5px solid;border-radius:8px;padding:9px 6px;cursor:pointer;background:#fff;font-weight:700;font-size:12.5px;display:flex;align-items:center;justify-content:center;gap:5px}
+  .pop .pick.sup{border-color:var(--sup-line);color:var(--sup-ink)}
+  .pop .pick.sup:hover{background:var(--sup-soft)}
+  .pop .pick.bar{border-color:var(--bar-line);color:var(--bar-ink)}
+  .pop .pick.bar:hover{background:var(--bar-soft)}
+  .pop input[type=text],.pop select{width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;font-family:inherit;font-size:13px;margin-bottom:2px}
+  .pop input[type=text]:focus,.pop select:focus{outline:none;border-color:var(--accent)}
+  .pop .confirm{width:100%;background:var(--accent);color:#fff;border:none;border-radius:7px;padding:9px;font-weight:700;font-size:13px;cursor:pointer;margin-top:8px}
+  .pop .confirm:hover{background:var(--accent-ink)}
+  .pop .confirm:disabled{background:#c3cfda;cursor:not-allowed}
+  .pop .back{background:none;border:none;color:var(--ink-faint);font-size:12px;cursor:pointer;padding:2px 0;margin-bottom:4px}
+  .pop .back:hover{color:var(--ink-soft)}
+  .pop .warn{color:var(--bar-ink);font-size:12px;line-height:1.45;background:var(--bar-soft);border:1px solid var(--bar-line);border-radius:7px;padding:9px 10px}
+  /* ── PRACTICE WALKTHROUGH (practice case only) ── */
+  .coach{position:fixed;z-index:1200;width:300px;background:#22333f;color:#eaf1f6;border-radius:11px;
+    box-shadow:0 14px 40px rgba(10,25,40,.34);padding:15px 16px 13px;font-size:13.5px;line-height:1.5;animation:pop .14s ease-out}
+  .coach h5{margin:0 0 6px;font-size:13px;font-weight:700;color:#fff;letter-spacing:.01em}
+  .coach p{margin:0 0 12px;color:#c6d4de}
+  .coach .cbtns{display:flex;align-items:center;gap:8px}
+  .coach .cbtns .step{font-size:11px;color:#8fa6b6;font-family:var(--mono);margin-right:auto}
+  .coach button{border:1px solid #3d5160;background:transparent;color:#cfe0ec;border-radius:6px;padding:5px 12px;font-size:12.5px;font-weight:600;cursor:pointer}
+  .coach button.primary{background:#e7ecf1;color:#22333f;border-color:#e7ecf1}
+  .coach button:hover{background:#2c4150;color:#fff}
+  .coach button.primary:hover{background:#fff}
+  .coach .arrow{position:absolute;width:12px;height:12px;background:#22333f;transform:rotate(45deg)}
+
+  .cl{position:fixed;bottom:16px;right:16px;z-index:1150;
+    background:#FFF7EA;border:1.5px solid #E7C588;border-radius:12px;box-shadow:0 10px 34px rgba(80,55,10,.22);
+    width:min(330px,calc(100vw - 32px));overflow:hidden}
+  .cl-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;user-select:none}
+  .cl-bar .badge{font-size:10.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#8a5a12;background:#FEF3E2;border:1px solid #EBD9B4;border-radius:20px;padding:2px 9px}
+  .cl-bar .prog{font-size:13px;font-weight:600;color:var(--ink)}
+  .cl-bar .prog b{color:var(--accent)}
+  .cl-bar .sp{flex:1}
+  .cl-bar .guide{font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer;font-weight:600}
+  .cl-bar .caret{color:var(--ink-faint);font-size:12px;transition:transform .15s}
+  .cl.open .cl-bar .caret{transform:rotate(180deg)}
+  .cl-body{display:none;border-top:1px solid #EBD3A0;padding:10px 14px 13px}
+  .cl.open .cl-body{display:block}
+  .cl-grid{display:grid;grid-template-columns:1fr;gap:6px;margin-bottom:12px}
+  .cl-item{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-soft)}
+  .cl-item .box{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--line);flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff}
+  .cl-item.done{color:var(--ink)}
+  .cl-item.done .box{background:var(--sup);border-color:var(--sup)}
+  .cl-continue{width:100%;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px;font-size:13.5px;font-weight:700;cursor:pointer}
+  .cl-continue:hover{background:var(--accent-ink)}
+  .cl-continue:disabled{background:#c3cfda;cursor:not-allowed}
+</style>
+
+  <!-- Whisper transcription worker — warmed up during Chunk 1; used by the RTA in Chunk 3.
+       (Inline Blob Worker: no external file, no CORS issues on GitHub Pages.) -->
+  <script>
+    let __whisperWorker = null, __workerReady = false, __modelProgress = 0;
+    const WORKER_CODE = `
+      import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
+      env.allowLocalModels = false;
+      let transcriber = null, MODEL = 'Xenova/whisper-small.en';
+      self.onmessage = async (e) => {
+        const { type } = e.data;
+        if (type === 'warmup') {
+          MODEL = e.data.model || MODEL;
+          try {
+            transcriber = await pipeline('automatic-speech-recognition', MODEL, {
+              progress_callback: (p) => { if (p && p.progress != null) self.postMessage({ type:'progress', progress: p.progress }); }
+            });
+            self.postMessage({ type:'ready' });
+          } catch (err) { self.postMessage({ type:'error', message: String(err) }); }
+        } else if (type === 'transcribe') {
+          try {
+            if (!transcriber) transcriber = await pipeline('automatic-speech-recognition', MODEL);
+            const out = await transcriber(e.data.audioData, { chunk_length_s: 30, stride_length_s: 5 });
+            self.postMessage({ type:'result', text: out && out.text ? out.text : '' });
+          } catch (err) { self.postMessage({ type:'error', message: String(err) }); }
+        }
+      };`;
+    function initWhisperWorker() {
+      if (__whisperWorker) return;
+      const url = URL.createObjectURL(new Blob([WORKER_CODE], { type: 'text/javascript' }));
+      __whisperWorker = new Worker(url, { type: 'module' });
+      __whisperWorker.onmessage = (e) => {
+        const { type, progress } = e.data || {};
+        if (type === 'progress') __modelProgress = progress || 0;
+        else if (type === 'ready') __workerReady = true;
+        else if (type === 'error') console.error('Whisper worker error:', e.data.message);
+      };
+      __whisperWorker.onerror = (e) => console.error('Whisper worker onerror:', e);
+      __whisperWorker.postMessage({ type: 'warmup', model: CONFIG.WHISPER_MODEL });
+    }
+    function warmUpTranscriber() { initWhisperWorker(); }
+  </script>
+</head>
+<body>
+<script>
+/* =====================================================================
+   CAPABILITY GATE (hard) — from original checkBrowser. Fails fast on
+   browsers lacking getDisplayMedia / getUserMedia / WebM MediaRecorder /
+   WASM / Fullscreen, and on mobile.
+   ===================================================================== */
+(function checkBrowser() {
+  const ua = navigator.userAgent;
+  const isMobile  = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  const isFirefox = /Firefox\//i.test(ua);
+  const isSafari  = /^((?!chrome|android|crios|edg|edge).)*safari/i.test(ua);
+  const missing = [];
+  if (!(navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === "function")) missing.push("screen recording (getDisplayMedia)");
+  if (!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function"))    missing.push("microphone/camera access (getUserMedia)");
+  let webmOK = false;
+  if (typeof MediaRecorder !== "undefined" && typeof MediaRecorder.isTypeSupported === "function") {
+    webmOK = MediaRecorder.isTypeSupported("video/webm") ||
+             MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ||
+             MediaRecorder.isTypeSupported("video/webm;codecs=vp8");
+  }
+  if (!webmOK) missing.push("WebM video recording (MediaRecorder)");
+  if (typeof WebAssembly !== "object") missing.push("WebAssembly (speech processing)");
+  const el = document.documentElement;
+  if (!(el.requestFullscreen || el.webkitRequestFullscreen)) missing.push("fullscreen mode");
+
+  if (isMobile || missing.length > 0) {
+    let reason;
+    if (isMobile)       reason = "mobile browsers (this study must run on a desktop or laptop)";
+    else if (isFirefox) reason = "Firefox, which does not support tab-level screen recording";
+    else if (isSafari)  reason = "Safari, which does not support the required recording format";
+    else                reason = "this browser, which is missing: " + missing.join(", ");
+    document.body.style.background = "#e3e9f0";
+    document.body.innerHTML = `
+      <div style="max-width:580px;margin:12% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;padding:0 20px;">
+        <h2 style="color:#c0392b;">Unsupported Browser</h2>
+        <p style="font-size:17px;line-height:1.7;">This study requires a <strong>Chromium-based desktop browser</strong> such as Google Chrome, Microsoft Edge, Arc, Brave, or Vivaldi.</p>
+        <p style="font-size:15px;color:#566673;">The study uses tab-level screen recording and local speech processing that are not supported in ${reason}. Please reopen this link in a supported browser on a desktop or laptop computer.</p>
+      </div>`;
+    throw new Error("Unsupported browser — study halted (" + (isMobile ? "mobile" : missing.join("; ") || "ua") + ").");
+  }
+})();
+
+/* =====================================================================
+   CONFIG / SESSION STATE
+   Experimental scaffolding removed per the pivot: no condition, no phase,
+   no persistent-identifier survey, no OSF/DataPipe. Save = Qualtrics upload.
+   ===================================================================== */
+const CONFIG = {
+  WHISPER_MODEL: "Xenova/whisper-small.en",
+  SCREEN_FPS: 15,
+  RTA_MAX_SECONDS: 240,
+  /* Fullscreen viewport height at/above which gaze tracking is collected.
+     Below this, calibration is skipped and the session runs no-gaze (all
+     other data streams unaffected). Measured against AOI separability vs.
+     the WebGazer error envelope; see the methods chapter. */
+  GAZE_MIN_HEIGHT: 660,
+  /* Qualtrics survey the participant returns to (to upload the session file).
+     Filled in when the save chunk is built. */
+  QUALTRICS_UPLOAD_URL: "REPLACE_WITH_QUALTRICS_UPLOAD_URL"
+};
+
+const study = {
+  sub_id_from_url: new URLSearchParams(location.search).get("sub_id"),
+  calibration: {},
+  calibration_viewport: null,
+  fullscreen_viewport: null,       // viewport measured right after programmatic fullscreen
+  gaze_enabled: true,              // set false when fullscreen height < GAZE_MIN_HEIGHT
+  gaze_skip_reason: null,
+  gaze_threshold_used: null,       // the height cutoff this session was judged against (self-documenting)
+  screen_geometry: {},
+  browser_check: null,
+  permissions: {},
+  recording_started_at: null,      // ms epoch when the session recording began (RTA clock anchor)
+  recording_viewport: null,        // viewport captured right after share+fullscreen settle
+  cases: {},
+  user_agent: navigator.userAgent,
+  started_at: new Date().toISOString()
+};
+const caseMedia = {};              // keyed by recording id; here just "session"
+
+/* =====================================================================
+   SCREEN RECORDING (from original, unchanged)
+   ===================================================================== */
+function pickVideoMime() {
+  for (const c of ["video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"])
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c;
+  return "";
+}
+async function startScreenRecording(id) {
+  const stream = await navigator.mediaDevices.getDisplayMedia({
+    video: { frameRate: CONFIG.SCREEN_FPS },
+    audio: false,
+    preferCurrentTab: true,        // Chrome/Edge 94+: pre-selects this tab in the picker
+    selfBrowserSurface: "include"
+  });
+  const mime = pickVideoMime();
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  const chunks = [];
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  caseMedia[id] = { stream, recorder: rec, chunks, blob: null, url: null };
+  rec.start(1000);
+  return stream;
+}
+function stopScreenRecording(id) {
+  return new Promise(res => {
+    const m = caseMedia[id];
+    if (!m || !m.recorder || m.recorder.state === "inactive") return res();
+    m.recorder.onstop = () => {
+      m.blob = new Blob(m.chunks, { type: m.recorder.mimeType || "video/webm" });
+      m.url  = URL.createObjectURL(m.blob);
+      m.stream.getTracks().forEach(t => t.stop());
+      res();
+    };
+    try { m.recorder.stop(); } catch (e) { res(); }
+  });
+}
+
+/* =====================================================================
+   PERMISSION GATE (from original, unchanged) — converts an unanswered
+   getUserMedia prompt into visible, actionable text via a 30s timeout,
+   asks from a user gesture, and records granted/no_response/error/abandoned.
+   ===================================================================== */
+function permissionGate(kind) {
+  const isMic = (kind === "microphone");
+  const constraint = isMic ? { audio: true } : { video: true };
+  const why = isMic
+    ? "Your microphone is used only for the think-aloud after each case. The audio is turned into text on your own computer. The recording itself is never uploaded, and only the text is kept."
+    : "Your webcam is used only to estimate where you are looking on screen. This happens entirely on your own computer. No video is recorded or uploaded.";
+  return {
+    type: jsPsychHtmlKeyboardResponse,
+    choices: "NO_KEYS",
+    data: { trial_tag: "permission_gate_" + kind },
+    stimulus: `<div style="max-width:560px;margin:8% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+        <h3 style="color:#1565c0;margin:0 0 12px;">${isMic ? "Microphone access" : "Webcam access"}</h3>
+        <p style="font-size:15px;line-height:1.7;margin:0 0 20px;">${why}</p>
+        <p id="pg_msg" style="font-size:14px;line-height:1.7;color:#44545f;margin:0 0 20px;">
+          Click the button below. Your browser will ask for permission. Choose <strong>Allow</strong>.</p>
+        <button id="pg_btn" style="background:#1565c0;color:#fff;border:none;border-radius:6px;padding:11px 22px;font-size:15px;cursor:pointer;font-family:inherit;">
+          Enable ${isMic ? "microphone" : "webcam"}</button>
+        <div id="pg_exit_wrap" style="display:none;margin-top:22px;">
+          <button id="pg_exit" style="background:transparent;color:#7a8894;border:none;font-size:13px;cursor:pointer;text-decoration:underline;font-family:inherit;">
+            I'm unable to enable this. End the session</button>
+        </div>
+      </div>`,
+    on_load: function () {
+      const btn = document.getElementById("pg_btn");
+      const msg = document.getElementById("pg_msg");
+      const exitWrap = document.getElementById("pg_exit_wrap");
+      const exitBtn  = document.getElementById("pg_exit");
+      let settled = false, attempts = 0;
+      function record(state, detail) {
+        study.permissions[kind] = { state, detail: detail || null, attempts, t: new Date().toISOString() };
+      }
+      btn.addEventListener("click", async () => {
+        if (settled) return;
+        attempts++; btn.disabled = true; btn.style.opacity = ".6"; btn.textContent = "Waiting for your response…";
+        msg.innerHTML = `Look for the permission prompt near your browser's address bar and click <strong>Allow</strong>. If you don't see it, check for a small ${isMic ? "microphone" : "camera"} icon at the right-hand end of the address bar.`;
+        let timer;
+        const timeout = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("PENDING_TIMEOUT")), 30000); });
+        try {
+          const stream = await Promise.race([ navigator.mediaDevices.getUserMedia(constraint), timeout ]);
+          clearTimeout(timer);
+          stream.getTracks().forEach(t => t.stop());   // release; the plugin reopens it
+          settled = true; record("granted");
+          msg.innerHTML = `<span style="color:#16692f;">Access granted. Continuing…</span>`;
+          btn.style.display = "none";
+          setTimeout(() => jsPsych.finishTrial(), 600);
+        } catch (e) {
+          clearTimeout(timer);
+          const pending = (e && e.message === "PENDING_TIMEOUT");
+          record(pending ? "no_response" : "error", e && e.name ? e.name : String(e));
+          btn.disabled = false; btn.style.opacity = "1"; btn.textContent = "Try again";
+          const devWord = isMic ? "Microphone" : "Camera";
+          const osHelp = `<br><br><strong>If no prompt appeared at all</strong>, your browser may not have permission from your operating system:<br>
+               &bull; <strong>macOS</strong>: System Settings &rsaquo; Privacy &amp; Security &rsaquo; ${devWord}, and switch on your browser.<br>
+               &bull; <strong>Windows</strong>: Settings &rsaquo; Privacy &amp; security &rsaquo; ${devWord}, and allow desktop apps.<br>
+               You may need to restart the browser afterwards.`;
+          msg.innerHTML = pending
+            ? `<strong style="color:#c0392b;">No response received.</strong> If a prompt appeared, choose <strong>Allow</strong>. If it is hidden, click the padlock icon at the left of the address bar and set <strong>${devWord}</strong> to <strong>Allow</strong>.${osHelp}`
+            : (e && e.name === "NotFoundError")
+              ? `<strong style="color:#c0392b;">No ${isMic ? "microphone" : "camera"} found.</strong> Your browser reports no device of this type is connected. Connect one and click Try again.`
+              : `<strong style="color:#c0392b;">Access was blocked.</strong> Click the padlock icon at the left of the address bar, set <strong>${devWord}</strong> to <strong>Allow</strong>, then click Try again.${osHelp}`;
+          if (attempts >= 2 && exitWrap) exitWrap.style.display = "block";
+        }
+      });
+      if (exitBtn) exitBtn.addEventListener("click", () => {
+        if (settled) return;
+        settled = true; record("abandoned");
+        jsPsych.endExperiment(`<div style="max-width:560px;margin:10% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+             <h3 style="color:#1565c0;">Session ended</h3>
+             <p style="font-size:15px;line-height:1.7;">This study can't run without ${isMic ? "microphone" : "webcam"} access. Nothing has been recorded. Please email
+             <a href="mailto:dennis.culver@drake.edu" style="color:#1565c0;">dennis.culver@drake.edu</a> if you'd like to take part on a different device.</p>
+           </div>`);
+      });
+    }
+  };
+}
+
+/* =====================================================================
+   SESSION-LEVEL STREAM-ENDED HANDLER
+   If the participant stops sharing (Esc, "Stop sharing", tab switch), do
+   NOT advance the timeline. Show a persistent banner and require an explicit
+   decision to re-share. (Refined further when the sim exists — Chunk 2.)
+   ===================================================================== */
+function attachStreamEndedHandler(stream) {
+  const track = stream.getVideoTracks()[0];
+  if (!track) return;
+  track.addEventListener("ended", () => {
+    if (document.getElementById("session_stream_warn")) return;
+    const warn = document.createElement("div");
+    warn.id = "session_stream_warn";
+    warn.innerHTML = `<div class="box">
+        <h2>Screen sharing stopped</h2>
+        <p>The screen recording was interrupted, so nothing is being captured right now. The study can't continue until you resume sharing this tab.</p>
+        <p>Click below, then choose <strong>this study's tab</strong> in the browser's share picker.</p>
+        <button id="session_reshare">Resume screen sharing</button>
+      </div>`;
+    document.body.appendChild(warn);
+    document.getElementById("session_reshare").addEventListener("click", async () => {
+      try {
+        try { await document.documentElement.requestFullscreen(); } catch (e) {}
+        const s = await startScreenRecording("session");
+        if (!document.fullscreenElement) { try { await document.documentElement.requestFullscreen(); } catch (e) {} }
+        attachStreamEndedHandler(s);
+        warn.remove();
+      } catch (e) {
+        // stays on the banner; participant can click again
+        console.warn("Re-share failed:", e);
+      }
+    });
+  });
+}
+
+/* =====================================================================
+   GAZE SCORING HELPER (from original) — offset fallback when
+   percent_in_roi is null.
+   ===================================================================== */
+function gazeQualityFromOffsets(offsets, roiRadius) {
+  if (!offsets || !offsets.length) return { pct: null, quality: "unknown" };
+  const mean = offsets.reduce((s, o) => s + (o.r || 0), 0) / offsets.length;
+  const syntheticPct = Math.max(0, Math.min(100, Math.round((1 - mean / roiRadius) * 100)));
+  const quality = syntheticPct >= 75 ? "good" : syntheticPct >= 55 ? "acceptable" : "poor";
+  return { pct: syntheticPct, quality };
+}
+
+/* =====================================================================
+   jsPsych INIT (WebGazer extension attached)
+   ===================================================================== */
+var jsPsych = initJsPsych({
+  extensions: [{ type: jsPsychExtensionWebgazer }],
+  on_finish: function () {
+    // Chunk 1 placeholder end. (Real save = Qualtrics file upload, built later.)
+    document.body.innerHTML = `<div style="max-width:620px;margin:12% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+        <h2 style="color:#1565c0;">Study complete (Chunk 2 build)</h2>
+        <p style="font-size:16px;line-height:1.7;">Scaffolding ran end to end: permissions → screen share + fullscreen → chinrest → calibration, all at the shared viewport. The session recording is running and the calibration viewport is locked to the task viewport.</p>
+        <pre style="background:#f2f6fa;border:1px solid #d5dee7;border-radius:8px;padding:14px;font-size:12px;overflow:auto;">${
+          JSON.stringify({
+            recording_started_at: study.recording_started_at,
+            fullscreen_viewport: study.fullscreen_viewport,
+            recording_viewport: study.recording_viewport,
+            gaze_enabled: study.gaze_enabled,
+            gaze_skip_reason: study.gaze_skip_reason,
+            gaze_threshold_used: study.gaze_threshold_used,
+            calibration_viewport: study.calibration_viewport,
+            calibration: study.calibration,
+            screen_geometry: study.screen_geometry,
+            permissions: study.permissions
+          }, null, 2)
+        }</pre>
+        <p style="font-size:14px;color:#566673;">Next: Chunk 2 mounts the reasoning interface as an Option-B wrapper trial (practice → Florence → Yvonne).</p>
+      </div>`;
+  }
+});
+
+/* =====================================================================
+   TIMELINE
+   ===================================================================== */
+var timeline = [];
+
+/* 1 — ★ PROGRAMMATIC FULLSCREEN (button, no keyboard shortcut).
+   Participants can't be relied on to press F11/Fn+F11. A single button
+   enters fullscreen for them. We then measure the FULLSCREEN viewport and
+   decide the gaze branch on it (not the smaller windowed viewport). */
+timeline.push({
+  type: jsPsychHtmlKeyboardResponse,
+  choices: "NO_KEYS",
+  data: { trial_tag: "enter_fullscreen" },
+  stimulus: `<div style="max-width:640px;margin:9% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#1565c0;">Full screen to begin</h2>
+      <p style="font-size:17px;line-height:1.7;">This study runs in full screen so the whole interface fits and the eye tracking stays accurate. Click the button to continue in full screen.</p>
+      <button id="fs_btn" style="margin-top:10px;padding:14px 30px;background:#1565c0;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">Continue in full screen</button>
+      <p id="fs_err" style="color:#c0392b;margin-top:10px;"></p>
+    </div>`,
+  on_load: function () {
+    const btn = document.getElementById("fs_btn");
+    const err = document.getElementById("fs_err");
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try { await document.documentElement.requestFullscreen(); }
+      catch (fe) { console.warn("requestFullscreen (front) failed:", fe); }
+      /* let the fullscreen resize settle before measuring */
+      setTimeout(() => {
+        const vh = window.innerHeight, vw = window.innerWidth;
+        study.fullscreen_viewport = { w: vw, h: vh };
+        study.gaze_threshold_used = CONFIG.GAZE_MIN_HEIGHT;
+        study.gaze_enabled = vh >= CONFIG.GAZE_MIN_HEIGHT;
+        study.gaze_skip_reason = study.gaze_enabled ? null : "viewport_height_below_threshold";
+        jsPsych.finishTrial();
+      }, 350);
+    });
+  }
+});
+
+/* 2 — Browser-check: WIDTH is a hard gate (below 1000 the columns collide);
+   HEIGHT no longer rejects (minimum_height 0). Short screens proceed and run
+   no-gaze instead of being turned away. Runs AFTER fullscreen, so it measures
+   the real task viewport. Custom message wording uses "study", not the
+   plugin default. */
+timeline.push({
+  type: jsPsychBrowserCheck,
+  minimum_width: 1000,
+  minimum_height: 0,
+  allow_window_resize: true,
+  window_resize_message: `<div style="max-width:620px;margin:10% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <p style="font-size:16px;line-height:1.7;">Your browser window is too narrow to complete this study. Please widen or maximize the window. The minimum width is 1000&nbsp;px.</p></div>`,
+  inclusion_function: () => true,   // hard capability gating already handled by checkBrowser()
+  on_finish: function (data) {
+    study.browser_check = {
+      browser: data.browser, browser_version: data.browser_version, os: data.os, mobile: data.mobile,
+      width: data.width, height: data.height, webaudio: data.webaudio, fullscreen: data.fullscreen,
+      vsync_rate: data.vsync_rate, webcam: data.webcam, microphone: data.microphone
+    };
+  }
+});
+
+/* 3 — Microphone permission + init (ALWAYS — the RTA needs audio regardless
+   of the gaze branch). Camera is requested later, only in the gaze branch. */
+timeline.push(permissionGate("microphone"));
+timeline.push({
+  type: jsPsychInitializeMicrophone,
+  data: { trial_tag: "init_microphone" }
+});
+
+/* 4 — ★ SCREEN SHARE + FULLSCREEN re-assertion (ALWAYS). Recording is one
+   continuous session stream. Re-asserts fullscreen in case it dropped, and
+   captures recording_viewport (the definitive task viewport). */
+timeline.push({
+  type: jsPsychHtmlKeyboardResponse,
+  choices: "NO_KEYS",
+  data: { trial_tag: "session_screen_share" },
+  stimulus: `<div style="max-width:680px;margin:8% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#1565c0;">Share your screen to begin</h2>
+      <p style="font-size:17px;line-height:1.7;">This tab is recorded so you can watch it back and talk through your reasoning after each case. The video stays on your computer and is never uploaded. Only your spoken reasoning (saved as text) and a record of your on-screen actions are kept. The recording is cleared at the end of the session.</p>
+      <div style="background:#d3e4f5;border-left:4px solid #1565c0;padding:16px 20px;border-radius:6px;margin:18px 0;">
+        <p style="margin:0;font-size:16px;">Click the button, then your browser asks you to <strong>select a tab to share</strong>. Choose <strong>this study's tab</strong> (not Window or Entire Screen).</p>
+      </div>
+      <button id="share_btn" style="margin-top:6px;padding:14px 30px;background:#1e8e4e;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">Start recording</button>
+      <p id="share_err" style="color:#c0392b;margin-top:10px;"></p>
+    </div>`,
+  on_load: function () {
+    const btn = document.getElementById("share_btn");
+    const err = document.getElementById("share_err");
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        /* requestFullscreen SYNCHRONOUSLY inside the gesture BEFORE any await —
+           transient activation is consumed by the first await (getDisplayMedia). */
+        try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen(); } catch (fe) { console.warn("requestFullscreen (pre-share) failed:", fe); }
+        const s = await startScreenRecording("session");
+        study.recording_started_at = Date.now();
+        /* Re-enter fullscreen if the share picker dismissed it (common on macOS). */
+        if (!document.fullscreenElement) { try { await document.documentElement.requestFullscreen(); } catch (fe) { console.warn("requestFullscreen (post-share re-enter) failed:", fe); } }
+        study.recording_viewport = { w: window.innerWidth, h: window.innerHeight };
+        attachStreamEndedHandler(s);
+        setTimeout(() => jsPsych.finishTrial(), 400);
+      } catch (e) {
+        btn.disabled = false;
+        err.textContent = "Screen share cancelled. Click the button again and select this study's tab from the list.";
+        console.warn("getDisplayMedia failed/cancelled:", e);
+      }
+    });
+  }
+});
+
+/* Gaze steps as named consts, mounted inside the conditional block below. */
+
+/* Virtual chinrest (from original, unchanged). Measures px2deg for
+   degrees-of-visual-angle gaze error. resize_units:"none" — measure only,
+   never rescale (would move AOI coordinates). Runs at the shared viewport. */
+const GAZE_CHINREST = {
+  type: jsPsychVirtualChinrest,
+  blindspot_reps: 5,
+  resize_units: "none",
+  item_path: null,
+  adjustment_prompt: `<div style="max-width:560px;margin:0 auto;color:#16263d;font-family:'Segoe UI',Arial,sans-serif;text-align:left;">
+      <p style="font-size:16px;line-height:1.6;">Hold a <strong>credit card, driver's license, or any card of that size</strong> up to the screen. Click and drag the lower-right corner of the image until it is exactly the same size as your card.</p>
+      <p style="font-size:14px;color:#444;">No card handy? A standard card is 85.6&nbsp;mm wide (3.37&nbsp;inches). You can measure with a ruler instead.</p>
+    </div>`,
+  blindspot_prompt: `<div style="max-width:560px;margin:0 auto;color:#16263d;font-family:'Segoe UI',Arial,sans-serif;text-align:left;">
+      <p style="font-size:16px;line-height:1.6;">Your distance from the screen will now be measured quickly.</p>
+      <ul style="font-size:15px;line-height:1.9;padding-left:20px;">
+        <li>Put your <strong>left hand on the space bar</strong>.</li>
+        <li>Cover your <strong>right eye</strong> with your right hand.</li>
+        <li>With your left eye, <strong>focus on the black square</strong> and keep focusing on it.</li>
+        <li>A red ball will move left and disappear. Press the <strong>space bar the moment it disappears</strong>.</li>
+      </ul>
+      <p style="font-size:15px;">Press the space bar when you are ready to begin.</p>
+    </div>`,
+  on_finish: function (data) {
+    study.screen_geometry = {
+      px2deg: data.px2deg != null ? data.px2deg : null,
+      px2mm:  data.px2mm  != null ? data.px2mm  : null,
+      view_dist_mm: data.view_dist_mm != null ? data.view_dist_mm : null,
+      win_width_deg: data.win_width_deg, win_height_deg: data.win_height_deg,
+      scale_factor: data.scale_factor,
+      measured: data.px2deg != null
+    };
+  }
+};
+
+/* Calibration → stabilise → validate (from original, unchanged).
+   calibration_viewport is captured here and now MATCHES the task viewport,
+   because share+fullscreen already happened above. */
+var calib_points = [[10,10],[50,10],[90,10],[10,50],[50,50],[90,50],[10,90],[50,90],[90,90],[30,30],[70,30],[30,70],[70,70]];
+
+var calibration_instructions = {
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: `<div style="max-width:620px;margin:10% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#1565c0;margin-bottom:20px;">Eye-Tracking Calibration</h2>
+      <p style="font-size:17px;margin-bottom:16px;">A series of yellow dots will appear one at a time around the screen.</p>
+      <div style="background:#d3e4f5;border-left:4px solid #1565c0;padding:14px 18px;border-radius:6px;margin-bottom:16px;">
+        <p style="font-size:17px;margin:0;"><strong>Click each dot</strong> as it appears. Look directly at it before clicking.</p>
+      </div>
+      <p style="font-size:15px;color:#44545f;margin-bottom:8px;">Tips for best accuracy:</p>
+      <ul style="font-size:15px;color:#44545f;line-height:1.8;padding-left:20px;margin-bottom:24px;">
+        <li>Sit approximately 50cm (20 inches) from your screen</li>
+        <li>Keep your head still, move only your eyes</li>
+        <li>Ensure your face is evenly lit from the front</li>
+        <li>Maximize your screen brightness</li>
+      </ul>
+      <p style="color:#44545f;">Press any key to begin calibration.</p>
+    </div>`
+};
+var calibration_grid = {
+  type: jsPsychWebgazerCalibrate, calibration_mode: "click", calibration_points: calib_points, point_size: 26,
+  on_finish: function () { study.calibration_viewport = { w: window.innerWidth, h: window.innerHeight }; }
+};
+var calibration_stabilise = {
+  type: jsPsychHtmlKeyboardResponse, choices: "NO_KEYS", trial_duration: 1500,
+  stimulus: `<div style="max-width:620px;margin:10% auto;text-align:center;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <p style="font-size:17px;color:#1565c0;">Calibrating…</p></div>`
+};
+var validation_instructions = {
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: `<div style="max-width:620px;margin:10% auto;text-align:center;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#1565c0;margin-bottom:20px;">Testing Accuracy</h2>
+      <p style="font-size:17px;">Another set of dots will appear. This time:</p>
+      <div style="background:#d3e4f5;border-left:4px solid #16692f;padding:14px 18px;border-radius:6px;margin:20px auto;max-width:420px;text-align:left;">
+        <p style="font-size:17px;margin:0;"><strong>Do not click.</strong> Just <strong>look</strong> directly at each dot until it disappears.</p>
+      </div>
+      <p style="color:#44545f;margin-top:24px;">Press any key to begin.</p>
+    </div>`
+};
+const GAZE_CALIBRATION = {
+  timeline: [ calibration_instructions, calibration_grid, calibration_stabilise, validation_instructions, {
+    type: jsPsychWebgazerValidate,
+    validation_points: calib_points,
+    roi_radius: 150,
+    time_limit: 2200,
+    show_validation_data: false,
+    on_finish: function (data) {
+      const pct = data.percent_in_roi;
+      const offsets = data.average_offset;
+      const scored = (pct != null)
+        ? { pct: Math.round(pct), quality: pct >= 75 ? "good" : pct >= 55 ? "acceptable" : "poor" }
+        : gazeQualityFromOffsets(offsets, 150);
+      const px2deg = (study.screen_geometry && study.screen_geometry.px2deg) || null;
+      let meanOffsetPx = null, meanOffsetDeg = null;
+      if (offsets && offsets.length) {
+        meanOffsetPx = offsets.reduce((s, o) => s + (o.r || 0), 0) / offsets.length;
+        if (px2deg != null && px2deg > 0) meanOffsetDeg = +(meanOffsetPx / px2deg).toFixed(3);
+      }
+      study.calibration = {
+        calibration_pct: scored.pct, calibration_pct_raw: pct,
+        average_offset: offsets, roi_radius_used: 150,
+        gaze_quality: scored.quality,
+        score_method: pct != null ? "percent_in_roi" : "offset_fallback",
+        mean_offset_px: meanOffsetPx != null ? Math.round(meanOffsetPx) : null,
+        mean_offset_deg: meanOffsetDeg, px2deg_used: px2deg,
+        view_dist_mm: (study.screen_geometry && study.screen_geometry.view_dist_mm) || null
+      };
+    }
+  }]
+};
+
+/* 5 — ★ GAZE BRANCH (conditional). Camera permission, camera init, chinrest,
+   and calibration/validation run ONLY when the fullscreen viewport cleared
+   GAZE_MIN_HEIGHT. Below it, this whole block is skipped: no webcam is even
+   requested, and the session proceeds no-gaze. All other streams unaffected. */
+timeline.push({
+  conditional_function: function () { return study.gaze_enabled; },
+  timeline: [
+    permissionGate("camera"),
+    { type: jsPsychWebgazerInitCamera, data: { trial_tag: "init_camera" } },
+    GAZE_CHINREST,
+    GAZE_CALIBRATION
+  ]
+});
+
+/* 6 — Whisper warmup (background). Loads the model while the participant
+   reads; used by the RTA in Chunk 3. */
+timeline.push({
+  type: jsPsychHtmlKeyboardResponse, choices: "NO_KEYS",
+  data: { trial_tag: "whisper_warmup" },
+  stimulus: `<div style="max-width:580px;margin:12% auto;text-align:center;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <h3 style="color:#1565c0;margin-bottom:16px;">Preparing speech analysis tools</h3>
+      <p style="color:#44545f;margin-bottom:20px;">A speech model is loading in a background thread. The page stays responsive.<br>This only happens once.</p>
+      <p style="color:#8a9aa7;font-size:14px;">Continuing automatically…</p>
+    </div>`,
+  trial_duration: 1500,
+  on_load: function () { warmUpTranscriber(); }
+});
+
+/* END OF CHUNK 1 — on_finish placeholder renders the captured session state. */
+
+/* =====================================================================
+   OT REASONING ENGINE (verified prototype engine, mounted via Option B)
+   ===================================================================== */
+/* =====================================================================
+   CASE DATA — Florence. renderCase(CASE) generalises to Yvonne/Patricia.
+   ===================================================================== */
+const FLORENCE = {
+  id:1, role:"Case 1", name:"Florence", age:69,
+  diagnosis:"s/p L total shoulder arthroplasty; RA", setting:"Outpatient OT",
+
+  profileHTML:`
+    <div class="sect">Occupational Profile</div>
+    <div class="clin" data-src="fl_prof_1"><p>Florence is 69 and lives alone in a city-subsidized, accessible one-bedroom apartment about two miles from the hospital. The building has an elevator and meets ADA requirements; her unit has an open floor plan connecting the living room, dining area, and kitchen.</p></div>
+    <div class="clin" data-src="fl_prof_2"><p>She worked in high school food service until she was 52, when her condition made continued work impossible. She has received Social Security disability since. She never married. Her closest friend is Mary, who also has a disability and lives in the same building.</p></div>
+    <div class="clin" data-src="fl_prof_3"><p>For the past five years a home health aide has assisted with bathing and hair care and has handled shopping, meal preparation, and care of the home. Florence's typical day begins with the aide washing her by 9:30 a.m. and a prepared breakfast by 10:30. Her days involve escorted trips to local stores, medical appointments, and the senior citizens club located in her building, where she usually eats lunch with Mary. Dinner is at home.</p></div>
+    <div class="clin" data-src="fl_prof_4"><p>She reads romance novels, collects figurines, and keeps a cat. She values honesty and cleanliness and identifies with the Anglican Church.</p></div>
+    <div class="clin" data-src="fl_prof_5"><p>Asked what she most needs, Florence said she wants to remain in her own home and receive services there. She reported being very afraid of being placed in a nursing home.</p></div>`,
+
+  chartHTML:`
+    <div class="sect">Referral &amp; Diagnosis</div>
+    <div class="clin" data-src="fl_ch_ref"><div class="kv"><span class="k">Referral</span><span class="v">Outpatient occupational therapy, twice weekly for 10 weeks. Services are to progress the client to Phase 2 of the total shoulder arthroplasty protocol.</span></div>
+    <div class="kv"><span class="k">Diagnosis</span><span class="v">Rheumatoid arthritis, 35-year history. Status post left total shoulder arthroplasty.</span></div>
+    <div class="kv"><span class="k">Relevant history</span><span class="v">Osteoporosis; hypertension; Sjögren's syndrome. Prior surgery: bilateral total knee replacements, bilateral wrist synovectomy, and metacarpophalangeal arthroplasty of digits 2–5.</span></div>
+    <div class="kv"><span class="k">Medications</span><span class="v">Celebrex. No known allergies.</span></div></div>
+
+    <div class="sect">Social &amp; Lifestyle</div>
+    <div class="clin" data-src="fl_ch_soc"><p>Sedentary. No alcohol, tobacco, or drug use. Drinks 4–5 cups of tea daily. Height 5'0", weight 127 lb.</p></div>
+
+    <div class="sect">Activities of Daily Living</div>
+    <div class="clin" data-src="fl_ch_adl"><p>Feeds herself with the right upper extremity when food is cut and presented. Requires maximal assistance to dress both upper and both lower extremities, and to don and doff the left shoulder immobilizer. Independently brushes her hair and teeth. <span class="num">QuickDASH score: 63.7%.</span></p></div>
+
+    <div class="sect">Functional Mobility</div>
+    <div class="clin" data-src="fl_ch_mob"><p>Independent with rolling, bridging, and moving between supine and short sitting. Transfers on and off bed, chair, and raised toilet using a wide-base quad cane. Requires moderate assistance for tub transfer using a transfer bench similar to the one at home.</p></div>
+
+    <div class="sect">Instrumental Activities</div>
+    <div class="clin" data-src="fl_ch_iadl"><p>Manages her own communication and finances. Dependent for home maintenance, meal preparation, cleanup, and shopping.</p></div>
+
+    <div class="sect">Rest &amp; Sleep</div>
+    <div class="clin" data-src="fl_ch_sleep"><p>Reports being unable to find a comfortable position to sleep.</p></div>
+
+    <div class="sect">Mental Functions</div>
+    <div class="clin" data-src="fl_ch_ment"><p>Alert and oriented to person, place, time, and situation. Short- and long-term memory intact. Follows three-step commands and makes needs known. Affect appropriate. No gross perceptual deficits.</p></div>
+
+    <div class="sect">Sensory &amp; Pain</div>
+    <div class="clin" data-src="fl_ch_pain"><p>No gross deficits in hearing, vestibular, taste, smell, proprioceptive, or cutaneous function. Nearsighted, wears corrective lenses. <span class="num">Left shoulder pain 7/10</span>, described as "miserable." No edema noted.</p></div>
+
+    <div class="sect">Cardiopulmonary</div>
+    <div class="clin" data-src="fl_ch_cp"><p><span class="num">Metabolic equivalent of task value 2.5–3.0.</span></p></div>
+
+    <div class="sect">Movement</div>
+    <div class="clin" data-src="fl_ch_move"><p>Passive range, active range, and strength within functional limits in both upper extremities except the left shoulder, which is positioned in a soft immobilizing adduction sling that was not removed. Flexible swan neck deformities in digits 2–5 and boutonnière deformity of digit 1 bilaterally. Gross grasp strength not assessed.</p></div>
+
+    <div class="sect">Neuromuscular</div>
+    <div class="clin" data-src="fl_ch_neuro"><p>Sitting balance 5/5 static and dynamic. Standing balance 4/5 static and dynamic. Tone normal, reflex integration grossly intact.</p></div>
+
+    <div class="interim" data-src="fl_ch_interim"><span class="tag">Interim note</span>Client reported at a subsequent visit that she slept two evenings without wearing the left shoulder immobilizer, stating she was desperate for a full night's sleep.</div>
+
+    <div class="sect">Discharge Plan</div>
+    <div class="clin" data-src="fl_ch_dc"><p>Home exercise program at the conclusion of 10 weeks.</p></div>`,
+
+  library:[
+    { id:"tsa", title:"Total shoulder arthroplasty: rehabilitation phases and precautions",
+      html:`<p>In anatomic total shoulder arthroplasty, the subscapularis tendon is detached during the surgical approach and repaired at closure. Protecting that repair governs the early rehabilitation period.</p>
+        <p>Rehabilitation is staged. Early phases emphasize sling immobilization, protected passive range of motion, and avoidance of positions that load the subscapularis — typically restricted passive external rotation and avoidance of active internal rotation. Progression generally moves from passive to active-assisted to active motion, with resisted strengthening last. Lifting, pushing, and pulling with the operative arm are restricted early.</p>
+        <p>There is no standardized protocol. Published guidelines are largely clinical commentary rather than trial evidence, and publicly available surgeon protocols vary considerably in when they initiate each plane of motion, often diverging from the consensus recommendations published by the American Society of Shoulder and Elbow Therapists in 2020. Protocols generally initiate activities earlier than that consensus recommends.</p>`,
+      cite:`Bullock, G. S., et al. (2019). A systematic review of proposed rehabilitation guidelines following anatomic and reverse shoulder arthroplasty. JOSPT, 49(5). · Mehta, N., et al. (2024). Publicly available anatomic total shoulder arthroplasty rehabilitation protocols show high variability and frequent divergence from the 2020 ASSET recommendations. IJSPT.` },
+    { id:"qdash", title:"QuickDASH",
+      html:`<p>The QuickDASH is an 11-item self-report measure derived from the 30-item DASH. It asks about symptoms and difficulty performing everyday activities involving the upper limb. Scores run 0 to 100, with higher scores indicating greater disability.</p>
+        <p>It is not limb-specific — the items ask about the upper extremity as a functional unit rather than about one arm.</p>
+        <p>It measures self-perceived difficulty rather than observed performance.</p>`,
+      cite:`Hudak, P. L., Amadio, P. C., Bombardier, C., et al. (1996). Development of an upper extremity outcome measure: The DASH. American Journal of Industrial Medicine, 29(6), 602–608.` },
+    { id:"ra", title:"Rheumatoid arthritis: hand deformity and joint protection",
+      html:`<p>Swan neck deformity is hyperextension at the PIP joint with flexion at the DIP. Boutonnière is the reverse — flexion at the PIP with hyperextension at the DIP. Both are common in longstanding rheumatoid arthritis.</p>
+        <p>When a deformity is described as flexible, it can still be passively corrected. Fixed deformities cannot.</p>
+        <p>A history of metacarpophalangeal arthroplasty means those joints have been surgically replaced, which carries its own long-term positioning considerations.</p>
+        <p>Joint protection principles commonly taught in inflammatory arthritis:</p>
+        <ul>
+          <li>Respect pain — pain lasting more than about an hour after activity signals the activity was too demanding</li>
+          <li>Balance activity with rest across the day</li>
+          <li>Use the largest, strongest joint capable of the task</li>
+          <li>Avoid positions that reinforce deformity, particularly forces pushing the fingers toward the ulnar side</li>
+          <li>Reduce the force required — built-up handles, lever taps, electric openers</li>
+          <li>Avoid sustained grip and prolonged static positions</li>
+          <li>Use assistive devices before the joint is stressed</li>
+        </ul>` },
+    { id:"dress", title:"Dressing with restricted shoulder range",
+      html:`<p><b>Sequence.</b> Dress the restricted side first and undress it last.</p>
+        <p><b>Garment selection.</b> Loose, front-opening garments with larger armholes. Overhead pullovers are usually deferred. Front-fastening bras or bra extenders. Elastic laces or slip-on shoes.</p>
+        <p><b>Equipment.</b> Reacher, dressing stick, long-handled shoehorn, sock aid, button hook. Most standard dressing aids require pinch, fine manipulation, or sustained grip to operate. Built-up handles, loop closures, and larger-diameter grips are available where these are limited.</p>
+        <p><b>Immobilizer management.</b> Donning and doffing a shoulder immobilizer correctly is a distinct skill with its own precautions. Where a caregiver or home health aide performs this, training that person may be indicated.</p>` },
+    { id:"medicare", title:"Medicare and Medicaid coverage for outpatient occupational therapy",
+      html:`<p>Medicare Part B covers outpatient occupational therapy when services are medically necessary, require the skills of a therapist, and are furnished under a plan of care certified by a physician or other qualified practitioner.</p>
+        <p>The former hard therapy cap has been replaced by a targeted medical review threshold. Claims exceeding a dollar amount must carry the KX modifier attesting that continued services are medically necessary; claims above a higher threshold may be selected for review.</p>
+        <p>For a beneficiary enrolled in both programs, Medicare is the primary payer and Medicaid is secondary. Medicaid may cover coinsurance and deductibles, and in some states covers services Medicare does not. Medicaid coverage rules vary by state.</p>
+        <p>Documentation typically required: initial evaluation, plan of care with measurable goals and expected duration, periodic recertification, and progress reporting at required intervals.</p>`,
+      cite:`Centers for Medicare & Medicaid Services. Medicare Benefit Policy Manual. Public domain.` }
+  ]
+};
+
+const YVONNE = {
+  id:2, role:"Case 2", name:"Yvonne", age:44,
+  diagnosis:"s/p L radical mastectomy; SLE", setting:"Outpatient OT",
+
+  profileHTML:`
+    <div class="sect">Occupational Profile</div>
+    <div class="clin" data-src="yv_prof_1"><p>Yvonne is 44 and has worked as a police officer for 21 years. She lives with her spouse, Tiffany, in a one-bedroom apartment in a full-service high-rise in the city center. The apartment has an open floor plan connecting living room, dining area, and kitchen. She and Tiffany have been together 15 years and married for two. She is a member of the African Methodist Episcopal Church.</p></div>
+    <div class="clin" data-src="yv_prof_2"><p>Before surgery she was independent in all activities of daily living and all instrumental activities. Her routine involved picking up breakfast on the way to work, working a 9-to-5 day shift, and picking up dinner for herself and her spouse on the way home. During the week the two of them used the gym or pool in their building. Weekends were given over to friends, day trips, and a full schedule of social events.</p></div>
+    <div class="clin" data-src="yv_prof_3"><p>Her interests include Tae Kwon Do, microbrewing, and motorcycle riding. She values love, honesty, and acceptance.</p></div>
+    <div class="clin" data-src="yv_prof_4"><p>Since surgery, Tiffany has taken over cooking, shopping, and care of the home.</p></div>
+    <div class="clin" data-src="yv_prof_5"><p>Asked what she most needs, Yvonne said she wants to get her arm moving well and to prepare for retirement from her job.</p></div>`,
+
+  chartHTML:`
+    <div class="sect">Referral &amp; Diagnosis</div>
+    <div class="clin" data-src="yv_ch_ref"><div class="kv"><span class="k">Referral</span><span class="v">Outpatient occupational therapy, twice weekly for 8 weeks.</span></div>
+    <div class="kv"><span class="k">Diagnosis</span><span class="v">Stage 2 breast cancer. Status post left radical mastectomy.</span></div>
+    <div class="kv"><span class="k">Relevant history</span><span class="v">Systemic lupus erythematosus, diagnosed 24 years ago. Herniated disc between the second and third lumbar vertebrae, with decompression and fusion 10 years ago.</span></div>
+    <div class="kv"><span class="k">Medications</span><span class="v">Voltaren. Allergic to pollen.</span></div></div>
+
+    <div class="sect">Social &amp; Lifestyle</div>
+    <div class="clin" data-src="yv_ch_soc"><p>Active lifestyle. Occasional alcohol and tobacco use, no drug use. Drinks 2–3 large cups of coffee daily. Height 5'11", weight 209 lb.</p></div>
+
+    <div class="sect">Activities of Daily Living</div>
+    <div class="clin" data-src="yv_ch_adl"><p>Independent in feeding, grooming, toileting, and bathing. Able to dress but requires assistance to don and doff her bra. Independent with rolling, bridging, and moving between supine and short sitting. Transfers to and from all surfaces independently. Ambulates independently, observed with postural guarding of the left upper extremity.</p></div>
+
+    <div class="sect">Instrumental Activities</div>
+    <div class="clin" data-src="yv_ch_iadl"><p>Spouse has assumed full responsibility for cooking, shopping, and home care.</p></div>
+
+    <div class="sect">Rest &amp; Sleep</div>
+    <div class="clin" data-src="yv_ch_sleep"><p>Reports waking each night, going to the bathroom, and looking at the surgical site.</p></div>
+
+    <div class="sect">Mental Functions</div>
+    <div class="clin" data-src="yv_ch_ment"><p>Alert and oriented to person, place, time, and situation. Short- and long-term memory intact. Follows three-step commands and makes needs known. Reports frequently crying when she looks at the surgical site. No gross perceptual deficits.</p></div>
+
+    <div class="sect">Sensory &amp; Pain</div>
+    <div class="clin" data-src="yv_ch_pain"><p>No gross deficits in visual, hearing, vestibular, taste, smell, or proprioceptive function. <span class="num">Left shoulder pain rated 7/10 before pain medication and 4/10 after</span>, on a 0–10 numeric rating scale. Reports a continuing sensation that her left breast is still present. Surgical incision fully closed, staples removed, scar flat. Light touch and localization impaired. Edema unremarkable.</p></div>
+
+    <div class="sect">Cardiopulmonary</div>
+    <div class="clin" data-src="yv_ch_cp"><p>No deficits.</p></div>
+
+    <div class="sect">Movement</div>
+    <div class="clin" data-src="yv_ch_move"><p>Passive range, active range, and strength within normal limits in the right upper extremity and both lower extremities. Left upper extremity active range within normal limits except at the shoulder. Left shoulder passive range of motion is shown below. Left shoulder active range of motion matched passive values at all four motions. Left upper extremity strength not evaluated. Client held the left upper extremity in a guarded position. No gross defects in prehension.</p>
+      <table class="dtbl"><thead><tr><th>Motion</th><th>Range</th></tr></thead><tbody>
+        <tr><td>Flexion</td><td class="n">0–102°</td></tr>
+        <tr><td>Abduction</td><td class="n">0–88°</td></tr>
+        <tr><td>External rotation</td><td class="n">0–60°</td></tr>
+        <tr><td>Internal rotation</td><td class="n">0–80°</td></tr>
+      </tbody></table></div>
+
+    <div class="sect">Neuromuscular</div>
+    <div class="clin" data-src="yv_ch_neuro"><p>Sitting and standing balance 5/5 static and dynamic. Tone normal, reflex integration intact.</p></div>
+
+    <div class="interim" data-src="yv_ch_interim"><span class="tag">Interim note</span>Client reported at a subsequent visit that her rings had felt tight for several days.</div>
+
+    <div class="sect">Discharge Plan</div>
+    <div class="clin" data-src="yv_ch_dc"><p>Home program at completion of outpatient services.</p></div>`,
+
+  library:[
+    { id:"mast_prec", title:"Precautions following mastectomy",
+      html:`<p><b>Well established:</b> monitor the incision for signs of infection. Observe for cording, also called axillary web syndrome — palpable tight bands running from the axilla down the arm, which restrict range. Progress range of motion within the surgeon's parameters. Protect the skin of the at-risk limb from cuts, burns, and insect bites. Defer overhead lifting until cleared.</p>
+        <p><b>Contested:</b> clients are widely advised to avoid blood pressure measurement, venipuncture, and injections in the arm on the operated side. This advice appears in many institutional policies and is taught in most curricula.</p>
+        <p>The evidence for it is weaker than its status suggests. A prospective cohort study measuring arm volume in patients screened for lymphedema did not find blood draws, injections, or blood pressure measurements associated with increased arm volume. A review of the wider precaution set — air travel, ipsilateral blood pressure measurement, skin puncture, temperature extremes, and cellulitis — reached similar conclusions about the strength of the underlying evidence.</p>
+        <p>The precaution remains common practice. A therapist may encounter it as institutional policy regardless of the evidence, and clients may have been told it firmly.</p>`,
+      cite:`Ferguson, C. M., Swaroop, M. N., Horick, N., et al. (2016). Impact of ipsilateral blood draws, injections, blood pressure measurements, and air travel on the risk of lymphedema for patients treated for breast cancer. Journal of Clinical Oncology, 34(7), 691–698. · Asdourian, M. S., et al. (2016). Precautions for breast cancer-related lymphoedema. Lancet Oncology, 17(9), e392–e405.` },
+    { id:"lymph", title:"Lymphedema: risk, recognition, and referral",
+      html:`<p>Breast cancer-related lymphedema follows disruption of lymphatic drainage, most often from axillary node surgery, radiation, or both. Onset may be months or years after treatment.</p>
+        <p>Early signs, often reported before swelling is visible:</p>
+        <ul><li>A sensation of heaviness, fullness, or aching in the limb</li>
+          <li>Clothing, jewelry, or a watch feeling tighter than usual</li>
+          <li>Reduced range of motion</li>
+          <li>Skin feeling thickened or less pliable</li></ul>
+        <p>Assessment: circumferential measurement at standardised intervals compared against the contralateral limb; volumetry; perometry; bioimpedance spectroscopy for subclinical detection. A pre-operative baseline makes change far easier to establish.</p>
+        <p>Management centres on complete decongestive therapy, manual lymphatic drainage, compression, skin care, and exercise. Referral to a certified lymphedema therapist is indicated.</p>
+        <p>Cellulitis in an at-risk limb — red, warm, tender skin, often with fever or malaise — is a medical emergency requiring urgent physician referral.</p>`,
+      cite:`Gillespie, T. C., Sayegh, H. E., Brunelle, C. L., Daniell, K. M., & Taghian, A. G. (2018). Breast cancer-related lymphedema: Risk factors, precautionary measures, and treatments. Gland Surgery, 7(4), 379–403.` },
+    { id:"yv_rom", title:"Shoulder range of motion",
+      html:`<p>Active range that falls short of passive range indicates that the limitation involves the client's capacity to generate or control movement. Passive and active range that are equivalent indicates that the limitation is present regardless of who moves the joint.</p>
+        <p>Progression of range following mastectomy is generally gradual and guided by wound healing and surgeon clearance rather than a fixed schedule.</p>` },
+    { id:"nrs", title:"Numeric Rating Scale for pain",
+      html:`<p>A single-item scale on which the client rates pain from 0 (no pain) to 10 (worst imaginable). Quick to administer, widely used, requires basic numeracy and intact communication. Reliability and validity are well supported across adult populations in both acute and chronic pain.</p>
+        <p>Interpretation is within-person rather than between-person. A 7 reported by one client is not comparable to a 7 reported by another. What the scale tracks well is change in the same person over time or across conditions.</p>` },
+    { id:"phantom", title:"Phantom breast sensation",
+      html:`<p>A persistent perception that the removed breast is still present. It may involve sensation, pressure, itching, tingling, or pain, and is reported by a substantial proportion of women following mastectomy.</p>
+        <p>Proposed mechanisms parallel those advanced for phantom limb: peripheral nerve injury at the surgical site, central reorganisation, and preserved cortical representation of the removed structure.</p>
+        <p>It is distinguished from post-mastectomy pain syndrome, which is neuropathic pain in the chest wall, axilla, or medial upper arm and is managed differently.</p>
+        <p>Management typically involves normalising the experience, desensitisation, treatment of any neuropathic pain component, and referral where the experience is distressing.</p>` },
+    { id:"rtw", title:"Return to work in physically demanding occupations",
+      html:`<p>Law enforcement involves defensive tactics, physical restraint, firearm handling, prolonged wear of duty gear and body armour, and unpredictable physical demands that cannot be scheduled around.</p>
+        <p>Return-to-work planning generally involves an analysis of actual job demands, graded exposure, work conditioning, and coordination with the employer about light or modified duty. The therapist's role is to describe capacity and restrictions.</p>
+        <p>Fitness-for-duty determination usually rests with the employer's medical review process rather than with the treating therapist.</p>` }
+  ]
+};
+
+const PATRICIA = {
+  id:"practice", role:"Practice", name:"Patricia", age:36,
+  diagnosis:"s/p zone II flexor tendon repair, L index", setting:"Outpatient OT",
+
+  profileHTML:`
+    <div class="sect">Occupational Profile</div>
+    <div class="clin" data-src="pa_prof_1"><p>Patricia is 36 and has worked full time for the past eight months as a sales associate for a national chain store. She reports this is her first job with a comprehensive benefits package.</p></div>
+    <div class="clin" data-src="pa_prof_2"><p>She is a single mother and lives with her 8-year-old son in the basement apartment of her parents' home; twelve steps lead down to the apartment from the hallway. The apartment has a kitchenette, a combined living and dining space, two small bedrooms, and a bathroom. She does not own a car. Her home is a 15-minute bus ride from work and 20 minutes from the medical center.</p></div>
+    <div class="clin" data-src="pa_prof_3"><p>She recently ended a six-month relationship. Her parents have been actively involved in watching her son while she works.</p></div>
+    <div class="clin" data-src="pa_prof_4"><p>Her routine has involved having breakfast with her son, putting him on the school bus, and going to work. Her mother usually collects him from the bus and helps with homework. Once home, Patricia typically cooked dinner, helped her son finish his homework, and caught up with friends on social media. Weekends included playdates for her son on Saturdays and church on Sundays. She identifies as an Evangelical Lutheran.</p></div>
+    <div class="clin" data-src="pa_prof_5"><p>Her interests include social media and occasionally going out with friends. She values the love of her parents and the gift of her son.</p></div>
+    <div class="clin" data-src="pa_prof_6"><p>Asked what she most needs, Patricia said she wants to get her hand better and get back to work.</p></div>`,
+
+  chartHTML:`
+    <div class="sect">Referral &amp; Diagnosis</div>
+    <div class="clin" data-src="pa_ch_ref"><div class="kv"><span class="k">Referral</span><span class="v">Outpatient occupational therapy, twice weekly for 10 weeks.</span></div>
+    <div class="kv"><span class="k">Diagnosis</span><span class="v">Complete tendon laceration of the left second flexor digitorum profundus and flexor digitorum superficialis, surgically repaired. Injury sustained with a box cutter at work. Placed in a dorsal protective fiberglass splint and discharged the same day.</span></div>
+    <div class="kv"><span class="k">Relevant history</span><span class="v">Unremarkable.</span></div>
+    <div class="kv"><span class="k">Medications</span><span class="v">Amcill. No known allergies.</span></div></div>
+
+    <div class="sect">Social &amp; Lifestyle</div>
+    <div class="clin" data-src="pa_ch_soc"><p>No alcohol, drug, tobacco, or coffee use. Height 5'11", weight 140 lb.</p></div>
+
+    <div class="sect">Activities of Daily Living</div>
+    <div class="clin" data-src="pa_ch_adl"><p>Feeds herself but requires assistance to cut food. Dons and doffs all garments but requires assistance with fasteners. Unable to blow dry her hair without assistance. Independent in all bed mobility, transfers, and ambulation.</p></div>
+
+    <div class="sect">Instrumental Activities</div>
+    <div class="clin" data-src="pa_ch_iadl"><p>Manages her communications and finances, prepares simple meals, and performs light cleanup and light shopping.</p></div>
+
+    <div class="sect">Rest &amp; Sleep</div>
+    <div class="clin" data-src="pa_ch_sleep"><p>Reports frequently waking at night because of "throbbing pain" in the surgically repaired finger.</p></div>
+
+    <div class="sect">Mental Functions</div>
+    <div class="clin" data-src="pa_ch_ment"><p>Alert and oriented to person, place, time, and situation. Short- and long-term memory intact. Follows three-step commands and makes needs known. Reports feeling anxious about not having money coming in to pay her bills. No gross perceptual deficits. <span class="num">Zung Self-Rating Anxiety Scale: 58 out of 100.</span></p></div>
+
+    <div class="sect">Sensory &amp; Pain</div>
+    <div class="clin" data-src="pa_ch_pain"><p>No gross deficits in visual, hearing, vestibular, taste, smell, proprioceptive, or cutaneous function. A 2.5-cm scabbed incision with six external stitches observed over the anterior base of the left index finger. <span class="num">Circumferential measurement over the proximal phalanx: left 8.0 cm, right 7.2 cm.</span> <span class="num">Pain rated 3/10</span> on a 0–10 numeric scale at the left index finger; surgical area described as "sensitive to touch."</p></div>
+
+    <div class="sect">Cardiopulmonary</div>
+    <div class="clin" data-src="pa_ch_cp"><p>No deficits. Performs all activities without fatigue.</p></div>
+
+    <div class="sect">Movement</div>
+    <div class="clin" data-src="pa_ch_move"><p>All four extremities intact for passive range, active range, and strength. Movement of the left wrist and digits was contraindicated and not assessed at evaluation. Left dorsal protective fiberglass splint in place with bulky dressing and elastic bandage wrap.</p></div>
+
+    <div class="sect">Neuromuscular</div>
+    <div class="clin" data-src="pa_ch_neuro"><p>Sitting and standing balance 5/5 static and dynamic. Tone normal, reflex integration intact.</p></div>
+
+    <div class="interim" data-src="pa_ch_interim"><span class="tag">Interim note</span>Client reported during week 2 that she had been removing the protective splint for hours at a time.</div>
+
+    <div class="sect">Discharge Plan</div>
+    <div class="clin" data-src="pa_ch_dc"><p>Home program at completion of outpatient services.</p></div>`,
+
+  library:[
+    { id:"zones", title:"Flexor tendon zones and the healing timeline",
+      html:`<p>The flexor surface of the hand is divided into five zones. Zone II extends from the distal palmar crease to the insertion of flexor digitorum superficialis — the region where FDP and FDS travel together inside the flexor sheath. It was historically called "no man's land" because repairs there are prone to adhesion between the two tendons and the sheath.</p>
+        <p>Tendon healing proceeds through an inflammatory phase in the first days, a fibroplasia phase across the following weeks, and a remodelling phase that continues for months.</p>
+        <!-- Source note (editorial, verify before methods chapter): Strickland, J. W. Flexor tendon injuries: healing and rehabilitation — see Journal of Hand Surgery and JAAOS papers. Also Skirven, Osterman, Fedorczyk, & Amadio (Eds.), Rehabilitation of the hand and upper extremity, Elsevier — confirm current edition. -->
+        <p>Tensile strength of the repair drops after surgery before it begins to climb, reaching its lowest point in the early weeks. This is when rupture risk is highest.</p>
+        <!-- Source note (editorial, verify): Verdan zone classification; see Chesney et al. (2011) review cited on the protocols card. -->
+        <p>Too little motion produces adhesions and a stiff finger. Too much motion ruptures the repair. Every rehabilitation protocol is an attempt to navigate between these two failures.</p>` },
+    { id:"protocols", title:"Rehabilitation protocols: early passive versus early active motion",
+      html:`<p>Three broad families of protocol exist. Immobilisation is now rarely used. Early passive motion includes the Kleinert approach, using dynamic traction producing passive flexion with active extension, and the Duran approach, using controlled passive flexion and extension. Early active motion includes place-and-hold and active flexion–extension regimens.</p>
+        <p>A systematic review of zone II protocols concluded that both early active motion and combined Kleinert–Duran approaches produce low rupture rates and acceptable range of motion. A later review across all zones found early passive protocols carried lower rupture risk but a higher risk of reduced postoperative range of motion, compared with early active protocols. A more recent meta-analysis found early active motion produced greater total active motion, but identified higher rupture risk in the active flexion–extension subgroup when the repair used a two-strand core suture.</p>
+        <p>Which protocol is appropriate depends in part on how the tendon was repaired. A two-strand repair does not reliably tolerate what a multi-strand repair will.</p>`,
+      cite:`Chesney, A., Chauhan, A., Kattan, A., Farrokhyar, F., & Thoma, A. (2011). Systematic review of flexor tendon rehabilitation protocols in zone II of the hand. Plastic and Reconstructive Surgery, 127(4), 1583–1592. · Xu, H., Huang, X., Guo, Z., et al. (2023). Outcome of surgical repair and rehabilitation of flexor tendon injuries in zone II of the hand. Journal of Hand Surgery (American Volume), 48(4), 407.e1–407.e11.` },
+    { id:"splint", title:"The dorsal protective splint",
+      html:`<p>The splint holds the wrist and digits in a position that keeps the repaired tendon slack. It prevents the repair from being passively stretched by the weight of the hand or by inadvertent finger extension.</p>
+        <!-- Source note (editorial, verify): original Kleinert and Duran protocol descriptions; Skirven et al., Rehabilitation of the hand and upper extremity; and the specific protocol chosen for this simulation. -->
+        <p>It is worn continuously through the protective period, including at night, and removed only for supervised exercise or as the protocol specifically permits.</p>
+        <p>Out of the splint, the fingers can extend fully. Full extension places tensile load directly across a repair at its weakest point. Rupture in this situation is frequently silent — the client may feel nothing at the moment it happens, and may only later notice loss of active flexion.</p>
+        <p>Common barriers to splint adherence include discomfort, disturbed sleep, difficulty with hygiene, appearance, work demands, and caregiving responsibilities that make one-handed function impractical.</p>` },
+    { id:"zung", title:"Zung Self-Rating Anxiety Scale",
+      html:`<p>A 20-item self-report screening instrument covering affective and somatic symptoms of anxiety. The client rates how often each applies. Raw scores are converted to an index; higher scores indicate greater symptom burden.</p>
+        <p>It is a screen, not a diagnosis. An elevated score indicates that further evaluation is warranted. Referral for assessment is the appropriate response.</p>`,
+      cite:`Zung, W. W. K. (1971). A rating instrument for anxiety disorders. Psychosomatics, 12(6), 371–379.` },
+    { id:"edema", title:"Assessing edema in the hand",
+      html:`<p><b>Circumferential measurement.</b> Tape measure at defined landmarks, compared with the contralateral side. Fast and requires no equipment. Reliability depends on consistent landmark selection and consistent tape tension.</p>
+        <p><b>Volumetric measurement.</b> Water displacement. More sensitive to whole-limb change, but cannot be used over an unhealed wound, with sutures in place, or on a splinted limb.</p>
+        <p><b>Figure-of-eight.</b> A standardised tape method specific to the hand and wrist. Good reported reliability and avoids immersion.</p>
+        <p>Baseline asymmetry exists between dominant and non-dominant hands independently of injury.</p>` },
+    { id:"wound", title:"Precautions with an unhealed surgical wound",
+      html:`<p>Signs of infection requiring physician referral: redness spreading outward from the incision, warmth, increasing swelling, pain that increases rather than settles, purulent or malodorous drainage, red streaking, fever or malaise.</p>
+        <p>With sutures in place, avoid submersion and follow the surgeon's direction on bathing, dressing changes, and wound care. Scar management and most modalities are deferred until the wound has closed and sutures are removed.</p>
+        <p>Suspected infection is a referral rather than a modification of therapy.</p>` },
+    { id:"wc", title:"Workers' compensation",
+      html:`<p>Injuries arising out of and in the course of employment are covered by workers' compensation, which pays medical costs and a portion of lost wages. This is a separate system from the employee's health insurance.</p>
+        <p>The employer or its insurer typically directs care, including the choice of provider. This can determine where and from whom a client receives therapy.</p>
+        <p>Documentation emphasises work status, specific restrictions, and return-to-work capacity to a greater degree than standard health insurance documentation.</p>
+        <!-- Source note (editorial, verify): Iowa Division of Workers' Compensation, Iowa Workforce Development, iowaworkforcedevelopment.gov. Statute at Iowa Code Chapter 85. Public record. -->` }
+  ]
+};
+
+/* Shared reference cards — every case. Now teaches OTPF-4 Table 12 + Table 13. */
+const SHARED_LIBRARY = [
+  { id:"approaches", ref:true, title:"Approaches to intervention (OTPF-4, Table 13)",
+    html:`<p>Five approaches describe the <em>purpose</em> of an intervention — the strategy, not the activity used.</p>
+      <ul>
+        <li><b>Create/promote.</b> Enriches performance in context for all people; does not assume a disability is present.</li>
+        <li><b>Establish/restore.</b> Changes something about the client — developing a skill not yet acquired, or restoring one that has been impaired.</li>
+        <li><b>Maintain.</b> Provides support that preserves performance the client currently has; without it, performance would decline.</li>
+        <li><b>Modify.</b> Changes the context or activity demands rather than the client. Compensation and adaptation.</li>
+        <li><b>Prevent.</b> Addresses clients at risk for occupational performance problems, whether or not disability is present.</li>
+      </ul>`,
+    cite:`American Occupational Therapy Association. (2020). Occupational therapy practice framework: Domain and process (4th ed.). AJOT, 74(Suppl. 2), 7412410010.` },
+  { id:"types", ref:true, title:"Types of occupational therapy interventions (OTPF-4, Table 12)",
+    html:`<p>Interventions are categorized by type. These describe <em>what kind of intervention</em> is delivered.</p>
+      <ul>
+        <li><b>Occupations and activities.</b> Occupations and activities selected to meet therapeutic goals.</li>
+        <li><b>Interventions to support occupations.</b> Methods and tasks that prepare the client for occupational performance — used in preparation for or alongside occupations and activities. (This edition's term for what was formerly "preparatory methods.")</li>
+        <li><b>Education and training.</b> Imparting knowledge (education) and facilitating concrete skill acquisition (training).</li>
+        <li><b>Advocacy.</b> Efforts promoting occupational justice and access to resources (self-advocacy when done by the client).</li>
+        <li><b>Group interventions.</b> Use of group dynamics and leadership to facilitate learning and skill acquisition.</li>
+        <li><b>Virtual interventions.</b> Delivery via simulated, real-time, or near-time technologies (e.g., telehealth).</li>
+      </ul>`,
+    cite:`American Occupational Therapy Association. (2020). Occupational therapy practice framework: Domain and process (4th ed.). AJOT, 74(Suppl. 2), 7412410010.` }
+];
+
+const APPROACHES = ["Create/promote","Establish/restore","Maintain","Modify","Prevent"];
+const INTERVENTION_TYPES = ["Occupations and activities","Interventions to support occupations","Education and training","Advocacy","Group interventions","Virtual interventions"];
+const ASPECTS = ["Client factor","Performance skill","Performance pattern","Context"];
+/* OTPF-4 outcome types (optional tag on desired outcomes). */
+const OUTCOME_TYPES = ["Occupational performance","Prevention","Health and wellness","Quality of life","Participation","Role competence","Well-being","Occupational justice"];
+
+/* =====================================================================
+   STATE
+   ===================================================================== */
+/* jsPsych mount: the engine renders into a fixed, full-viewport container (#ot_mount)
+   so its flex height-chain (MOUNT -> #app -> main -> cols -> panels) works exactly as
+   in the standalone prototype, independent of jsPsych's nested layout. CASE/state/MOUNT
+   are set per case-trial in on_load. */
+let CASE = null;
+let state = null;
+let MOUNT = null;
+function freshState(){
+  return {
+    synthesis:{ impression:"", impression_stamp:null, impression_revisions:[], desired_outcomes:[] },
+    occupations:[],   // {id, name}
+    entries:[],       // {id, type, excerpt, src, mechanism, aspect|null, occId, ts, range}
+    plan:{ selectedBarrierIds:[], prioritization:"", perBarrier:{}, goal:"", immediate:"" },
+    log:[]
+  };
+}
+let seq = 0; const uid = p => p + (++seq);
+function logEvent(kind, detail){ state.log.push({ t:Date.now(), kind, detail:detail||null }); }
+
+/* In-text highlight marks via CSS Custom Highlight API (no DOM mutation). */
+const supHL = (typeof Highlight!=="undefined") ? new Highlight() : null;
+const barHL = (typeof Highlight!=="undefined") ? new Highlight() : null;
+function registerHighlights(){ if(window.CSS && CSS.highlights && supHL){ CSS.highlights.set("ot-support",supHL); CSS.highlights.set("ot-barrier",barHL); } }
+function refreshHighlights(){
+  if(!supHL) return;
+  supHL.clear(); barHL.clear();
+  state.entries.forEach(e=>{ if(e.range){ try{ (e.type==="support"?supHL:barHL).add(e.range); }catch(err){} } });
+}
+
+/* =====================================================================
+   RENDER
+   ===================================================================== */
+function renderCase(){
+  const libCards = [...CASE.library, ...SHARED_LIBRARY].map(c=>`
+    <div class="libcard ${c.ref?'ref':''}" id="lib_${c.id}"><h4>${c.title}</h4>${c.html}${c.cite?`<div class="cite">${c.cite}</div>`:''}</div>`).join("");
+
+  MOUNT.innerHTML = `
+    <div class="banner">
+      <div>
+        <h1>${CASE.name} <span class="role-badge ${CASE.role==='Practice'?'practice':'real'}">${CASE.role}</span></h1>
+        <div class="meta">
+          <span class="chip">Age <b>${CASE.age}</b></span>
+          <span class="chip">Dx <b>${CASE.diagnosis}</b></span>
+          <span class="chip">Setting <b>${CASE.setting}</b></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="col case">
+        <div class="panel" id="aoi_case_material" data-aoi="case_material" style="flex:1 1 50%">
+          <div class="tabs" role="tablist">
+            <button class="tab active" data-tab="profile" role="tab">Occupational Profile</button>
+            <button class="tab" data-tab="chart" role="tab">Chart</button>
+            <button class="tab" data-tab="library" role="tab">Library</button>
+          </div>
+          <div class="panel-body" id="case_body">
+            <div class="tabpage active" data-page="profile">${CASE.profileHTML}</div>
+            <div class="tabpage" data-page="chart">${CASE.chartHTML}</div>
+            <div class="tabpage" data-page="library">${libCards}</div>
+          </div>
+        </div>
+        <div class="panel" id="aoi_occupations" data-aoi="occupations" style="flex:1 1 50%">
+          <div class="panel-head"><span class="ey">Occupations</span><span class="count" id="occ_count">0</span></div>
+          <div class="panel-body">
+            <div class="occ-add">
+              <input id="occ_input" type="text" maxlength="80" placeholder="Name an occupation…" aria-label="Name an occupation"/>
+              <button class="btn btn-occ" id="occ_add">Add</button>
+            </div>
+            <div id="occ_list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col mid">
+        <div class="panel" id="aoi_performance" data-aoi="performance" style="flex:1 1 50%">
+          <div class="panel-head"><span class="ey">Occupational Performance Analysis</span><span class="count" id="pa_count">0</span></div>
+          <div class="panel-body" id="pa_body"></div>
+        </div>
+        <div class="panel" id="aoi_synthesis" data-aoi="synthesis" style="flex:1 1 50%">
+          <div class="panel-head"><span class="ey">Synthesis of the Evaluation</span></div>
+          <div class="panel-body" id="syn_body">
+            <div class="syn-field">
+              <label class="syn-lbl">Clinical impression</label>
+              <div class="syn-hint">Integrating the occupational profile and your performance analysis, what is your overall impression of this client's situation?</div>
+              <textarea id="synthesis_impression" placeholder="Integrate the profile and your analysis into a coherent picture. Editable throughout."></textarea>
+              <div class="stamp" id="syn_stamp">not yet edited</div>
+            </div>
+            <div class="syn-field">
+              <label class="syn-lbl">Desired outcomes</label>
+              <div class="syn-hint">What are the desired outcomes for this client? These become the basis for your intervention goals.</div>
+              <div class="occ-add">
+                <input id="outcome_input" type="text" maxlength="140" placeholder="Name a desired outcome…" aria-label="Name a desired outcome"/>
+                <button class="btn btn-syn" id="outcome_add">Add</button>
+              </div>
+              <div id="outcome_list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col plan">
+        <div class="panel grow" id="aoi_intervention" data-aoi="intervention">
+          <div class="panel-head"><span class="ey">Intervention plan</span></div>
+          <div class="panel-body" id="ip_body"></div>
+        </div>
+      </div>
+    </div>`;
+
+  registerHighlights();
+  wireSynthesis(); wireTabs(); wireOccupations(); wireOutcomes(); attachSelectionHandlers();
+  renderOccupations(); renderPerformance(); renderOutcomes(); renderPlan(); refreshHighlights();
+}
+
+function wireSynthesis(){
+  const ta=document.getElementById("synthesis_impression"), st=document.getElementById("syn_stamp");
+  ta.value=state.synthesis.impression; let t=null;
+  /* Append a discrete revision only when typing settles (debounced) or the
+     field loses focus, and only if the text changed from the last snapshot.
+     Yields a trajectory of settled impressions, not per-keystroke noise. */
+  const snapshot=()=>{
+    const text=ta.value, revs=state.synthesis.impression_revisions;
+    const last=revs.length?revs[revs.length-1].text:null;
+    if(text===last) return;
+    const ts=Date.now();
+    revs.push({version:revs.length+1, text, ts});
+    updateWalkthrough();
+    state.synthesis.impression=text; state.synthesis.impression_stamp=ts;
+    logEvent("synthesis_revision",{version:revs.length, len:text.length});
+    st.textContent="rev "+revs.length+" · "+new Date(ts).toLocaleTimeString();
+  };
+  ta.addEventListener("input", ()=>{ state.synthesis.impression=ta.value; clearTimeout(t); t=setTimeout(snapshot, 800); });
+  ta.addEventListener("blur", ()=>{ clearTimeout(t); snapshot(); });
+}
+function wireOutcomes(){
+  const input=document.getElementById("outcome_input");
+  const add=()=>{ const text=input.value.trim(); if(!text) return;
+    state.synthesis.desired_outcomes.push({id:uid("out_"), text, otpf4_outcome_type:null, ts:Date.now()});
+    logEvent("desired_outcome_add",{text});
+    input.value=""; renderOutcomes(); updateWalkthrough(); };
+  document.getElementById("outcome_add").addEventListener("click", add);
+  input.addEventListener("keydown", e=>{ if(e.key==="Enter") add(); });
+}
+function renderOutcomes(){
+  const list=document.getElementById("outcome_list"); if(!list) return;
+  const outs=state.synthesis.desired_outcomes;
+  if(!outs.length){ list.innerHTML=`<div class="empty"><b>No desired outcomes yet</b>Name at least one desired outcome. Your intervention goals will address these.</div>`; return; }
+  list.innerHTML=outs.map(o=>`
+    <div class="out-card">
+      <div class="out-top">
+        <span class="dot"></span><span class="nm">${esc(o.text)}</span>
+        <button class="rm" data-out="${o.id}" aria-label="Remove desired outcome">×</button>
+      </div>
+      <select class="out-tag" data-out="${o.id}" aria-label="OTPF-4 outcome type (optional)">
+        <option value="">OTPF-4 outcome type (optional)…</option>
+        ${OUTCOME_TYPES.map(t=>`<option ${o.otpf4_outcome_type===t?'selected':''}>${t}</option>`).join("")}
+      </select>
+    </div>`).join("");
+  list.querySelectorAll(".rm").forEach(b=>b.addEventListener("click",()=>{
+    const id=b.dataset.out;
+    state.synthesis.desired_outcomes=state.synthesis.desired_outcomes.filter(o=>o.id!==id);
+    logEvent("desired_outcome_remove",{id}); renderOutcomes(); updateWalkthrough();
+  }));
+  list.querySelectorAll(".out-tag").forEach(sel=>sel.addEventListener("change",()=>{
+    const o=state.synthesis.desired_outcomes.find(x=>x.id===sel.dataset.out);
+    if(o){ o.otpf4_outcome_type=sel.value||null; logEvent("desired_outcome_tag",{id:o.id,type:o.otpf4_outcome_type}); }
+  }));
+}
+function wireTabs(){
+  document.querySelectorAll(".tab").forEach(tab=>{
+    tab.addEventListener("click", ()=>{
+      document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+      document.querySelectorAll(".tabpage").forEach(p=>p.classList.remove("active"));
+      tab.classList.add("active");
+      document.querySelector(`.tabpage[data-page="${tab.dataset.tab}"]`).classList.add("active");
+      logEvent("tab_switch",{tab:tab.dataset.tab});
+      if(walk && isPractice()){ walk.tabsSeen[tab.dataset.tab]=true; }
+      updateWalkthrough();
+    });
+  });
+}
+function wireOccupations(){
+  const input=document.getElementById("occ_input");
+  const add=()=>{ const name=input.value.trim(); if(!name) return;
+    state.occupations.push({id:uid("occ_"),name}); logEvent("occupation_add",{name});
+    input.value=""; renderOccupations(); renderPlan(); };
+  document.getElementById("occ_add").addEventListener("click", add);
+  input.addEventListener("keydown", e=>{ if(e.key==="Enter") add(); });
+}
+function renderOccupations(){
+  const list=document.getElementById("occ_list");
+  document.getElementById("occ_count").textContent=state.occupations.length;
+  if(!state.occupations.length){ list.innerHTML=`<div class="empty"><b>No occupations yet</b>Name the occupations this client needs or wants to do. Supports and barriers you identify link to these.</div>`; return; }
+  list.innerHTML=state.occupations.map(o=>{
+    const n=state.entries.filter(e=>e.occId===o.id).length;
+    return `<div class="occ-card"><span class="dot"></span><span class="nm">${esc(o.name)}</span><span class="tally">${n}</span><button class="rm" data-occ="${o.id}" aria-label="Remove ${esc(o.name)}">×</button></div>`;
+  }).join("");
+  list.querySelectorAll(".rm").forEach(b=>b.addEventListener("click",()=>{
+    const id=b.dataset.occ;
+    state.occupations=state.occupations.filter(o=>o.id!==id);
+    state.entries.forEach(e=>{ if(e.occId===id) e.occId=null; });
+    state.plan.selectedBarrierIds=state.plan.selectedBarrierIds.filter(bid=>{ const en=state.entries.find(x=>x.id===bid); return en&&en.occId!==null; });
+    logEvent("occupation_remove",{id});
+    renderOccupations(); renderPerformance(); renderPlan();
+  }));
+}
+function renderPerformance(){
+  const body=document.getElementById("pa_body");
+  document.getElementById("pa_count").textContent=state.entries.length;
+  if(!state.entries.length){ body.innerHTML=`<div class="empty"><b>No supports or barriers identified yet</b>Highlight text in the case material, then mark it a support or a barrier.</div>`; return; }
+  let html="";
+  state.occupations.forEach(o=>{
+    const es=state.entries.filter(e=>e.occId===o.id); if(!es.length) return;
+    html+=`<div class="pa-occ"><div class="pa-occ-h"><span class="dot"></span>${esc(o.name)}</div>${es.map(entryHTML).join("")}</div>`;
+  });
+  const orphans=state.entries.filter(e=>!e.occId);
+  if(orphans.length) html+=`<div class="pa-occ unlinked"><div class="pa-occ-h" style="color:var(--ink-faint)">Unlinked (occupation removed)</div>${orphans.map(entryHTML).join("")}</div>`;
+  body.innerHTML=html;
+  body.querySelectorAll(".rm").forEach(b=>b.addEventListener("click",()=>{
+    const id=b.dataset.entry;
+    state.entries=state.entries.filter(e=>e.id!==id);
+    state.plan.selectedBarrierIds=state.plan.selectedBarrierIds.filter(x=>x!==id);
+    delete state.plan.perBarrier[id];
+    logEvent("entry_remove",{id});
+    renderOccupations(); renderPerformance(); renderPlan(); refreshHighlights();
+  }));
+}
+function entryHTML(e){
+  const isBar=e.type==="barrier";
+  const verb=isBar?"limits":"enables";
+  return `<div class="pa-entry ${isBar?'bar':'sup'}">
+    <div class="top">
+      <span class="glyph">${isBar?'▲':'●'}</span>
+      <span class="lab">${isBar?'Barrier':'Support'}</span>
+      ${e.aspect?`<span class="aspect">${esc(e.aspect)}</span>`:''}
+      <button class="rm" data-entry="${e.id}" aria-label="Remove entry">×</button>
+    </div>
+    <div class="exc">"${esc(trunc(e.excerpt,140))}"</div>
+    ${e.mechanism?`<div class="mech">${verb} <b>${esc(e.mechanism)}</b></div>`:''}
+  </div>`;
+}
+function renderPlan(){
+  const body=document.getElementById("ip_body");
+  const barriers=state.entries.filter(e=>e.type==="barrier" && e.occId);
+  const barrierPick = barriers.length
+    ? barriers.map(b=>{ const occ=state.occupations.find(o=>o.id===b.occId); const on=state.plan.selectedBarrierIds.includes(b.id);
+        return `<label class="ip-bar-pick"><input type="checkbox" data-bar="${b.id}" ${on?'checked':''}/>
+          <span class="txt"><span class="mech">${esc(b.mechanism||'—')}</span> — barrier to ${esc(occ?occ.name:'?')}<br>
+          <span style="opacity:.8">"${esc(trunc(b.excerpt,90))}"</span></span></label>`; }).join("")
+    : `<div class="empty"><b>No barriers to address yet</b>Barriers you classify (linked to an occupation) appear here to build the plan on.</div>`;
+
+  const cards=state.plan.selectedBarrierIds.map(bid=>{
+    const b=state.entries.find(e=>e.id===bid); if(!b) return "";
+    const occ=state.occupations.find(o=>o.id===b.occId);
+    const pb=state.plan.perBarrier[bid]||{};
+    return `<div class="ip-card">
+      <div class="cardh">${esc(b.mechanism||'barrier')} — ${esc(occ?occ.name:'?')}</div>
+      <div class="ip-field"><label>Intervention approach (Table 13)</label>
+        <select class="ip" data-bid="${bid}" data-f="approach"><option value="">— select —</option>
+          ${APPROACHES.map(a=>`<option ${pb.approach===a?'selected':''}>${a}</option>`).join("")}</select></div>
+      <div class="ip-field"><label>Method (incl. safety / environment)</label>
+        <textarea data-bid="${bid}" data-f="method" placeholder="2–3 sentences">${esc(pb.method||'')}</textarea></div>
+      <div class="ip-field"><label>Intervention type (Table 12)</label>
+        <select class="ip" data-bid="${bid}" data-f="type"><option value="">— select —</option>
+          ${INTERVENTION_TYPES.map(a=>`<option ${pb.type===a?'selected':''}>${a}</option>`).join("")}</select></div>
+      <div class="ip-field"><label>Grading up / down</label>
+        <textarea data-bid="${bid}" data-f="grading" placeholder="1–2 sentences">${esc(pb.grading||'')}</textarea></div>
+    </div>`;
+  }).join("");
+
+  body.innerHTML=`
+    <div class="ip-step"><span class="lbl">1 · Select the barriers you will address</span>
+      <span class="hint">Constrained to your own barrier classifications.</span>${barrierPick}</div>
+    <div class="ip-step"><span class="lbl">2 · Why prioritize these over the others?</span>
+      <textarea class="ip" id="ip_prioritization" placeholder="2–3 sentences">${esc(state.plan.prioritization)}</textarea></div>
+    <div class="ip-step"><span class="lbl">3 · For each barrier: approach, method, type, grading</span>
+      ${state.plan.selectedBarrierIds.length?cards:'<div class="empty">Select at least one barrier above.</div>'}</div>
+    <div class="ip-step"><span class="lbl">4 · One objective, measurable, occupation-based long-term goal that addresses a desired outcome</span>
+      <textarea class="ip" id="ip_goal" placeholder="1–2 sentences">${esc(state.plan.goal)}</textarea></div>
+    <div class="ip-step"><span class="lbl">5 · Which goal or objective needs the most immediate attention, and why?</span>
+      <textarea class="ip" id="ip_immediate" placeholder="2–3 sentences">${esc(state.plan.immediate)}</textarea></div>`;
+
+  body.querySelectorAll('input[data-bar]').forEach(cb=>cb.addEventListener("change",()=>{
+    const id=cb.dataset.bar;
+    if(cb.checked){ if(!state.plan.selectedBarrierIds.includes(id)) state.plan.selectedBarrierIds.push(id); }
+    else state.plan.selectedBarrierIds=state.plan.selectedBarrierIds.filter(x=>x!==id);
+    logEvent("barrier_select",{id,on:cb.checked}); renderPlan();
+  }));
+  body.querySelectorAll('[data-bid]').forEach(el=>el.addEventListener("input",()=>{
+    const {bid,f}=el.dataset; state.plan.perBarrier[bid]=state.plan.perBarrier[bid]||{}; state.plan.perBarrier[bid][f]=el.value; updateWalkthrough();
+  }));
+  const bind=(id,key)=>{ const el=document.getElementById(id); if(el) el.addEventListener("input",()=>{ state.plan[key]=el.value; updateWalkthrough(); }); };
+  bind("ip_prioritization","prioritization"); bind("ip_goal","goal"); bind("ip_immediate","immediate");
+  updateWalkthrough();
+}
+
+/* =====================================================================
+   SELECTION → CLASSIFY POPOVER  (symmetric support/barrier, OTPF-4 aspect)
+   ===================================================================== */
+let popEl=null, pendingRange=null;
+function removePop(){ if(popEl){popEl.remove();popEl=null;} pendingRange=null; }
+document.addEventListener("mousedown", e=>{ if(popEl && !popEl.contains(e.target)) removePop(); });
+window.addEventListener("scroll", removePop, true);
+
+function attachSelectionHandlers(){
+  const body=document.getElementById("case_body");
+  body.addEventListener("mouseup", ()=>{
+    setTimeout(()=>{
+      const sel=window.getSelection();
+      if(!sel||sel.isCollapsed) return;
+      const text=sel.toString().trim(); if(text.length<3) return;
+      let node=sel.anchorNode, srcEl=node&&(node.nodeType===1?node:node.parentElement);
+      const body2=document.getElementById("case_body");
+      while(srcEl && !(srcEl.dataset&&srcEl.dataset.src) && srcEl!==body2) srcEl=srcEl.parentElement;
+      const src=(srcEl&&srcEl.dataset&&srcEl.dataset.src)||null;
+      const rng=sel.getRangeAt(0);
+      pendingRange=rng.cloneRange();
+      openPopover(text, src, rng.getBoundingClientRect());
+    },1);
+  });
+}
+function openPopover(text, src, rect){
+  removePopKeepRange();
+  popEl=document.createElement("div"); popEl.className="pop"; popEl.innerHTML=choiceStep(text);
+  document.body.appendChild(popEl); positionPop(rect); wireChoiceStep(text, src);
+}
+function removePopKeepRange(){ if(popEl){popEl.remove();popEl=null;} } /* keep pendingRange */
+function positionPop(rect){
+  const pad=10, w=popEl.offsetWidth, h=popEl.offsetHeight;
+  let left=rect.left+rect.width/2-w/2, top=rect.bottom+8;
+  if(top+h>window.innerHeight-pad) top=rect.top-h-8;
+  left=Math.max(pad,Math.min(left,window.innerWidth-w-pad)); top=Math.max(pad,top);
+  popEl.style.left=left+"px"; popEl.style.top=top+"px";
+}
+function choiceStep(text){
+  return `<div class="exc">"${esc(trunc(text,180))}"</div>
+    <div class="q">Classify this text</div>
+    <div class="row2"><button class="pick sup" id="pk_sup">● Support</button><button class="pick bar" id="pk_bar">▲ Barrier</button></div>`;
+}
+function wireChoiceStep(text, src){
+  document.getElementById("pk_sup").onclick=()=>classifyStep("support",text,src);
+  document.getElementById("pk_bar").onclick=()=>classifyStep("barrier",text,src);
+}
+/* Symmetric classify step; prompt wording varies by valence. */
+function classifyStep(type, text, src){
+  if(!state.occupations.length){ needOccupationsWarn(); return; }
+  const isBar=type==="barrier";
+  const mechQ = isBar ? "What is getting in the way of this occupation?" : "What capacity or resource enables this?";
+  const mechPH= isBar ? "e.g., left shoulder active reach; sustained grip" : "e.g., intact cognition; home health aide support";
+  const occQ = isBar ? "A barrier to which occupation?" : "This supports which occupation?";
+  popEl.innerHTML=`
+    <button class="back" id="pk_back">← back</button>
+    <div class="q">${mechQ}</div>
+    <input type="text" id="pk_mech" maxlength="140" placeholder="${mechPH}" />
+    <div class="q">OTPF-4 aspect <span class="opt">(optional)</span></div>
+    <select id="pk_aspect"><option value="">— skip —</option>${ASPECTS.map(a=>`<option>${a}</option>`).join("")}</select>
+    <div class="q">${occQ}</div>
+    <select id="pk_occ"><option value="">— select occupation —</option>${state.occupations.map(o=>`<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select>
+    <button class="confirm" id="pk_go" disabled>${isBar?'Add barrier':'Add support'}</button>`;
+  document.getElementById("pk_back").onclick=()=>{ popEl.innerHTML=choiceStep(text); wireChoiceStep(text,src); };
+  const mech=document.getElementById("pk_mech"), asp=document.getElementById("pk_aspect"), occSel=document.getElementById("pk_occ"), go=document.getElementById("pk_go");
+  const check=()=> go.disabled=!(mech.value.trim() && occSel.value);
+  mech.oninput=check; occSel.onchange=check; mech.focus();
+  go.onclick=()=>{ commitEntry({ type, excerpt:text, src, mechanism:mech.value.trim(), aspect:asp.value||null, occId:occSel.value }); removePop(); };
+}
+function needOccupationsWarn(){
+  popEl.innerHTML=`<div class="warn"><b>Add an occupation first.</b><br>A support or barrier is classified <em>in relation to an occupation</em>. Name at least one occupation, then highlight again.</div>`;
+}
+function commitEntry(e){
+  e.id=uid("ent_"); e.ts=Date.now(); e.range=pendingRange||null;
+  state.entries.push(e);
+  logEvent("classify",{type:e.type,occId:e.occId,mechanism:e.mechanism,aspect:e.aspect,src:e.src});
+  if(window.getSelection) window.getSelection().removeAllRanges();
+  renderOccupations(); renderPerformance(); renderPlan(); refreshHighlights();
+}
+
+/* =====================================================================
+   UTILITIES / CHROME
+   ===================================================================== */
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function trunc(s,n){ s=String(s); return s.length>n? s.slice(0,n-1)+"…" : s; }
+
+/* =====================================================================
+   PRACTICE WALKTHROUGH — practice case only.
+   Mechanics-only, unlocked (interface stays live), completion-gated.
+   Non-modal coach-marks point at controls; a persistent checklist tracks
+   the required-action set and gates the Continue button. No timers.
+   ===================================================================== */
+let walk = null;
+function isPractice(){ return CASE && CASE.role==="Practice"; }
+
+const REQUIRED = [
+  ["tabs",            "Open the Chart & Library tabs"],
+  ["impression",     "Write a clinical impression"],
+  ["occupation",     "Add an occupation"],
+  ["support",        "Mark a support"],
+  ["barrier",        "Mark a barrier"],
+  ["outcome",        "Add a desired outcome"],
+  ["selectBarrier",  "Select a barrier into the plan"],
+  ["interventionCard","Complete a barrier's plan fields"],
+  ["prioritization", "Fill in prioritization"],
+  ["goal",           "Write a long-term goal"],
+  ["immediate",      "Fill in immediate attention"]
+];
+const TOUR = [
+  {req:null,             sel:null,               h:"Welcome — this is practice", p:"This run is just to learn the tool before the real cases. Nothing here counts. Work through the checklist at the bottom in any order; when it's complete you can continue."},
+  {req:"tabs",           sel:".tabs",            h:"Open every tab",            p:"The case material has three tabs. Open the Chart and the Library at least once so you've seen all of it."},
+  {req:"occupation",     sel:"#occ_input",       h:"Add an occupation",         p:"Name one occupation the client needs or wants to do, then press Add. Everything you classify links to an occupation."},
+  {req:"support",        sel:"#case_body",       h:"Mark a support",            p:"Select any phrase in the case text. In the popup choose Support, name what enables it, optionally tag an OTPF-4 aspect, and link it to an occupation."},
+  {req:"barrier",        sel:"#case_body",       h:"Mark a barrier",            p:"Select another phrase and choose Barrier. Name what's getting in the way, optionally tag an aspect, and link it to an occupation."},
+  {req:"synthesis",      sel:"#aoi_synthesis",   h:"Synthesize the evaluation", p:"Write your clinical impression integrating the profile and your analysis, then add at least one desired outcome. You can optionally tag each outcome with an OTPF-4 outcome type."},
+  {req:"plan",           sel:"#aoi_intervention",h:"Build the plan",            p:"Select one of your barriers to address, then fill its approach, method, type, and grading — plus the prioritization, goal, and immediate-attention boxes."},
+  {req:null,             sel:"#cl",              h:"That's everything",         p:"When every checklist item is checked, Continue turns on. Reopen this guide anytime with “Show guide.”"}
+];
+
+function stepSatisfied(step){
+  const st=checklistState();
+  if(step.req===null) return true;                 // welcome/closer never gate resume
+  if(step.req==="synthesis") return st.impression && st.outcome;
+  if(step.req==="plan") return st.selectBarrier && st.interventionCard && st.prioritization && st.goal && st.immediate;
+  return !!st[step.req];
+}
+function firstIncompleteStep(){
+  for(let i=0;i<TOUR.length;i++){ if(!stepSatisfied(TOUR[i])) return i; }
+  return TOUR.length-1;                             // all done -> closing step
+}
+
+function checklistState(){
+  const s=state, w=walk;
+  const card = s.plan.selectedBarrierIds.some(id=>{const pb=s.plan.perBarrier[id]||{}; return pb.approach&&pb.method&&pb.type&&(pb.grading||'').trim();});
+  return {
+    tabs: !!(w.tabsSeen.chart && w.tabsSeen.library),
+    impression: s.synthesis.impression_revisions.length>0,
+    occupation: s.occupations.length>0,
+    support: s.entries.some(e=>e.type==="support"),
+    barrier: s.entries.some(e=>e.type==="barrier"),
+    outcome: s.synthesis.desired_outcomes.length>0,
+    selectBarrier: s.plan.selectedBarrierIds.length>0,
+    interventionCard: card,
+    prioritization: (s.plan.prioritization||"").trim().length>0,
+    goal: (s.plan.goal||"").trim().length>0,
+    immediate: (s.plan.immediate||"").trim().length>0
+  };
+}
+
+function setupWalkthrough(){
+  removeCoach(); const old=document.getElementById("cl"); if(old) old.remove();
+  if(!isPractice()){ walk=null; return; }
+  walk = state._walk || (state._walk = { tabsSeen:{}, tourStep:0, tourOpen:true, listOpen:false });
+  buildChecklist();
+  if(walk.tourOpen) showCoach(walk.tourStep);
+}
+function updateWalkthrough(){ if(!isPractice()||!walk) return; buildChecklist(); if(walk.tourOpen) positionCoach(); }
+
+function buildChecklist(){
+  const st=checklistState(); const done=REQUIRED.filter(([k])=>st[k]).length;
+  let el=document.getElementById("cl");
+  if(!el){ el=document.createElement("div"); el.id="cl"; el.className="cl"; document.body.appendChild(el); }
+  el.className="cl"+(walk.listOpen?" open":"");
+  el.innerHTML=`
+    <div class="cl-bar" id="cl_bar">
+      <span class="badge">Practice</span>
+      <span class="prog"><b>${done}</b> / ${REQUIRED.length} tasks tried</span>
+      <span class="sp"></span>
+      <button class="guide" id="cl_guide">Show guide</button>
+      <span class="caret">▲</span>
+    </div>
+    <div class="cl-body">
+      <div class="cl-grid">
+        ${REQUIRED.map(([k,label])=>`<div class="cl-item ${st[k]?'done':''}"><span class="box">${st[k]?'✓':''}</span>${label}</div>`).join("")}
+      </div>
+      <button class="cl-continue" id="cl_continue" ${done===REQUIRED.length?'':'disabled'}>
+        ${done===REQUIRED.length?'Continue to Case 1 →':'Complete all tasks to continue'}</button>
+    </div>`;
+  document.getElementById("cl_bar").onclick=(e)=>{ if(e.target.id==="cl_guide") return; walk.listOpen=!walk.listOpen; buildChecklist(); };
+  document.getElementById("cl_guide").onclick=(e)=>{ e.stopPropagation(); walk.tourOpen=true; showCoach(firstIncompleteStep()); };
+  const cont=document.getElementById("cl_continue");
+  if(cont) cont.onclick=()=>{ if(done===REQUIRED.length){ walk.tourOpen=false; removeCoach();
+    submitCase(); } };
+}
+
+let coachEl=null;
+function removeCoach(){ if(coachEl){coachEl.remove();coachEl=null;} }
+function showCoach(i){ walk.tourStep=Math.max(0,Math.min(i,TOUR.length-1)); walk.tourOpen=true; renderCoach(); }
+function renderCoach(){
+  removeCoach(); if(!walk.tourOpen) return;
+  const step=TOUR[walk.tourStep];
+  coachEl=document.createElement("div"); coachEl.className="coach";
+  coachEl.innerHTML=`<h5>${step.h}</h5><p>${step.p}</p>
+    <div class="cbtns"><span class="step">${walk.tourStep+1} / ${TOUR.length}</span>
+      ${walk.tourStep>0?'<button id="co_back">Back</button>':''}
+      <button id="co_close">Close</button>
+      <button class="primary" id="co_next">${walk.tourStep<TOUR.length-1?'Next':'Done'}</button></div>
+    <div class="arrow" id="co_arrow" style="display:none"></div>`;
+  document.body.appendChild(coachEl);
+  const back=document.getElementById("co_back"); if(back) back.onclick=()=>showCoach(walk.tourStep-1);
+  document.getElementById("co_close").onclick=()=>{ walk.tourOpen=false; removeCoach(); };
+  document.getElementById("co_next").onclick=()=>{ if(walk.tourStep<TOUR.length-1) showCoach(walk.tourStep+1); else { walk.tourOpen=false; removeCoach(); } };
+  positionCoach();
+}
+function positionCoach(){
+  if(!coachEl) return; const step=TOUR[walk.tourStep];
+  const arrow=document.getElementById("co_arrow");
+  const w=coachEl.offsetWidth, h=coachEl.offsetHeight, pad=12;
+  const target=step.sel?document.querySelector(step.sel):null;
+  if(!target){ coachEl.style.left=(innerWidth/2-w/2)+"px"; coachEl.style.top=(innerHeight/2-h/2)+"px"; if(arrow) arrow.style.display="none"; return; }
+  const r=target.getBoundingClientRect();
+  let left=r.left+r.width/2-w/2, top=r.bottom+14, below=true;
+  if(top+h>innerHeight-pad){ top=r.top-h-14; below=false; }
+  left=Math.max(pad,Math.min(left,innerWidth-w-pad)); top=Math.max(pad,top);
+  coachEl.style.left=left+"px"; coachEl.style.top=top+"px";
+  if(arrow){ arrow.style.display="block"; const ax=Math.max(14,Math.min(r.left+r.width/2-left-6,w-26));
+    arrow.style.left=ax+"px"; arrow.style[below?"top":"bottom"]="-6px"; }
+}
+window.addEventListener("resize", ()=>{ if(walk&&walk.tourOpen) positionCoach(); });
+
+
+/* =====================================================================
+   CHUNK 2 — MOUNT THE ENGINE AS WRAPPER TRIALS
+   Option B: a generic html-keyboard-response trial whose on_load boots the
+   engine into a fixed, full-viewport #ot_mount. Practice (Patricia) is
+   gated by the walkthrough's Continue; real cases end via a banner Submit.
+   Sequence: Practice (Patricia) -> Case 1 (Florence) -> Case 2 (Yvonne).
+   ===================================================================== */
+const AOI_SELECTORS = ["#aoi_case_material","#aoi_occupations","#aoi_performance","#aoi_synthesis","#aoi_intervention"];
+const CASES_IN_ORDER = [PATRICIA, FLORENCE, YVONNE];
+
+/* Snapshot the five AOI rects at task start (before interaction). With the fixed
+   layout these equal the end-of-trial rects; captured for provenance/verification. */
+function snapshotAOIRects(){
+  const o = {};
+  AOI_SELECTORS.forEach(sel=>{
+    const el = document.querySelector(sel);
+    if(el){ const r = el.getBoundingClientRect();
+      o[el.dataset.aoi] = { x:Math.round(r.x), y:Math.round(r.y), w:Math.round(r.width), h:Math.round(r.height) }; }
+  });
+  return o;
+}
+
+/* Serialize the current case's engine state into a plain data object. */
+function serializeCaseData(){
+  return {
+    case_id: CASE.id, case_role: CASE.role, case_name: CASE.name,
+    synthesis: {
+      impression: state.synthesis.impression,
+      impression_last_edit: state.synthesis.impression_stamp,
+      impression_revisions: state.synthesis.impression_revisions,
+      desired_outcomes: state.synthesis.desired_outcomes.map(o=>({ id:o.id, text:o.text, otpf4_outcome_type:o.otpf4_outcome_type, ts:o.ts }))
+    },
+    occupations: state.occupations,
+    entries: state.entries.map(e=>({ id:e.id, type:e.type, excerpt:e.excerpt, provenance_src:e.src, mechanism:e.mechanism, otpf4_aspect:e.aspect, occupation_id:e.occId, ts:e.ts })),
+    intervention_plan: state.plan,
+    event_log: state.log
+  };
+}
+
+/* Remove any body-appended engine overlays (popover, coach-mark, checklist)
+   so they never bleed from one trial into the next. */
+function cleanupOverlays(){
+  ["ot_pop_host"].forEach(()=>{});
+  if(typeof removePop==="function"){ try{ removePop(); }catch(e){} }
+  if(typeof removeCoach==="function"){ try{ removeCoach(); }catch(e){} }
+  const cl = document.getElementById("cl"); if(cl) cl.remove();
+  document.querySelectorAll(".pop,.coach").forEach(el=>el.remove());
+  if(window.CSS && CSS.highlights){ CSS.highlights.clear(); }
+}
+
+/* pendingCaseData is filled by submitCase() at the moment the participant ends
+   the case, then merged into the trial's data in on_finish. */
+let pendingCaseData = null;
+let pendingAOIStart = null;
+function submitCase(){
+  pendingCaseData = serializeCaseData();
+  cleanupOverlays();
+  jsPsych.finishTrial();   // participant-controlled end; no timers
+}
+
+/* Banner Submit button for REAL cases (practice ends via the walkthrough).
+   Placed in the banner (outside the five AOIs) to avoid gaze contamination.
+   No hard completion gate — the participant may proceed (matches the
+   "let participants proceed" stance); a confirmation summarizes their work
+   because progression across cases is irreversible. [PROVISIONAL — see notes] */
+function addBannerSubmit(){
+  if(isPractice()) return;   // practice uses the walkthrough Continue
+  const banner = MOUNT.querySelector(".banner");
+  if(!banner || banner.querySelector(".case-submit")) return;
+  const btn = document.createElement("button");
+  btn.className = "case-submit";
+  btn.textContent = "Submit case & continue";
+  btn.style.cssText = "margin-left:auto;padding:10px 20px;background:#1e6bb8;color:#fff;border:none;border-radius:7px;font-weight:700;font-size:14px;cursor:pointer";
+  banner.style.display = "flex"; banner.style.alignItems = "center";
+  banner.appendChild(btn);
+  btn.addEventListener("click", ()=>{
+    const nOcc = state.occupations.length;
+    const nEnt = state.entries.length;
+    const nOut = state.synthesis.desired_outcomes.length;
+    const ok = window.confirm(
+      "Submit this case and continue? You won't be able to return to it.\n\n" +
+      "So far you have recorded:\n" +
+      "  • " + nOcc + " occupation(s)\n" +
+      "  • " + nEnt + " support/barrier classification(s)\n" +
+      "  • " + nOut + " desired outcome(s)");
+    if(ok) submitCase();
+  });
+}
+
+/* Build one wrapper trial for a case. gaze flag decides extension attach. */
+function makeCaseTrial(caseObj, withGaze){
+  const trial = {
+    type: jsPsychHtmlKeyboardResponse,
+    choices: "NO_KEYS",
+    stimulus: '<div id="ot_mount"></div>',
+    data: { trial_tag: "case", case_id: caseObj.id, case_role: caseObj.role, case_name: caseObj.name },
+    on_load: function(){
+      MOUNT = document.getElementById("ot_mount");
+      CASE = caseObj; state = freshState(); seq = 0;
+      renderCase();
+      setupWalkthrough();          // no-op for real cases (isPractice() false)
+      addBannerSubmit();           // banner Submit for real cases
+      pendingAOIStart = snapshotAOIRects();
+    },
+    on_finish: function(data){
+      if(pendingCaseData){ Object.assign(data, pendingCaseData); pendingCaseData = null; }
+      data.aoi_rects_start = pendingAOIStart; pendingAOIStart = null;
+      data.gaze_tracked = !!withGaze;
+      /* record this case's start offset against the session recording clock (RTA sync) */
+      data.case_started_offset_ms = study.recording_started_at ? (Date.now() - study.recording_started_at) : null;
+    }
+  };
+  if(withGaze){
+    trial.extensions = [{ type: jsPsychExtensionWebgazer, params: { targets: AOI_SELECTORS } }];
+  }
+  return trial;
+}
+
+/* Two conditional branches: with-gaze (extension attached) if study.gaze_enabled,
+   else without. Only one branch runs; extensions can't be set at runtime, so we
+   pre-build both and gate with conditional_function. */
+timeline.push({
+  conditional_function: function(){ return study.gaze_enabled; },
+  timeline: CASES_IN_ORDER.map(c=>makeCaseTrial(c, true))
+});
+timeline.push({
+  conditional_function: function(){ return !study.gaze_enabled; },
+  timeline: CASES_IN_ORDER.map(c=>makeCaseTrial(c, false))
+});
+
+
+jsPsych.run(timeline);
+</script>
+</body>
+</html>
