@@ -1181,8 +1181,7 @@ const OUTCOME_TYPES = ["Occupational performance","Prevention","Health and welln
    ===================================================================== */
 /* jsPsych mount: the engine renders into a fixed, full-viewport container (#ot_mount)
    so its flex height-chain (MOUNT -> #app -> main -> cols -> panels) works exactly as
-   in the standalone prototype, independent of jsPsych's nested layout. CASE/state/MOUNT
-   are set per case-trial in on_load. */
+   in the standalone prototype. CASE/state/MOUNT are set per case-trial in on_load. */
 let CASE = null;
 let state = null;
 let MOUNT = null;
@@ -1467,10 +1466,17 @@ function renderPlan(){
     else state.plan.selectedBarrierIds=state.plan.selectedBarrierIds.filter(x=>x!==id);
     logEvent("barrier_select",{id,on:cb.checked}); renderPlan();
   }));
-  body.querySelectorAll('[data-bid]').forEach(el=>el.addEventListener("input",()=>{
-    const {bid,f}=el.dataset; state.plan.perBarrier[bid]=state.plan.perBarrier[bid]||{}; state.plan.perBarrier[bid][f]=el.value; updateWalkthrough();
-  }));
-  const bind=(id,key)=>{ const el=document.getElementById(id); if(el) el.addEventListener("input",()=>{ state.plan[key]=el.value; updateWalkthrough(); }); };
+  /* Per-barrier and plan-level field edits emit timestamped events on settle
+     (debounced) so the intervention-planning phase enters the analysis as a
+     sequence of moves, matching synthesis/classification logging. Not per-keystroke. */
+  const planDebounce = {};
+  const logPlanEdit = (key, detail)=>{ clearTimeout(planDebounce[key]); planDebounce[key]=setTimeout(()=>logEvent("plan_edit",detail),700); };
+  body.querySelectorAll('[data-bid]').forEach(el=>{
+    const handler=()=>{ const {bid,f}=el.dataset; state.plan.perBarrier[bid]=state.plan.perBarrier[bid]||{}; state.plan.perBarrier[bid][f]=el.value; updateWalkthrough();
+      logPlanEdit("bar:"+bid+":"+f, {scope:"barrier", barrier_id:bid, field:f, len:el.value.length}); };
+    el.addEventListener("input", handler); el.addEventListener("change", handler);
+  });
+  const bind=(id,key)=>{ const el=document.getElementById(id); if(el) el.addEventListener("input",()=>{ state.plan[key]=el.value; updateWalkthrough(); logPlanEdit("plan:"+key,{scope:"plan", field:key, len:el.value.length}); }); };
   bind("ip_prioritization","prioritization"); bind("ip_goal","goal"); bind("ip_immediate","immediate");
   updateWalkthrough();
 }
@@ -1825,6 +1831,7 @@ timeline.push({
   conditional_function: function(){ return !study.gaze_enabled; },
   timeline: CASES_IN_ORDER.map(c=>makeCaseTrial(c, false))
 });
+
 
 
 jsPsych.run(timeline);
