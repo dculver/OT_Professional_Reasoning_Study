@@ -73,7 +73,7 @@
       border-radius: 6px; font-weight: 700; font-size: 15px; cursor: pointer;
     }
   
-  /* ================= OT REASONING ENGINE STYLES (from verified prototype) ================= */
+  /* ============== OT REASONING ENGINE STYLES (verified prototype) ============== */
   :root{
     --page:#E7ECF1; --panel:#FFFFFF; --line:#D5DEE7; --line-soft:#E9EEF3;
     --ink:#17232E; --ink-soft:#566574; --ink-faint:#8A9AA7;
@@ -87,7 +87,7 @@
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
-  /* jsPsych owns <body>; the engine host is #ot_mount (fixed, full viewport). */
+  /* jsPsych owns <body>; engine host is #ot_mount (fixed, full viewport). */
   #ot_mount{background:var(--page);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;position:fixed;inset:0;display:flex;flex-direction:column;overflow:hidden;z-index:1}
   button{font-family:inherit}
   ::selection{background:#bcd7ef}
@@ -1176,9 +1176,8 @@ const OUTCOME_TYPES = ["Occupational performance","Prevention","Health and welln
 /* =====================================================================
    STATE
    ===================================================================== */
-/* jsPsych mount: the engine renders into a fixed, full-viewport container (#ot_mount)
-   so its flex height-chain (MOUNT -> #app -> main -> cols -> panels) works exactly as
-   in the standalone prototype. CASE/state/MOUNT are set per case-trial in on_load. */
+/* jsPsych mount: engine renders into a fixed, full-viewport #ot_mount.
+   CASE/state/MOUNT set per case-trial in on_load. */
 let CASE = null;
 let state = null;
 let MOUNT = null;
@@ -1188,11 +1187,45 @@ function freshState(){
     occupations:[],   // {id, name}
     entries:[],       // {id, type, excerpt, src, mechanism, aspect|null, occId, ts, range}
     plan:{ selectedBarrierIds:[], prioritization:"", perBarrier:{}, goal:"", immediate:"" },
-    log:[]
+    log:[],           // ANALYZED event log -> ONA/coding. Semantic, no replay bloat.
+    recon:{ deltas:[], cursor:[] }  // RECONSTRUCTION record -> RTA replay ONLY. Never analyzed.
   };
 }
 let seq = 0; const uid = p => p + (++seq);
 function logEvent(kind, detail){ state.log.push({ t:Date.now(), kind, detail:detail||null }); }
+
+/* ---- RECONSTRUCTION CAPTURE (separate record; replay/cue infrastructure only) ---- */
+function recordDelta(op, payload){ state.recon.deltas.push(Object.assign({ op, t:Date.now() }, payload||{})); }
+
+/* Serialize a selection Range as character offsets within its [data-src] element,
+   so the in-text highlight can be faithfully repainted on replay (a live Range
+   does not survive). Returns {srcId,start,end} or null if not locatable. */
+function charOffsetInEl(el, node, offset){
+  let count = 0; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n;
+  while((n = w.nextNode())){ if(n === node) return count + offset; count += n.textContent.length; }
+  return count;
+}
+function serializeRange(range, srcId){
+  if(!range || !srcId) return null;
+  const el = document.querySelector('[data-src="'+srcId+'"]'); if(!el) return null;
+  try {
+    return { srcId, start: charOffsetInEl(el, range.startContainer, range.startOffset),
+                    end:   charOffsetInEl(el, range.endContainer,   range.endOffset) };
+  } catch(e){ return null; }
+}
+function rangeFromOffsets(loc){
+  if(!loc) return null;
+  const el = document.querySelector('[data-src="'+loc.srcId+'"]'); if(!el) return null;
+  const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let n, count = 0, setS = false, setE = false; const r = document.createRange();
+  while((n = w.nextNode())){
+    const len = n.textContent.length;
+    if(!setS && count + len >= loc.start){ r.setStart(n, loc.start - count); setS = true; }
+    if(!setE && count + len >= loc.end){ r.setEnd(n, loc.end - count); setE = true; break; }
+    count += len;
+  }
+  return (setS && setE) ? r : null;
+}
 
 /* In-text highlight marks via CSS Custom Highlight API (no DOM mutation). */
 const supHL = (typeof Highlight!=="undefined") ? new Highlight() : null;
@@ -1301,6 +1334,7 @@ function wireSynthesis(){
     if(text===last) return;
     const ts=Date.now();
     revs.push({version:revs.length+1, text, ts});
+    recordDelta("impression",{text});
     updateWalkthrough();
     state.synthesis.impression=text; state.synthesis.impression_stamp=ts;
     logEvent("synthesis_revision",{version:revs.length, len:text.length});
@@ -1312,8 +1346,8 @@ function wireSynthesis(){
 function wireOutcomes(){
   const input=document.getElementById("outcome_input");
   const add=()=>{ const text=input.value.trim(); if(!text) return;
-    state.synthesis.desired_outcomes.push({id:uid("out_"), text, otpf4_outcome_type:null, ts:Date.now()});
-    logEvent("desired_outcome_add",{text});
+    const oid=uid("out_"); state.synthesis.desired_outcomes.push({id:oid, text, otpf4_outcome_type:null, ts:Date.now()});
+    logEvent("desired_outcome_add",{text}); recordDelta("outcome_add",{id:oid, text});
     input.value=""; renderOutcomes(); updateWalkthrough(); };
   document.getElementById("outcome_add").addEventListener("click", add);
   input.addEventListener("keydown", e=>{ if(e.key==="Enter") add(); });
@@ -1336,11 +1370,11 @@ function renderOutcomes(){
   list.querySelectorAll(".rm").forEach(b=>b.addEventListener("click",()=>{
     const id=b.dataset.out;
     state.synthesis.desired_outcomes=state.synthesis.desired_outcomes.filter(o=>o.id!==id);
-    logEvent("desired_outcome_remove",{id}); renderOutcomes(); updateWalkthrough();
+    logEvent("desired_outcome_remove",{id}); recordDelta("outcome_remove",{id}); renderOutcomes(); updateWalkthrough();
   }));
   list.querySelectorAll(".out-tag").forEach(sel=>sel.addEventListener("change",()=>{
     const o=state.synthesis.desired_outcomes.find(x=>x.id===sel.dataset.out);
-    if(o){ o.otpf4_outcome_type=sel.value||null; logEvent("desired_outcome_tag",{id:o.id,type:o.otpf4_outcome_type}); }
+    if(o){ o.otpf4_outcome_type=sel.value||null; logEvent("desired_outcome_tag",{id:o.id,type:o.otpf4_outcome_type}); recordDelta("outcome_tag",{id:o.id, type:o.otpf4_outcome_type}); }
   }));
 }
 function wireTabs(){
@@ -1350,7 +1384,7 @@ function wireTabs(){
       document.querySelectorAll(".tabpage").forEach(p=>p.classList.remove("active"));
       tab.classList.add("active");
       document.querySelector(`.tabpage[data-page="${tab.dataset.tab}"]`).classList.add("active");
-      logEvent("tab_switch",{tab:tab.dataset.tab});
+      logEvent("tab_switch",{tab:tab.dataset.tab}); recordDelta("tab",{tab:tab.dataset.tab});
       if(walk && isPractice()){ walk.tabsSeen[tab.dataset.tab]=true; }
       updateWalkthrough();
     });
@@ -1359,7 +1393,7 @@ function wireTabs(){
 function wireOccupations(){
   const input=document.getElementById("occ_input");
   const add=()=>{ const name=input.value.trim(); if(!name) return;
-    state.occupations.push({id:uid("occ_"),name}); logEvent("occupation_add",{name});
+    const id=uid("occ_"); state.occupations.push({id,name}); logEvent("occupation_add",{name}); recordDelta("occ_add",{id,name});
     input.value=""; renderOccupations(); renderPlan(); };
   document.getElementById("occ_add").addEventListener("click", add);
   input.addEventListener("keydown", e=>{ if(e.key==="Enter") add(); });
@@ -1377,7 +1411,7 @@ function renderOccupations(){
     state.occupations=state.occupations.filter(o=>o.id!==id);
     state.entries.forEach(e=>{ if(e.occId===id) e.occId=null; });
     state.plan.selectedBarrierIds=state.plan.selectedBarrierIds.filter(bid=>{ const en=state.entries.find(x=>x.id===bid); return en&&en.occId!==null; });
-    logEvent("occupation_remove",{id});
+    logEvent("occupation_remove",{id}); recordDelta("occ_remove",{id});
     renderOccupations(); renderPerformance(); renderPlan();
   }));
 }
@@ -1398,7 +1432,7 @@ function renderPerformance(){
     state.entries=state.entries.filter(e=>e.id!==id);
     state.plan.selectedBarrierIds=state.plan.selectedBarrierIds.filter(x=>x!==id);
     delete state.plan.perBarrier[id];
-    logEvent("entry_remove",{id});
+    logEvent("entry_remove",{id}); recordDelta("entry_remove",{id});
     renderOccupations(); renderPerformance(); renderPlan(); refreshHighlights();
   }));
 }
@@ -1461,7 +1495,7 @@ function renderPlan(){
     const id=cb.dataset.bar;
     if(cb.checked){ if(!state.plan.selectedBarrierIds.includes(id)) state.plan.selectedBarrierIds.push(id); }
     else state.plan.selectedBarrierIds=state.plan.selectedBarrierIds.filter(x=>x!==id);
-    logEvent("barrier_select",{id,on:cb.checked}); renderPlan();
+    logEvent("barrier_select",{id,on:cb.checked}); recordDelta("barrier_select",{id,on:cb.checked}); renderPlan();
   }));
   /* Per-barrier and plan-level field edits emit timestamped events on settle
      (debounced) so the intervention-planning phase enters the analysis as a
@@ -1470,10 +1504,11 @@ function renderPlan(){
   const logPlanEdit = (key, detail)=>{ clearTimeout(planDebounce[key]); planDebounce[key]=setTimeout(()=>logEvent("plan_edit",detail),700); };
   body.querySelectorAll('[data-bid]').forEach(el=>{
     const handler=()=>{ const {bid,f}=el.dataset; state.plan.perBarrier[bid]=state.plan.perBarrier[bid]||{}; state.plan.perBarrier[bid][f]=el.value; updateWalkthrough();
-      logPlanEdit("bar:"+bid+":"+f, {scope:"barrier", barrier_id:bid, field:f, len:el.value.length}); };
+      logPlanEdit("bar:"+bid+":"+f, {scope:"barrier", barrier_id:bid, field:f, len:el.value.length});
+      recordDelta("plan_barrier",{bid, field:f, value:el.value}); };
     el.addEventListener("input", handler); el.addEventListener("change", handler);
   });
-  const bind=(id,key)=>{ const el=document.getElementById(id); if(el) el.addEventListener("input",()=>{ state.plan[key]=el.value; updateWalkthrough(); logPlanEdit("plan:"+key,{scope:"plan", field:key, len:el.value.length}); }); };
+  const bind=(id,key)=>{ const el=document.getElementById(id); if(el) el.addEventListener("input",()=>{ state.plan[key]=el.value; updateWalkthrough(); logPlanEdit("plan:"+key,{scope:"plan", field:key, len:el.value.length}); recordDelta("plan_field",{field:key, value:el.value}); }); };
   bind("ip_prioritization","prioritization"); bind("ip_goal","goal"); bind("ip_immediate","immediate");
   updateWalkthrough();
 }
@@ -1554,6 +1589,7 @@ function commitEntry(e){
   e.id=uid("ent_"); e.ts=Date.now(); e.range=pendingRange||null;
   state.entries.push(e);
   logEvent("classify",{type:e.type,occId:e.occId,mechanism:e.mechanism,aspect:e.aspect,src:e.src});
+  recordDelta("entry_add",{id:e.id, type:e.type, excerpt:e.excerpt, src:e.src, mechanism:e.mechanism, aspect:e.aspect, occId:e.occId, loc: serializeRange(e.range, e.src)});
   if(window.getSelection) window.getSelection().removeAllRanges();
   renderOccupations(); renderPerformance(); renderPlan(); refreshHighlights();
 }
@@ -1698,6 +1734,55 @@ function positionCoach(){
 }
 window.addEventListener("resize", ()=>{ if(walk&&walk.tourOpen) positionCoach(); });
 
+/* ---- CURSOR SAMPLING (reconstruction/replay only; never analyzed) ----
+   Throttled position + which AOI the cursor is over. Idle is represented
+   implicitly: no movement => no samples => a gap in the track (a pause the
+   RTA can cue on). Attached once; always writes to the current state.recon. */
+let __lastCursorSample = 0, __cursorAttached = false;
+function attachCursorSampling(){
+  if(__cursorAttached) return; __cursorAttached = true;
+  document.addEventListener("mousemove", (e)=>{
+    if(!state || !state.recon) return;
+    const now = Date.now();
+    if(now - __lastCursorSample < 120) return;   // ~8 Hz throttle
+    __lastCursorSample = now;
+    let aoi = null;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    if(el){ const a = el.closest("[data-aoi]"); if(a) aoi = a.dataset.aoi; }
+    state.recon.cursor.push({ x:e.clientX, y:e.clientY, aoi, t:now });
+  }, { passive:true });
+}
+
+/* ---- RECONSTRUCTION: rebuild the exact state at time tMax from the deltas ----
+   Faithful replay source. Applied to a fresh state; content + stable ids +
+   highlight span locators make each delta self-sufficient. */
+function reconstructState(deltas, tMax){
+  const s = freshState();
+  for(const d of deltas){
+    if(tMax != null && d.t > tMax) break;
+    switch(d.op){
+      case "occ_add": s.occupations.push({ id:d.id, name:d.name }); break;
+      case "occ_remove": s.occupations = s.occupations.filter(o=>o.id!==d.id);
+        s.entries.forEach(e=>{ if(e.occId===d.id) e.occId=null; });
+        s.plan.selectedBarrierIds = s.plan.selectedBarrierIds.filter(bid=>{ const en=s.entries.find(x=>x.id===bid); return en&&en.occId!==null; });
+        break;
+      case "entry_add": s.entries.push({ id:d.id, type:d.type, excerpt:d.excerpt, src:d.src, mechanism:d.mechanism, aspect:d.aspect, occId:d.occId, loc:d.loc, range:null }); break;
+      case "entry_remove": s.entries = s.entries.filter(e=>e.id!==d.id);
+        s.plan.selectedBarrierIds = s.plan.selectedBarrierIds.filter(x=>x!==d.id); delete s.plan.perBarrier[d.id]; break;
+      case "impression": s.synthesis.impression = d.text; break;
+      case "outcome_add": s.synthesis.desired_outcomes.push({ id:d.id, text:d.text, otpf4_outcome_type:null }); break;
+      case "outcome_remove": s.synthesis.desired_outcomes = s.synthesis.desired_outcomes.filter(o=>o.id!==d.id); break;
+      case "outcome_tag": { const o=s.synthesis.desired_outcomes.find(x=>x.id===d.id); if(o) o.otpf4_outcome_type = d.type; break; }
+      case "barrier_select": if(d.on){ if(!s.plan.selectedBarrierIds.includes(d.id)) s.plan.selectedBarrierIds.push(d.id); }
+        else s.plan.selectedBarrierIds = s.plan.selectedBarrierIds.filter(x=>x!==d.id); break;
+      case "plan_barrier": s.plan.perBarrier[d.bid] = s.plan.perBarrier[d.bid]||{}; s.plan.perBarrier[d.bid][d.field] = d.value; break;
+      case "plan_field": s.plan[d.field] = d.value; break;
+      case "tab": s._replayTab = d.tab; break;
+    }
+  }
+  return s;
+}
+
 
 /* =====================================================================
    CHUNK 2 — MOUNT THE ENGINE AS WRAPPER TRIALS
@@ -1799,6 +1884,7 @@ function makeCaseTrial(caseObj, withGaze){
       MOUNT = document.getElementById("ot_mount");
       CASE = caseObj; state = freshState(); seq = 0;
       renderCase();
+      attachCursorSampling();   // cursor capture for reconstruction (replay-only)
       setupWalkthrough();          // no-op for real cases (isPractice() false)
       addBannerSubmit();           // banner Submit for real cases
       pendingAOIStart = snapshotAOIRects();
@@ -1828,6 +1914,7 @@ timeline.push({
   conditional_function: function(){ return !study.gaze_enabled; },
   timeline: CASES_IN_ORDER.map(c=>makeCaseTrial(c, false))
 });
+
 
 
 
