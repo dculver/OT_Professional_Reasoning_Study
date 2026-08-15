@@ -396,31 +396,69 @@ var jsPsych = initJsPsych({
    ===================================================================== */
 var timeline = [];
 
-/* 1 — ★ PROGRAMMATIC FULLSCREEN (button, no keyboard shortcut).
-   Participants can't be relied on to press F11/Fn+F11. A single button
-   enters fullscreen for them. We then measure the FULLSCREEN viewport and
-   decide the gaze branch on it (not the smaller windowed viewport). */
+/* 1 — ★ SCREEN SHARE FIRST (Option 3). getDisplayMedia ONLY — no fullscreen yet,
+   so the share dialog has no fullscreen to drop. Recording is one continuous
+   session stream; recording_started_at anchors the RTA clock. Fullscreen is
+   entered on the NEXT step's fresh gesture, which then holds (nothing after it
+   opens a browser-level dialog). This eliminates the macOS/Chrome drop where a
+   post-await requestFullscreen is refused for lack of transient activation. */
+timeline.push({
+  type: jsPsychHtmlKeyboardResponse,
+  choices: "NO_KEYS",
+  data: { trial_tag: "session_screen_share" },
+  stimulus: `<div style="max-width:680px;margin:8% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#1565c0;">Share your screen to begin</h2>
+      <p style="font-size:17px;line-height:1.7;">This tab is recorded so you can watch it back and talk through your reasoning after each case. The video stays on your computer and is never uploaded. Only your spoken reasoning (saved as text) and a record of your on-screen actions are kept. The recording is cleared at the end of the session.</p>
+      <div style="background:#d3e4f5;border-left:4px solid #1565c0;padding:16px 20px;border-radius:6px;margin:18px 0;">
+        <p style="margin:0;font-size:16px;">Click the button, then your browser asks you to <strong>select a tab to share</strong>. Choose <strong>this study's tab</strong> (not Window or Entire Screen).</p>
+      </div>
+      <button id="share_btn" style="margin-top:6px;padding:14px 30px;background:#1e8e4e;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">Start recording</button>
+      <p id="share_err" style="color:#c0392b;margin-top:10px;"></p>
+    </div>`,
+  on_load: function () {
+    const btn = document.getElementById("share_btn");
+    const err = document.getElementById("share_err");
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        const s = await startScreenRecording("session");   // NO fullscreen here
+        study.recording_started_at = Date.now();
+        attachStreamEndedHandler(s);
+        setTimeout(() => jsPsych.finishTrial(), 300);
+      } catch (e) {
+        btn.disabled = false;
+        err.textContent = "Screen share cancelled. Click the button again and select this study's tab from the list.";
+        console.warn("getDisplayMedia failed/cancelled:", e);
+      }
+    });
+  }
+});
+
+/* 2 — ★ FULLSCREEN (Option 3), on its own fresh click AFTER share. Because no
+   browser dialog follows, fullscreen HOLDS. We then measure the fullscreen
+   viewport (the definitive task viewport) and decide the gaze branch on it.
+   Calibration runs after this, so the calibration viewport == task viewport. */
 timeline.push({
   type: jsPsychHtmlKeyboardResponse,
   choices: "NO_KEYS",
   data: { trial_tag: "enter_fullscreen" },
   stimulus: `<div style="max-width:640px;margin:9% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
-      <h2 style="color:#1565c0;">Full screen to begin</h2>
-      <p style="font-size:17px;line-height:1.7;">This study runs in full screen so the whole interface fits and the eye tracking stays accurate. Click the button to continue in full screen.</p>
+      <h2 style="color:#1565c0;">Continue in full screen</h2>
+      <p style="font-size:17px;line-height:1.7;">The study runs in full screen so the whole interface fits and the eye tracking stays accurate. Click the button to continue. Stay in full screen for the rest of the session.</p>
       <button id="fs_btn" style="margin-top:10px;padding:14px 30px;background:#1565c0;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">Continue in full screen</button>
       <p id="fs_err" style="color:#c0392b;margin-top:10px;"></p>
     </div>`,
   on_load: function () {
     const btn = document.getElementById("fs_btn");
-    const err = document.getElementById("fs_err");
     btn.addEventListener("click", async () => {
       btn.disabled = true;
       try { await document.documentElement.requestFullscreen(); }
-      catch (fe) { console.warn("requestFullscreen (front) failed:", fe); }
-      /* let the fullscreen resize settle before measuring */
+      catch (fe) { console.warn("requestFullscreen failed:", fe); }
+      /* let the fullscreen resize settle before measuring the task viewport */
       setTimeout(() => {
         const vh = window.innerHeight, vw = window.innerWidth;
         study.fullscreen_viewport = { w: vw, h: vh };
+        study.recording_viewport = { w: vw, h: vh };   // definitive task viewport
         study.gaze_threshold_used = CONFIG.GAZE_MIN_HEIGHT;
         study.gaze_enabled = vh >= CONFIG.GAZE_MIN_HEIGHT;
         study.gaze_skip_reason = study.gaze_enabled ? null : "viewport_height_below_threshold";
@@ -458,47 +496,6 @@ timeline.push(permissionGate("microphone"));
 timeline.push({
   type: jsPsychInitializeMicrophone,
   data: { trial_tag: "init_microphone" }
-});
-
-/* 4 — ★ SCREEN SHARE + FULLSCREEN re-assertion (ALWAYS). Recording is one
-   continuous session stream. Re-asserts fullscreen in case it dropped, and
-   captures recording_viewport (the definitive task viewport). */
-timeline.push({
-  type: jsPsychHtmlKeyboardResponse,
-  choices: "NO_KEYS",
-  data: { trial_tag: "session_screen_share" },
-  stimulus: `<div style="max-width:680px;margin:8% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
-      <h2 style="color:#1565c0;">Share your screen to begin</h2>
-      <p style="font-size:17px;line-height:1.7;">This tab is recorded so you can watch it back and talk through your reasoning after each case. The video stays on your computer and is never uploaded. Only your spoken reasoning (saved as text) and a record of your on-screen actions are kept. The recording is cleared at the end of the session.</p>
-      <div style="background:#d3e4f5;border-left:4px solid #1565c0;padding:16px 20px;border-radius:6px;margin:18px 0;">
-        <p style="margin:0;font-size:16px;">Click the button, then your browser asks you to <strong>select a tab to share</strong>. Choose <strong>this study's tab</strong> (not Window or Entire Screen).</p>
-      </div>
-      <button id="share_btn" style="margin-top:6px;padding:14px 30px;background:#1e8e4e;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">Start recording</button>
-      <p id="share_err" style="color:#c0392b;margin-top:10px;"></p>
-    </div>`,
-  on_load: function () {
-    const btn = document.getElementById("share_btn");
-    const err = document.getElementById("share_err");
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      try {
-        /* requestFullscreen SYNCHRONOUSLY inside the gesture BEFORE any await —
-           transient activation is consumed by the first await (getDisplayMedia). */
-        try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen(); } catch (fe) { console.warn("requestFullscreen (pre-share) failed:", fe); }
-        const s = await startScreenRecording("session");
-        study.recording_started_at = Date.now();
-        /* Re-enter fullscreen if the share picker dismissed it (common on macOS). */
-        if (!document.fullscreenElement) { try { await document.documentElement.requestFullscreen(); } catch (fe) { console.warn("requestFullscreen (post-share re-enter) failed:", fe); } }
-        study.recording_viewport = { w: window.innerWidth, h: window.innerHeight };
-        attachStreamEndedHandler(s);
-        setTimeout(() => jsPsych.finishTrial(), 400);
-      } catch (e) {
-        btn.disabled = false;
-        err.textContent = "Screen share cancelled. Click the button again and select this study's tab from the list.";
-        console.warn("getDisplayMedia failed/cancelled:", e);
-      }
-    });
-  }
 });
 
 /* Gaze steps as named consts, mounted inside the conditional block below. */
