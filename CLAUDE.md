@@ -1,128 +1,177 @@
-# Multimodal OT Clinical Reasoning Study — Proof of Concept
+# OT Professional-Reasoning Study - Working Map (CLAUDE.md)
 
-## What this project is
-A doctoral dissertation study at Drake University (Dennis Culver). The study captures three synchronized data streams — eye gaze (WebGazer), interaction logs (jsPsych click events), and retrospective think-aloud audio (Whisper) — as OT students work through EHR-style clinical cases. Data feeds a T/ONA (Transmodal Ordered Network Analysis) comparing student reasoning patterns to a faculty expert model. An R Shiny feedback dashboard is shown to the experimental group between cases.
+> Quick operational map for this repo. Long-form context lives in the handoff docs
+> (Section 11). If this file and those docs disagree, the handoff docs win and this
+> file should be corrected.
+> Last reconciled: 2026-08-25. The prior version of this file (BioWorld interface,
+> emic/etic + Winne-Hadwin coding, OSF/DataPipe, condition/dashboard) described an
+> ABANDONED design and has been fully superseded. Do not restore it.
 
-## Theoretical framework
-- **Emic codes** (Schell's EMPR): SCIENTIFIC, NARRATIVE, PRAGMATIC — what *type* of OT reasoning
-- **Etic codes** (Winne & Hadwin SRL): TASK-DEF, GOAL-SET, ENACTING, MONITOR — what *regulatory function*
-- AOIs in the EHR carry BOTH emic and etic codes simultaneously (`logClick(aoi, emic, etic, action, detail)`)
-- MONITOR is verbal-only — no screen region maps to it
-- Primary analysis: T/ONA via `tma` R package (per-stream temporal windows: gaze ~1.5s, clicks ~4s, verbal ~9s)
-- Secondary analysis: Categorical RQA via `crqa` R package on gaze AOI dwell sequences
+## 1. What the study is
+Descriptive Quantitative Ethnography (QE) study of OT professional reasoning.
+Compares experts (OT faculty) vs near-novices (OT students) as they work clinical
+cases in a custom browser instrument. NOT experimental, NOT a pilot. No intervention
+and no feedback dashboard is shown to participants. Expert-vs-novice is the central
+inferential contrast; measurement equivalence across the two groups is load-bearing
+throughout (check every design choice against "does this vary with the group
+contrast I am testing?").
+Researcher: Dennis Culver (Drake University / Des Moines University).
+Advisor: Dr. Robyn Cooper.
 
-## File structure
-```
-proof-of-concept/
-├── index.html          # Main jsPsych experiment (BioWorld EHR interface)
-├── CLAUDE.md           # This file
-├── js/                 # jsPsych plugins, WebGazer, extension files
-├── img/                # Case images (if any)
-├── R_Source_Code/
-│   └── app.R           # R Shiny feedback dashboard
-├── dashboard/          # Compiled shinylive output (from shinylive::export)
-│   └── index.html      # Loaded in iframe by the experiment
-└── .git/
-```
+## 2. Three data streams
+- Gaze: WebGazer (webcam) -> AOI transitions. Feeds RQA only.
+- Action + content-of-action: click/selection/text events WITH content. ONA/TMA Stream 1 (coded).
+- RTA (retrospective think-aloud): Whisper transcription of replay narration. ONA/TMA Stream 2 (coded).
+Two analytic streams for the network model; a SINGLE SHARED CODEBOOK across both
+(required for the analysis to be multimodal). See decision log A-B.
 
-## Key constants in index.html
-- `OSF_EXPERIMENT_ID`: `"7to0EiezFvtE"` — DataPipe experiment ID
-- `CONFIG.WHISPER_MODEL`: `"Xenova/whisper-small.en"` — ~240MB, caches after first load
-- `CONFIG.FORCE_CONDITION`: `"dashboard"` — set to `null` for true randomization
-- `STREAM_WINDOW_MS`: gaze=1500ms, click=4000ms, verbal=9000ms (per-stream transmodal windows)
+## 3. Instrument architecture
+Single-page jsPsych tool, GitHub Pages hosted. Five panel-level AOIs, FLUID layout
+(vw/vh flexbox), NOT a fixed pixel canvas (settled; decision log D):
+  case_material, occupations, performance, synthesis, intervention
+AOI rectangles are snapshotted per session (snapshotAOIRects) because absolute px
+vary with viewport; the relative layout is fixed.
 
-## How to re-export the dashboard after editing app.R
-```r
-setwd("/path/to/proof-of-concept")   # or wherever the repo root is
-shinylive::export("R_Source_Code", "dashboard")
-```
-Then hard-refresh the experiment (Cmd+Shift+R / Ctrl+Shift+R).
+Two-record architecture (do NOT conflate):
+- state.log   = analyzed events (Option B: each carries t, t_clock, kind, enriched
+                labels + stable ids). Feeds coding / ONA / TMA.
+- state.recon = {deltas, cursor}. REPLAY-ONLY. Never analyzed, never exported.
+                deltas = 12 op types; cursor = ~8 Hz {x,y,aoi,t}.
 
-## How to serve the experiment locally (required — file:// won't work)
-```bash
-cd /path/to/proof-of-concept
-python3 -m http.server 8000
-# then open http://localhost:8000/index.html
-```
-WebGazer, getDisplayMedia, and getUserMedia all require HTTPS or localhost. GitHub Pages provides HTTPS.
+Time model: case-relative clock (first event ~0 ms). case_started_offset_ms captured
+at case start. offset_into_session = case_started_offset_ms + t. RTA utterances are
+re-anchored onto the shared task-time axis at the replay-moment shown (decision log C).
 
-## Data pipeline
-1. **jsPsych** captures gaze (`webgazer_data`), clicks (`click_events`), and triggers Whisper transcription after each RTA
-2. **`gazeToDwells`** converts raw gaze `{x,y,t}` samples → AOI dwell events `{t, aoi, code, source:"gaze"}`
-3. **`logClick(aoi, emic, etic, action, detail)`** logs panel interactions with both code dimensions
-4. After Case 1: data is written to **IndexedDB** (`OT_Simulation_DB`) for the Shiny dashboard to read
-5. After each case's RTA: **per-case OSF upload** (`CODE_case1_timestamp.json`, partial:true)
-6. At experiment end: **consolidated OSF upload** (`CODE_full_timestamp.json`, partial:false)
-7. All uploads via **DataPipe** → OSF. Audio and video never leave the participant's machine.
+## 4. Cases
+- Florence = Case 1 (post L total shoulder arthroplasty; RA). ANALYZED.
+- Yvonne   = Case 2 (post L radical mastectomy; SLE). ANALYZED.
+- Patricia = Practice only (zone II flexor tendon repair). NOT analyzed; norming.
+Cases adapted from an AOTA Press textbook (Hutchinson, first author, 2022).
+Case order in code: PATRICIA -> FLORENCE -> YVONNE (CASES_IN_ORDER).
 
-## Current experiment flow
-1. Browser gate (Chrome/Edge desktop only)
-2. Self-generated longitudinal code (or ?sub_id= from URL)
-3. Microphone permission
-4. WebGazer init + 13-point calibration (3-attempt escalating: 130px/80%, 165px/70%, 200px/60%; proceeds-and-flags, never terminates)
-5. Whisper model download (whisper-small.en, shown as loading screen)
-6. SR instruction screen (stimulated recall explanation)
-7. Practice trial (simplified BioWorld scheduling scenario, non-clinical)
-8. Practice RTA + debrief
-9. **Case 1** (Evelyn Soto — stroke, inpatient rehab):
-   - startRec screen: "Step 1: Go Fullscreen" button → requestFullscreen() → fullscreenchange → "Step 2: Start Recording" button → getDisplayMedia()
-   - BioWorld EHR case (hypothesis manager, belief meter, evidence table, assessments, library, intervention plan)
-   - Case 1 RTA (replay with letterbox-aware gaze overlay)
-   - Per-case OSF upload (background)
-10. IndexedDB handoff (Case 1 data → dashboard)
-11. Mid-session recalibration (1–2 attempts, lenient 200px threshold)
-12. Dashboard (experimental group only, iframe → ./dashboard/index.html)
-13. **Case 2** (Marcus Tran — C6 SCI, inpatient rehab)
-14. Case 2 RTA
-15. Per-case OSF upload (background)
-16. Final consolidated OSF upload
+## 5. Reasoning task (what a participant does per case)
+Name occupations -> highlight case text and classify each selection as a Support or
+Barrier (name the mechanism, optional OTPF-4 aspect tag, link to an occupation) ->
+Synthesis (clinical impression with captured revision trajectory; desired outcomes,
+optional OTPF-4 outcome-type tag) -> Intervention plan (select own barriers, justify
+prioritization; per barrier: approach [OTPF-4 Table 13], method, type [Table 12],
+grading; one measurable occupation-based long-term goal; immediate-attention note).
+NOTE: OTPF-4 tags are data-capture affordances, NOT the analytic codebook (see 8).
 
-## BioWorld cases
-- **BW_CASES[1]**: Evelyn Soto, stroke (L MCA), inpatient rehab, right hemiparesis
-- **BW_CASES[2]**: Marcus Tran, C6 SCI incomplete (AIS D), inpatient rehab
-- Each case has: Problem tab, Chart tab (assessments with Send to Evidence), Library tab, Plan tab
-- AOIs: bw_problem, bw_chart, bw_library, bw_plan, bw_hyp (hypothesis), bw_belief (belief meter), bw_ev (evidence)
+## 6. Build status (chunks)
+- Chunk 1 (index_chunk1.html): capability gate -> browser check -> permissions ->
+  FULLSCREEN (before calibration; viewport fix) -> chinrest -> 13-pt calibration/
+  validation. Gaze CONDITIONAL on fullscreen height >= 660 px (GAZE_MIN_HEIGHT);
+  below it the session runs no-gaze. Browser gate is CAPABILITY-BASED (any modern
+  desktop browser - Chrome/Edge/Firefox/Safari; desktop-only, requires mic + WASM +
+  fullscreen); browser-family exclusion removed. NO screen recording (replay is reconstructed
+  from state.recon). Session clock anchor = study.session_started_at_ms, set at the
+  fullscreen step; case_started_offset_ms and RTA re-anchoring compute from it. BUILT.
+- Chunk 2 (index_chunk2.html): Chunk 1 scaffolding + reasoning engine mounted as
+  Option-B wrapper trials (Practice -> Case 1 -> Case 2). CURRENT INTEGRATION POINT.
+  BUILT. (Duplicates Chunk 1's first ~720 lines; chunk1 is subsumed.)
+- Chunk 3 (RTA reconstruction replay): engine PROVEN (js/replay_engine.js +
+  OT_Replay_Harness_chunk3.html; Playwright-verified reconstruction). Replay rebuilt
+  from state.recon ALONE - no screen recording. Narration re-anchor capture in
+  js/reanchor.js (headless-tested). Mic + Whisper capture and re-anchoring are wired
+  into the integrated build (below). NEEDS live verification.
+- Chunk 4 (one-file save/export): built into the integrated build - event_log +
+  descriptive state + raw gaze {x,y,t} + metadata + re-anchored RTA per case ->
+  in-browser JSON download; Qualtrics upload URL is a placeholder. recon NOT exported.
+- INTEGRATED BUILD: index_full.html = Chunks 1-4 in one file (opening/calibration ->
+  Practice(Patricia) -> Case 1(Florence) -> Case 2(Yvonne), each task followed by its
+  RTA replay -> export). Assembled from chunk2 scaffolding + the Option-B engine +
+  reanchor + a new integration/replay/export layer. Syntax-verified only; jsPsych/
+  WebGazer/Whisper/mic UNTESTED in sandbox - live verification in Dennis's env pending.
+  Once verified, promote index_full.html -> index.html for deploy.
 
-## AOI → code map (emic / etic)
-| AOI | Emic | Etic |
-|-----|------|------|
-| bw_problem | NARRATIVE | TASK-DEF |
-| bw_chart | SCIENTIFIC | TASK-DEF |
-| bw_library | SCIENTIFIC | GOAL-SET |
-| bw_hyp | SCIENTIFIC | GOAL-SET |
-| bw_belief | SCIENTIFIC | MONITOR |
-| bw_ev | NARRATIVE | ENACTING |
-| bw_plan | PRAGMATIC | ENACTING |
+## 7. Data pipeline (target)
+Browser (jsPsych) -> Firebase Firestore (transient buffer, purged) -> institutional
+OneDrive/SharePoint (master custody) -> Qualtrics (Drake-governed file upload) ->
+OSF (archival/preregistration only, not a live sink).
+Export carries: event_log + descriptive state + raw gaze {x,y,t} + session/case
+metadata (ids, AOI rects, gaze_tracked, case_started_offset_ms, viewport).
+state.recon is NEVER exported. NO screen recording and no video anywhere -- the RTA replay is reconstructed from state.recon.
+Analysis: R (crqa for RQA; rENA/tma for ONA/TMA); nCoder (app.n-coder.org) for the
+regex classifier + IRR.
 
-## R Shiny dashboard (app.R)
-- Reads Case 1 data from IndexedDB via JavaScript → Shiny.setInputValue
-- Computes a real per-stream transmodal co-occurrence network from the student's actual data
-- Compares to a **hardcoded pretend faculty model** (proof-of-concept only)
-- Five visuals: centroid quadrant plot, plain-language gaps list, radar chart, adjacency heatmap, tiered connection table
-- Uses: shiny, bslib, jsonlite, dplyr, ggplot2, S7 (webR/ggplot2 bug fix — do not remove)
-- Does NOT use: plotly, echarts4r, reactable (unreliable under webR/shinylive)
-- Do NOT use `font_google()` in bs_theme — network call fails under shinylive
+## 8. Codebook / analysis framing (IMPORTANT)
+- Two-level abductive codebook. Schell's professional-reasoning tracks (Fleming/
+  Mattingly) are the ORGANIZING THEORETICAL FRAME, not segment-level codes. Concrete
+  observable codes are generated abductively from pooled faculty+student data; data
+  holds veto power. Coders assign segment-level codes, not category labels.
+- DO NOT reintroduce: emic/etic framing, Winne & Hadwin SRL phases, or
+  TASK-DEF / GOAL-SET / ENACTING / ADAPT. (Artifacts of the abandoned prior design.)
+- RQ framework: Structure (directed network comparison), Differences (mixed ANOVA /
+  t-tests), Consistency (ICCs), Relational (cross-stream DET-X correlations).
+- Density gate (open): explanation-stream density is a joint property of data +
+  codebook grain; compute after the codebook exists; the student (sparser) group
+  gates the comparison. If too thin: coarsen codebook or invoke pre-approved collapse
+  to multimodal ONA.
+- Fusion caution (verified): naive multimodal ONA can UNDERPERFORM unimodal; the ONA
+  fallback is not "safe."
+- SVD vs means rotation: FLAGGED for Dr. Cooper (affects relational cross-stream RQs).
 
-## Known issues / things still to do
-- [ ] Confirm OSF data is actually landing (DataPipe experiment must have data collection enabled + valid OSF token)
-- [ ] Run grounding_tma_test.R Layer B (rENA model) — needs a run-and-fix pass
-- [ ] Layer C of grounding test (tma package) — requires `ls("package:tma")` + `?tma::accumulate` output to finalize
-- [ ] Replace pretend faculty model in app.R with real ONA output once faculty data is collected
-- [ ] Validate Whisper transcription accuracy on real OT terminology (tenodesis, hemiparesis, Dycem, etc.)
-- [ ] Save `_gaze_raw` to OSF (currently deleted after RTA) — needed for quality control and RQA
-- [ ] Block randomization instead of coin-flip (DataPipe supports balanced assignment)
-- [ ] Pilot on lowest-spec machine expected in the study
+## 9. Open a-priori decisions (must be justified, not defaulted)
+- Silence-net threshold (currently 15000 ms placeholder; van Gog used 5 s; TA
+  convention ~15 s). Needs a paradigm-transfer justification.
+- AOI adequacy: COMPUTED at capture in index_full.html (captureAOIGeometry in
+  snapshotAOIRects path) - per-panel + worst-case min = panel min-dimension /
+  mean_offset_px, additive, px preserved, null when gaze off. aoi_rects_start_norm
+  also stored (rect / task_viewport, diagnostic). Mid-case fullscreen/resize guard
+  logs viewport_events + sets viewport_changed_after_calibration. OPEN a-priori
+  decision: the adequacy THRESHOLD (>=1 / >=1.5 / >=2) - only the ratio is stored,
+  the pass/fail cutoff is chosen in analysis.
+- Density gate value; SVD vs means (Cooper).
+Citation hygiene: confirm Strohmaier 2020 byline/pages; resolve which Jennett paper
+is Sinnott ref [29]; add verified sources to Zotero Methods only on approval.
 
-## Key citations
-- T/ONA: Tan, Ruis, Marquart, Cai, Knowles & Shaffer (2023, ICQE, DOI: 10.1007/978-3-031-31726-2_8)
-- Transmodal analysis: Shaffer, Wang & Ruis (2025, *Journal of Learning Analytics*, DOI: 10.18608/jla.2025.8423)
-- WebGazer + jsPsych validation: Yang & Krajbich (2021, *Judgment and Decision Making*, Vol 16 No 6)
-- Calibration protocol: Yang & Krajbich (2021) — 3-attempt escalating, 130/165/200px
-- AOI methodology: Anderson et al. (2013, *Behavior Research Methods*, DOI: 10.3758/s13428-012-0299-5)
-- RQA on gaze: Coco & Dale (2014, *Frontiers in Psychology*, DOI: 10.3389/fpsyg.2014.00510)
-- Stimulated recall: Gass & Mackey (2017, 2nd ed., Routledge); Lyle (2003, *BERJ*, DOI: 10.1080/0141192032000137349)
-- SRL framework: Winne & Hadwin (1998); Greene & Azevedo (2007, *Review of Educational Research*)
-- OT clinical reasoning: Schell's Ecological Model of Professional Reasoning (EMPR)
+## 10. Key files and constants
+- index_full.html  = INTEGRATED build (Chunks 1-4); test this. Promote to index.html when verified.
+- index_chunk2.html = prior integration point (opening + engine, no replay/export).
+- index_chunk1.html = opening/consent/calibration (subsumed by chunk2).
+- index.html        = OLD BioWorld build (superseded). Still the GitHub Pages root;
+  leave until index_full.html is verified, then overwrite it (promotion).
+- _archive/          = abandoned experimental-dashboard artifacts moved out of the
+  working tree: _archive/dashboard/ (compiled shinylive) and _archive/R_Source_Code/
+  app.R (the between-cases R Shiny feedback dashboard). Not part of the current design.
+- js/replay_engine.js = Chunk 3 reconstruction fold (reconstructStateAt, applyDelta,
+  cursorAt, replayKeyframes). Deterministic, Node-testable.
+- js/reanchor.js    = Chunk 3 RTA re-anchoring capture (narration {text, playT} +
+  re-anchor transform onto shared task-time axis). Node-testable.
+- OT_Replay_Harness_chunk3.html = standalone replay test rig (engine + controller +
+  real interface). Inject a recon record via window.__RECON__.
+- OT_Reasoning_Prototype_v2.html = ENGINE SOURCE OF TRUTH (edit here, re-extract into
+  chunk2; do NOT hand-edit chunk2's embedded engine). [not currently in this repo]
+Constants: WHISPER_MODEL = Xenova/whisper-small.en; GAZE_MIN_HEIGHT = 660;
+SCREEN_FPS = 15; RTA_MAX_SECONDS = 240; QUALTRICS_UPLOAD_URL = placeholder.
 
-## Advisor
-Dennis's advisor is a decision point for unresolved theoretical framework questions. The emic-etic framing (Schell as emic, Winne & Hadwin as etic) was confirmed as the study's original theoretical contribution.
+## 11. Handoff docs (long-form source of truth)
+In the connected "files for cowork" folder / OT_Study_Cowork_Handoff.zip:
+- OT_Study_Project_State_README.md   (orientation - read first)
+- OT_Study_Decision_Log_Session_Export.md (settled decisions, tagged)
+- OT_Study_Sources_Reference.md      (verified citations, Zotero keys)
+- OT_Study_CrossCase_Parity_Checklist.md (equivalence items for OT case-review)
+
+## 12. Environment / working constraints
+- jsPsych + WebGazer + Whisper + mic CANNOT run in the cowork sandbox. Only the
+  prototype (OT_Reasoning_Prototype_v2.html) is Playwright-testable; full stack is
+  tested in Dennis's GitHub Pages environment.
+- Zotero MCP works only when Dennis's Zotero desktop is running (local API port
+  23119). Library ID 1. Collections: Methods PUHACP8V, Lit Review 2D2QDB8H,
+  OT Pro Reason KVIC2B8W.
+- Engine change propagation: edit prototype (source of truth) -> re-extract into
+  chunk2. Do not hand-edit chunk2's embedded engine.
+- Data-text hygiene: no em-dashes / non-ASCII in participant-facing or data text;
+  use "study", not "experiment".
+
+## 13. Standing constraints (how to work with Dennis)
+- No unilateral research-design decisions. Surface explicit forks with a defended
+  recommendation; get approval before proceeding.
+- Ground methods claims in literature, not memory. Verify DOIs against primary
+  records. Never fabricate. Never add to Zotero without explicit approval.
+- Dennis writes ALL dissertation prose himself. Do not draft dissertation sections.
+  Assistance = pressure-testing, methods explanation, source verification, error
+  catching, stats/ONA/RQA/TMA mechanics.
+- Be direct and brutally honest; no sugar-coating, no padding. Encourage only when
+  genuinely warranted. Dense, technically precise responses.
