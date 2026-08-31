@@ -10,37 +10,12 @@
   <script src="js/jspsych.js"></script>
   <link href="js/jspsych.css" rel="stylesheet" type="text/css" />
   <script src="js/plugin-html-keyboard-response.js"></script>
-  <script src="js/plugin-survey-text.js"></script>
-  <script src="js/plugin-preload.js"></script>
-  <script src="js/plugin-call-function.js"></script>
 
-  <script src="js/webgazer.js"></script>
-  <script src="js/extension-webgazer.js"></script>
-  <script src="js/plugin-webgazer-init-camera.js"></script>
-  <script src="js/plugin-webgazer-init-calibrate.js"></script>
-  <script src="js/plugin-webgazer-validate.js"></script>
   <script src="js/plugin-initialize-microphone.js"></script>
-  <script src="js/plugin-virtual-chinrest.js"></script>
   <script src="js/plugin-browser-check.js"></script>
 
   <style>
-    /* Calibration/validation dot styling (from original) */
-    .jspsych-webgazer-calibrate-point,.jspsych-webgazer-validate-point,
-    .calibration-point,.validation-point,
-    div[id^="calibration-point"],div[id^="validation-point"],#webgazerGazeDot { z-index: 2147483000 !important; }
     body { font-family: 'Segoe UI', Arial, sans-serif; }
-    /* Session-level stream-ended banner (never auto-advances) */
-    #session_stream_warn {
-      position: fixed; inset: 0; z-index: 2147483600; background: rgba(20,30,40,.94);
-      color: #fff; display: flex; align-items: center; justify-content: center; text-align: left;
-    }
-    #session_stream_warn .box { max-width: 620px; padding: 0 24px; }
-    #session_stream_warn h2 { color: #ffb4a2; margin: 0 0 14px; }
-    #session_stream_warn p { font-size: 16px; line-height: 1.7; }
-    #session_stream_warn button {
-      margin-top: 18px; padding: 12px 26px; background: #1e8e4e; color: #fff; border: none;
-      border-radius: 6px; font-weight: 700; font-size: 15px; cursor: pointer;
-    }
   
   /* ============== OT REASONING ENGINE STYLES (verified prototype) ============== */
   :root{
@@ -336,7 +311,7 @@
       <div style="max-width:580px;margin:12% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;padding:0 20px;">
         <h2 style="color:#c0392b;">Unsupported Browser</h2>
         <p style="font-size:17px;line-height:1.7;">This study runs in an up-to-date <strong>desktop web browser</strong> such as Chrome, Edge, Firefox, or Safari.</p>
-        <p style="font-size:15px;color:#566673;">The study uses local speech processing and eye tracking that are not supported in ${reason}. Please reopen this link in a supported browser on a desktop or laptop computer.</p>
+        <p style="font-size:15px;color:#566673;">The study uses local speech processing that is not supported in ${reason}. Please reopen this link in a supported browser on a desktop or laptop computer.</p>
       </div>`;
     throw new Error("Unsupported browser — study halted (" + (isMobile ? "mobile" : missing.join("; ") || "ua") + ").");
   }
@@ -347,13 +322,6 @@
    ===================================================================== */
 const CONFIG = {
   WHISPER_MODEL: "Xenova/whisper-small.en",
-  SCREEN_FPS: 15,
-  RTA_MAX_SECONDS: 240,
-  /* Fullscreen viewport height at/above which gaze tracking is collected.
-     Below this, calibration is skipped and the session runs no-gaze (all
-     other data streams unaffected). Measured against AOI separability vs.
-     the WebGazer error envelope; see the methods chapter. */
-  GAZE_MIN_HEIGHT: 660,
   /* Qualtrics survey the participant returns to (to upload the session file).
      Filled in when the save chunk is built. */
   QUALTRICS_UPLOAD_URL: "REPLACE_WITH_QUALTRICS_UPLOAD_URL"
@@ -361,13 +329,6 @@ const CONFIG = {
 
 const study = {
   sub_id_from_url: new URLSearchParams(location.search).get("sub_id"),
-  calibration: {},
-  calibration_viewport: null,
-  fullscreen_viewport: null,       // viewport measured right after programmatic fullscreen
-  gaze_enabled: true,              // set false when fullscreen height < GAZE_MIN_HEIGHT
-  gaze_skip_reason: null,
-  gaze_threshold_used: null,       // the height cutoff this session was judged against (self-documenting)
-  screen_geometry: {},
   browser_check: null,
   permissions: {},
   session_started_at_ms: null,     // ms epoch session clock anchor (set at fullscreen); RTA/case-offset zero
@@ -377,27 +338,22 @@ const study = {
   started_at: new Date().toISOString()
 };
 /* =====================================================================
-   PERMISSION GATE (from original, unchanged) — converts an unanswered
-   getUserMedia prompt into visible, actionable text via a 30s timeout,
-   asks from a user gesture, and records granted/no_response/error/abandoned.
+   MICROPHONE PERMISSION GATE - converts an unanswered getUserMedia prompt
+   into visible, actionable text via a 30s timeout, asks from a user gesture,
+   and records granted/no_response/error/abandoned.
    ===================================================================== */
 function permissionGate(kind) {
-  const isMic = (kind === "microphone");
-  const constraint = isMic ? { audio: true } : { video: true };
-  const why = isMic
-    ? "Your microphone is used only for the think-aloud after each case. The audio is turned into text on your own computer. The recording itself is never uploaded, and only the text is kept."
-    : "Your webcam is used only to estimate where you are looking on screen. This happens entirely on your own computer. No video is recorded or uploaded.";
   return {
     type: jsPsychHtmlKeyboardResponse,
     choices: "NO_KEYS",
     data: { trial_tag: "permission_gate_" + kind },
     stimulus: `<div style="max-width:560px;margin:8% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
-        <h3 style="color:#1565c0;margin:0 0 12px;">${isMic ? "Microphone access" : "Webcam access"}</h3>
-        <p style="font-size:15px;line-height:1.7;margin:0 0 20px;">${why}</p>
+        <h3 style="color:#1565c0;margin:0 0 12px;">Microphone access</h3>
+        <p style="font-size:15px;line-height:1.7;margin:0 0 20px;">Your microphone is used only for the think-aloud after each case. The audio is turned into text on your own computer. The recording itself is never uploaded, and only the text is kept.</p>
         <p id="pg_msg" style="font-size:14px;line-height:1.7;color:#44545f;margin:0 0 20px;">
           Click the button below. Your browser will ask for permission. Choose <strong>Allow</strong>.</p>
         <button id="pg_btn" style="background:#1565c0;color:#fff;border:none;border-radius:6px;padding:11px 22px;font-size:15px;cursor:pointer;font-family:inherit;">
-          Enable ${isMic ? "microphone" : "webcam"}</button>
+          Enable microphone</button>
         <div id="pg_exit_wrap" style="display:none;margin-top:22px;">
           <button id="pg_exit" style="background:transparent;color:#7a8894;border:none;font-size:13px;cursor:pointer;text-decoration:underline;font-family:inherit;">
             I'm unable to enable this. End the session</button>
@@ -414,16 +370,16 @@ function permissionGate(kind) {
       }
       btn.addEventListener("click", async () => {
         if (settled) return;
-        attempts++; btn.disabled = true; btn.style.opacity = ".6"; btn.textContent = "Waiting for your response…";
-        msg.innerHTML = `Look for the permission prompt near your browser's address bar and click <strong>Allow</strong>. If you don't see it, check for a small ${isMic ? "microphone" : "camera"} icon at the right-hand end of the address bar.`;
+        attempts++; btn.disabled = true; btn.style.opacity = ".6"; btn.textContent = "Waiting for your response...";
+        msg.innerHTML = `Look for the permission prompt near your browser's address bar and click <strong>Allow</strong>. If you don't see it, check for a small microphone icon at the right-hand end of the address bar.`;
         let timer;
         const timeout = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("PENDING_TIMEOUT")), 30000); });
         try {
-          const stream = await Promise.race([ navigator.mediaDevices.getUserMedia(constraint), timeout ]);
+          const stream = await Promise.race([ navigator.mediaDevices.getUserMedia({ audio: true }), timeout ]);
           clearTimeout(timer);
           stream.getTracks().forEach(t => t.stop());   // release; the plugin reopens it
           settled = true; record("granted");
-          msg.innerHTML = `<span style="color:#16692f;">Access granted. Continuing…</span>`;
+          msg.innerHTML = `<span style="color:#16692f;">Access granted. Continuing...</span>`;
           btn.style.display = "none";
           setTimeout(() => jsPsych.finishTrial(), 600);
         } catch (e) {
@@ -431,16 +387,15 @@ function permissionGate(kind) {
           const pending = (e && e.message === "PENDING_TIMEOUT");
           record(pending ? "no_response" : "error", e && e.name ? e.name : String(e));
           btn.disabled = false; btn.style.opacity = "1"; btn.textContent = "Try again";
-          const devWord = isMic ? "Microphone" : "Camera";
           const osHelp = `<br><br><strong>If no prompt appeared at all</strong>, your browser may not have permission from your operating system:<br>
-               &bull; <strong>macOS</strong>: System Settings &rsaquo; Privacy &amp; Security &rsaquo; ${devWord}, and switch on your browser.<br>
-               &bull; <strong>Windows</strong>: Settings &rsaquo; Privacy &amp; security &rsaquo; ${devWord}, and allow desktop apps.<br>
+               &bull; <strong>macOS</strong>: System Settings &rsaquo; Privacy &amp; Security &rsaquo; Microphone, and switch on your browser.<br>
+               &bull; <strong>Windows</strong>: Settings &rsaquo; Privacy &amp; security &rsaquo; Microphone, and allow desktop apps.<br>
                You may need to restart the browser afterwards.`;
           msg.innerHTML = pending
-            ? `<strong style="color:#c0392b;">No response received.</strong> If a prompt appeared, choose <strong>Allow</strong>. If it is hidden, click the padlock icon at the left of the address bar and set <strong>${devWord}</strong> to <strong>Allow</strong>.${osHelp}`
+            ? `<strong style="color:#c0392b;">No response received.</strong> If a prompt appeared, choose <strong>Allow</strong>. If it is hidden, click the padlock icon at the left of the address bar and set <strong>Microphone</strong> to <strong>Allow</strong>.${osHelp}`
             : (e && e.name === "NotFoundError")
-              ? `<strong style="color:#c0392b;">No ${isMic ? "microphone" : "camera"} found.</strong> Your browser reports no device of this type is connected. Connect one and click Try again.`
-              : `<strong style="color:#c0392b;">Access was blocked.</strong> Click the padlock icon at the left of the address bar, set <strong>${devWord}</strong> to <strong>Allow</strong>, then click Try again.${osHelp}`;
+              ? `<strong style="color:#c0392b;">No microphone found.</strong> Your browser reports no microphone is connected. Connect one and click Try again.`
+              : `<strong style="color:#c0392b;">Access was blocked.</strong> Click the padlock icon at the left of the address bar, set <strong>Microphone</strong> to <strong>Allow</strong>, then click Try again.${osHelp}`;
           if (attempts >= 2 && exitWrap) exitWrap.style.display = "block";
         }
       });
@@ -449,7 +404,7 @@ function permissionGate(kind) {
         settled = true; record("abandoned");
         jsPsych.endExperiment(`<div style="max-width:560px;margin:10% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
              <h3 style="color:#1565c0;">Session ended</h3>
-             <p style="font-size:15px;line-height:1.7;">This study can't run without ${isMic ? "microphone" : "webcam"} access. Nothing has been recorded. Please email
+             <p style="font-size:15px;line-height:1.7;">This study can't run without microphone access. Nothing has been recorded. Please email
              <a href="mailto:dennis.culver@drake.edu" style="color:#1565c0;">dennis.culver@drake.edu</a> if you'd like to take part on a different device.</p>
            </div>`);
       });
@@ -458,22 +413,9 @@ function permissionGate(kind) {
 }
 
 /* =====================================================================
-   GAZE SCORING HELPER (from original) — offset fallback when
-   percent_in_roi is null.
-   ===================================================================== */
-function gazeQualityFromOffsets(offsets, roiRadius) {
-  if (!offsets || !offsets.length) return { pct: null, quality: "unknown" };
-  const mean = offsets.reduce((s, o) => s + (o.r || 0), 0) / offsets.length;
-  const syntheticPct = Math.max(0, Math.min(100, Math.round((1 - mean / roiRadius) * 100)));
-  const quality = syntheticPct >= 75 ? "good" : syntheticPct >= 55 ? "acceptable" : "poor";
-  return { pct: syntheticPct, quality };
-}
-
-/* =====================================================================
-   jsPsych INIT (WebGazer extension attached)
+   jsPsych INIT
    ===================================================================== */
 var jsPsych = initJsPsych({
-  extensions: [{ type: jsPsychExtensionWebgazer }],
   on_finish: function () { /* terminal screen is the Chunk 4 export trial */ }
 });
 
@@ -484,15 +426,14 @@ var timeline = [];
 
 /* 2 — ★ FULLSCREEN (Option 3), on its own fresh click AFTER share. Because no
    browser dialog follows, fullscreen HOLDS. We then measure the fullscreen
-   viewport (the definitive task viewport) and decide the gaze branch on it.
-   Calibration runs after this, so the calibration viewport == task viewport. */
+   viewport (the task viewport) and set the session clock anchor. */
 timeline.push({
   type: jsPsychHtmlKeyboardResponse,
   choices: "NO_KEYS",
   data: { trial_tag: "enter_fullscreen" },
   stimulus: `<div style="max-width:640px;margin:9% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
       <h2 style="color:#1565c0;">Continue in full screen</h2>
-      <p style="font-size:17px;line-height:1.7;">The study runs in full screen so the whole interface fits and the eye tracking stays accurate. Click the button to continue. Stay in full screen for the rest of the session.</p>
+      <p style="font-size:17px;line-height:1.7;">The study runs in full screen so the whole interface fits. Click the button to continue. Stay in full screen for the rest of the session.</p>
       <button id="fs_btn" style="margin-top:10px;padding:14px 30px;background:#1565c0;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">Continue in full screen</button>
       <p id="fs_err" style="color:#c0392b;margin-top:10px;"></p>
     </div>`,
@@ -505,11 +446,7 @@ timeline.push({
       /* let the fullscreen resize settle before measuring the task viewport */
       setTimeout(() => {
         const vh = window.innerHeight, vw = window.innerWidth;
-        study.fullscreen_viewport = { w: vw, h: vh };
         study.task_viewport = { w: vw, h: vh };   // definitive task viewport
-        study.gaze_threshold_used = CONFIG.GAZE_MIN_HEIGHT;
-        study.gaze_enabled = vh >= CONFIG.GAZE_MIN_HEIGHT;
-        study.gaze_skip_reason = study.gaze_enabled ? null : "viewport_height_below_threshold";
         jsPsych.finishTrial();
       }, 350);
     });
@@ -517,9 +454,8 @@ timeline.push({
 });
 
 /* 2 — Browser-check: WIDTH is a hard gate (below 1000 the columns collide);
-   HEIGHT no longer rejects (minimum_height 0). Short screens proceed and run
-   no-gaze instead of being turned away. Runs AFTER fullscreen, so it measures
-   the real task viewport. Custom message wording uses "study", not the
+   HEIGHT no longer rejects (minimum_height 0). Short screens proceed rather than being turned away. Runs after fullscreen,
+   so it measures the real task viewport. Custom message wording uses "study", not the
    plugin default. */
 timeline.push({
   type: jsPsychBrowserCheck,
@@ -538,137 +474,11 @@ timeline.push({
   }
 });
 
-/* 3 — Microphone permission + init (ALWAYS — the RTA needs audio regardless
-   of the gaze branch). Camera is requested later, only in the gaze branch. */
+/* 3 — Microphone permission + init (ALWAYS — the RTA needs audio). */
 timeline.push(permissionGate("microphone"));
 timeline.push({
   type: jsPsychInitializeMicrophone,
   data: { trial_tag: "init_microphone" }
-});
-
-/* Gaze steps as named consts, mounted inside the conditional block below. */
-
-/* Virtual chinrest (from original, unchanged). Measures px2deg for
-   degrees-of-visual-angle gaze error. resize_units:"none" — measure only,
-   never rescale (would move AOI coordinates). Runs at the shared viewport. */
-const GAZE_CHINREST = {
-  type: jsPsychVirtualChinrest,
-  blindspot_reps: 5,
-  resize_units: "none",
-  item_path: null,
-  adjustment_prompt: `<div style="max-width:560px;margin:0 auto;color:#16263d;font-family:'Segoe UI',Arial,sans-serif;text-align:left;">
-      <p style="font-size:16px;line-height:1.6;">Hold a <strong>credit card, driver's license, or any card of that size</strong> up to the screen. Click and drag the lower-right corner of the image until it is exactly the same size as your card.</p>
-      <p style="font-size:14px;color:#444;">No card handy? A standard card is 85.6&nbsp;mm wide (3.37&nbsp;inches). You can measure with a ruler instead.</p>
-    </div>`,
-  blindspot_prompt: `<div style="max-width:560px;margin:0 auto;color:#16263d;font-family:'Segoe UI',Arial,sans-serif;text-align:left;">
-      <p style="font-size:16px;line-height:1.6;">Your distance from the screen will now be measured quickly.</p>
-      <ul style="font-size:15px;line-height:1.9;padding-left:20px;">
-        <li>Put your <strong>left hand on the space bar</strong>.</li>
-        <li>Cover your <strong>right eye</strong> with your right hand.</li>
-        <li>With your left eye, <strong>focus on the black square</strong> and keep focusing on it.</li>
-        <li>A red ball will move left and disappear. Press the <strong>space bar the moment it disappears</strong>.</li>
-      </ul>
-      <p style="font-size:15px;">Press the space bar when you are ready to begin.</p>
-    </div>`,
-  on_finish: function (data) {
-    study.screen_geometry = {
-      px2deg: data.px2deg != null ? data.px2deg : null,
-      px2mm:  data.px2mm  != null ? data.px2mm  : null,
-      view_dist_mm: data.view_dist_mm != null ? data.view_dist_mm : null,
-      win_width_deg: data.win_width_deg, win_height_deg: data.win_height_deg,
-      scale_factor: data.scale_factor,
-      measured: data.px2deg != null
-    };
-  }
-};
-
-/* Calibration → stabilise → validate (from original, unchanged).
-   calibration_viewport is captured here and now MATCHES the task viewport,
-   because share+fullscreen already happened above. */
-var calib_points = [[10,10],[50,10],[90,10],[10,50],[50,50],[90,50],[10,90],[50,90],[90,90],[30,30],[70,30],[30,70],[70,70]];
-
-var calibration_instructions = {
-  type: jsPsychHtmlKeyboardResponse,
-  stimulus: `<div style="max-width:620px;margin:10% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
-      <h2 style="color:#1565c0;margin-bottom:20px;">Eye-Tracking Calibration</h2>
-      <p style="font-size:17px;margin-bottom:16px;">A series of yellow dots will appear one at a time around the screen.</p>
-      <div style="background:#d3e4f5;border-left:4px solid #1565c0;padding:14px 18px;border-radius:6px;margin-bottom:16px;">
-        <p style="font-size:17px;margin:0;"><strong>Click each dot</strong> as it appears. Look directly at it before clicking.</p>
-      </div>
-      <p style="font-size:15px;color:#44545f;margin-bottom:8px;">Tips for best accuracy:</p>
-      <ul style="font-size:15px;color:#44545f;line-height:1.8;padding-left:20px;margin-bottom:24px;">
-        <li>Sit approximately 50cm (20 inches) from your screen</li>
-        <li>Keep your head still, move only your eyes</li>
-        <li>Ensure your face is evenly lit from the front</li>
-        <li>Maximize your screen brightness</li>
-      </ul>
-      <p style="color:#44545f;">Press any key to begin calibration.</p>
-    </div>`
-};
-var calibration_grid = {
-  type: jsPsychWebgazerCalibrate, calibration_mode: "click", calibration_points: calib_points, point_size: 26,
-  on_finish: function () { study.calibration_viewport = { w: window.innerWidth, h: window.innerHeight }; }
-};
-var calibration_stabilise = {
-  type: jsPsychHtmlKeyboardResponse, choices: "NO_KEYS", trial_duration: 1500,
-  stimulus: `<div style="max-width:620px;margin:10% auto;text-align:center;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
-      <p style="font-size:17px;color:#1565c0;">Calibrating…</p></div>`
-};
-var validation_instructions = {
-  type: jsPsychHtmlKeyboardResponse,
-  stimulus: `<div style="max-width:620px;margin:10% auto;text-align:center;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
-      <h2 style="color:#1565c0;margin-bottom:20px;">Testing Accuracy</h2>
-      <p style="font-size:17px;">Another set of dots will appear. This time:</p>
-      <div style="background:#d3e4f5;border-left:4px solid #16692f;padding:14px 18px;border-radius:6px;margin:20px auto;max-width:420px;text-align:left;">
-        <p style="font-size:17px;margin:0;"><strong>Do not click.</strong> Just <strong>look</strong> directly at each dot until it disappears.</p>
-      </div>
-      <p style="color:#44545f;margin-top:24px;">Press any key to begin.</p>
-    </div>`
-};
-const GAZE_CALIBRATION = {
-  timeline: [ calibration_instructions, calibration_grid, calibration_stabilise, validation_instructions, {
-    type: jsPsychWebgazerValidate,
-    validation_points: calib_points,
-    roi_radius: 150,
-    time_limit: 2200,
-    show_validation_data: false,
-    on_finish: function (data) {
-      const pct = data.percent_in_roi;
-      const offsets = data.average_offset;
-      const scored = (pct != null)
-        ? { pct: Math.round(pct), quality: pct >= 75 ? "good" : pct >= 55 ? "acceptable" : "poor" }
-        : gazeQualityFromOffsets(offsets, 150);
-      const px2deg = (study.screen_geometry && study.screen_geometry.px2deg) || null;
-      let meanOffsetPx = null, meanOffsetDeg = null;
-      if (offsets && offsets.length) {
-        meanOffsetPx = offsets.reduce((s, o) => s + (o.r || 0), 0) / offsets.length;
-        if (px2deg != null && px2deg > 0) meanOffsetDeg = +(meanOffsetPx / px2deg).toFixed(3);
-      }
-      study.calibration = {
-        calibration_pct: scored.pct, calibration_pct_raw: pct,
-        average_offset: offsets, roi_radius_used: 150,
-        gaze_quality: scored.quality,
-        score_method: pct != null ? "percent_in_roi" : "offset_fallback",
-        mean_offset_px: meanOffsetPx != null ? Math.round(meanOffsetPx) : null,
-        mean_offset_deg: meanOffsetDeg, px2deg_used: px2deg,
-        view_dist_mm: (study.screen_geometry && study.screen_geometry.view_dist_mm) || null
-      };
-    }
-  }]
-};
-
-/* 5 — ★ GAZE BRANCH (conditional). Camera permission, camera init, chinrest,
-   and calibration/validation run ONLY when the fullscreen viewport cleared
-   GAZE_MIN_HEIGHT. Below it, this whole block is skipped: no webcam is even
-   requested, and the session proceeds no-gaze. All other streams unaffected. */
-timeline.push({
-  conditional_function: function () { return study.gaze_enabled; },
-  timeline: [
-    permissionGate("camera"),
-    { type: jsPsychWebgazerInitCamera, data: { trial_tag: "init_camera" } },
-    GAZE_CHINREST,
-    GAZE_CALIBRATION
-  ]
 });
 
 /* 6 — Whisper warmup (background). Loads the model while the participant
@@ -1005,10 +815,8 @@ const OUTCOME_TYPES = ["Occupational performance","Prevention","Health and welln
 /* Case registry. Order = review order: Practice (Patricia) → Case 1 (Florence) → Case 2 (Yvonne).
    In the jsPsych build this ordering is the trial sequence; here the ribbon switcher
    lets the content be reviewed. Each case keeps its own state so switching doesn't discard work. */
-const CASE_LIST = [PATRICIA, FLORENCE, YVONNE];
 let CASE = PATRICIA;
 let state = null;
-const stateByCase = {};
 function freshState(){
   return {
     synthesis:{ impression:"", impression_stamp:null, impression_revisions:[], desired_outcomes:[] },
@@ -1473,25 +1281,6 @@ function commitEntry(e){
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function trunc(s,n){ s=String(s); return s.length>n? s.slice(0,n-1)+"…" : s; }
 
-/* Per-case state: switching preserves each case's work. Highlight ranges are
-   tied to live DOM, so they don't survive a case switch — refreshHighlights
-   re-adds only ranges still valid for the rendered case (others are skipped). */
-function loadCase(c){
-  CASE = c;
-  if(!stateByCase[c.id]) stateByCase[c.id] = freshState();
-  state = stateByCase[c.id];
-  beginCaseClock();
-  renderCase();
-  renderSwitcher();
-  setupWalkthrough();
-}
-function renderSwitcher(){
-  const el=document.getElementById("case_switch"); if(!el) return;
-  el.innerHTML = CASE_LIST.map(c=>`<button data-cid="${c.id}" class="${c.id===CASE.id?'active':''}">${c.role}: ${c.name}</button>`).join("");
-  el.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{
-    const c=CASE_LIST.find(x=>String(x.id)===b.dataset.cid); if(c && c.id!==CASE.id) loadCase(c);
-  }));
-}
 /* =====================================================================
    PRACTICE WALKTHROUGH — practice case only.
    Mechanics-only, unlocked (interface stays live), completion-gated.
@@ -1643,41 +1432,6 @@ function attachCursorSampling(){
     state.recon.cursor.push({ x:e.clientX, y:e.clientY, aoi, t:now });
   }, { passive:true });
 }
-
-/* ---- RECONSTRUCTION: rebuild the exact state at time tMax from the deltas ----
-   Faithful replay source. Applied to a fresh state; content + stable ids +
-   highlight span locators make each delta self-sufficient. */
-function reconstructState(deltas, tMax){
-  const s = freshState();
-  for(const d of deltas){
-    if(tMax != null && d.t > tMax) break;
-    switch(d.op){
-      case "occ_add": s.occupations.push({ id:d.id, name:d.name }); break;
-      case "occ_remove": s.occupations = s.occupations.filter(o=>o.id!==d.id);
-        s.entries.forEach(e=>{ if(e.occId===d.id) e.occId=null; });
-        s.plan.selectedBarrierIds = s.plan.selectedBarrierIds.filter(bid=>{ const en=s.entries.find(x=>x.id===bid); return en&&en.occId!==null; });
-        break;
-      case "entry_add": s.entries.push({ id:d.id, type:d.type, excerpt:d.excerpt, src:d.src, mechanism:d.mechanism, aspect:d.aspect, occId:d.occId, loc:d.loc, range:null }); break;
-      case "entry_remove": s.entries = s.entries.filter(e=>e.id!==d.id);
-        s.plan.selectedBarrierIds = s.plan.selectedBarrierIds.filter(x=>x!==d.id); delete s.plan.perBarrier[d.id]; break;
-      case "impression": s.synthesis.impression = d.text; break;
-      case "outcome_add": s.synthesis.desired_outcomes.push({ id:d.id, text:d.text, otpf4_outcome_type:null }); break;
-      case "outcome_remove": s.synthesis.desired_outcomes = s.synthesis.desired_outcomes.filter(o=>o.id!==d.id); break;
-      case "outcome_tag": { const o=s.synthesis.desired_outcomes.find(x=>x.id===d.id); if(o) o.otpf4_outcome_type = d.type; break; }
-      case "barrier_select": if(d.on){ if(!s.plan.selectedBarrierIds.includes(d.id)) s.plan.selectedBarrierIds.push(d.id); }
-        else s.plan.selectedBarrierIds = s.plan.selectedBarrierIds.filter(x=>x!==d.id); break;
-      case "plan_barrier": s.plan.perBarrier[d.bid] = s.plan.perBarrier[d.bid]||{}; s.plan.perBarrier[d.bid][d.field] = d.value; break;
-      case "plan_field": s.plan[d.field] = d.value; break;
-      case "tab": s._replayTab = d.tab; break;
-    }
-  }
-  return s;
-}
-
-/* boot — Practice (Patricia) first, matching the study sequence */
-
-
-
 
 /* ===== INJECTED: REPLAY ENGINE ===== */
 /* =====================================================================
@@ -1931,15 +1685,15 @@ const Replay = (function(){
 </script>
 <script>
 /* =====================================================================
-   CHUNK 2 + 3 + 4 INTEGRATION LAYER
+   CHUNK 2 + 3 + 4 INTEGRATION LAYER  (no eye tracking)
    Mounts the Option-B engine (above) as jsPsych trials, adds the RTA
    reconstruction-replay trial after each case (mic + Whisper + re-anchor),
-   and the one-file Chunk 4 export. Uses window.Reanchor (js/reanchor.js).
+   and the one-file Chunk 4 export. Two analyzed streams: action+content and
+   RTA. No WebGazer, no calibration, no gaze capture. Uses window.Reanchor.
    ===================================================================== */
 
 CONFIG.RTA_SILENCE_MS = 15000;   /* OPEN a-priori parameter (placeholder). */
 
-const AOI_SELECTORS = ["#aoi_case_material","#aoi_occupations","#aoi_performance","#aoi_synthesis","#aoi_intervention"];
 const CASES_IN_ORDER = [PATRICIA, FLORENCE, YVONNE];
 
 /* Per-case captured records assembled for the final export. Keyed by case id. */
@@ -1950,84 +1704,6 @@ function mountAppInto(hostId){
   const host = document.getElementById(hostId);
   host.innerHTML = '<div id="app"></div>';
   return host;
-}
-
-/* Snapshot the five AOI rectangles at task start (fluid layout: absolute px
-   vary with viewport, so they are recorded per session). */
-function snapshotAOIRects(){
-  const o = {};
-  AOI_SELECTORS.forEach(sel=>{
-    const el = document.querySelector(sel);
-    if(el){ const r = el.getBoundingClientRect();
-      o[el.dataset.aoi] = { x:Math.round(r.x), y:Math.round(r.y), w:Math.round(r.width), h:Math.round(r.height) }; }
-  });
-  return o;
-}
-
-/* Capture AOI geometry at case start: px rects (ground truth) + normalized rects
-   (rect / task viewport, additive diagnostic) + adequacy (min panel dimension /
-   this participant's mean gaze offset in px). Null-safe when gaze is off. The
-   adequacy THRESHOLD (>=1 / >=1.5 / >=2) is an analysis-time decision - only the
-   ratio is stored here. */
-function captureAOIGeometry(){
-  const rects = snapshotAOIRects();
-  const cal = study.calibration || {};
-  const moff = (cal.mean_offset_px != null && cal.mean_offset_px > 0) ? cal.mean_offset_px : null;
-  const vp = study.task_viewport || { w: window.innerWidth, h: window.innerHeight };
-  const rects_norm = {}, per_aoi = {};
-  let minAdq = null, minDimPx = null;
-  Object.keys(rects).forEach(k=>{
-    const r = rects[k];
-    rects_norm[k] = {
-      x: vp.w ? +(r.x/vp.w).toFixed(4) : null, y: vp.h ? +(r.y/vp.h).toFixed(4) : null,
-      w: vp.w ? +(r.w/vp.w).toFixed(4) : null, h: vp.h ? +(r.h/vp.h).toFixed(4) : null
-    };
-    const dim = Math.min(r.w, r.h);
-    if(minDimPx === null || dim < minDimPx) minDimPx = dim;
-    if(moff){ const a = +(dim/moff).toFixed(3); per_aoi[k] = a; if(minAdq === null || a < minAdq) minAdq = a; }
-    else per_aoi[k] = null;
-  });
-  const adequacy = { per_aoi:per_aoi, min:minAdq, min_panel_min_dim_px:minDimPx,
-                     mean_offset_px_used:moff, task_viewport_used:{ w:vp.w, h:vp.h } };
-  return { rects:rects, rects_norm:rects_norm, adequacy:adequacy };
-}
-
-/* Mid-case viewport-stability guard. A fullscreen exit or resize stales the
-   start-snapshotted rects (and WebGazer's viewport-locked mapping), so log the
-   event, prompt a return to fullscreen, and flag if the viewport no longer
-   matches the calibration viewport. Case trials only (gaze is captured there). */
-let vpGuardState = null;
-function installViewportGuard(caseObj){
-  detachViewportGuard();
-  const calVp = study.calibration_viewport || study.task_viewport || { w:window.innerWidth, h:window.innerHeight };
-  const st = { events:[], changed:false, calVp:calVp, fsHandler:null, rzHandler:null, rzTimer:null };
-  function mark(type){
-    const w=window.innerWidth, h=window.innerHeight;
-    st.events.push({ t:(typeof nowRel==='function'? nowRel(): Date.now()), type:type, w:w, h:h });
-    if(calVp && (Math.abs(w-calVp.w)>2 || Math.abs(h-calVp.h)>2)) st.changed=true;
-  }
-  function showReturnOverlay(){
-    if(document.getElementById('vp_guard')) return;
-    const o=document.createElement('div'); o.id='vp_guard';
-    Object.assign(o.style,{position:'fixed',inset:'0',background:'rgba(20,30,40,.96)',color:'#fff',zIndex:2147483600,display:'flex',alignItems:'center',justifyContent:'center',textAlign:'left',font:'16px system-ui'});
-    o.innerHTML=`<div style="max-width:560px;padding:0 24px"><h2 style="color:#ffb4a2;margin:0 0 12px">Please return to full screen</h2><p style="line-height:1.7">This study needs to stay in full screen so the eye tracking stays accurate. Your work is saved. Click below to continue where you left off.</p><button id="vp_return" style="margin-top:16px;padding:12px 24px;background:#1e8e4e;color:#fff;border:0;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer">Return to full screen</button></div>`;
-    document.body.appendChild(o);
-    document.getElementById('vp_return').onclick=()=>{ try{ document.documentElement.requestFullscreen(); }catch(e){} };
-  }
-  st.fsHandler=function(){
-    if(!document.fullscreenElement){ mark('fullscreen_exit'); showReturnOverlay(); }
-    else { const g=document.getElementById('vp_guard'); if(g) g.remove(); mark('fullscreen_return'); }
-  };
-  st.rzHandler=function(){ clearTimeout(st.rzTimer); st.rzTimer=setTimeout(()=>{ if(document.fullscreenElement) mark('resize'); }, 250); };
-  document.addEventListener('fullscreenchange', st.fsHandler);
-  window.addEventListener('resize', st.rzHandler);
-  vpGuardState=st;
-}
-function detachViewportGuard(){
-  if(!vpGuardState) return;
-  try{ document.removeEventListener('fullscreenchange', vpGuardState.fsHandler); }catch(e){}
-  try{ window.removeEventListener('resize', vpGuardState.rzHandler); }catch(e){}
-  const g=document.getElementById('vp_guard'); if(g) g.remove();
 }
 
 /* Analyzed data only (event_log + descriptive state). Recon is NOT included. */
@@ -2052,12 +1728,12 @@ function cleanupOverlays(){
   if(typeof removePop==="function"){ try{ removePop(); }catch(e){} }
   if(typeof removeCoach==="function"){ try{ removeCoach(); }catch(e){} }
   const cl = document.getElementById("cl"); if(cl) cl.remove();
-  document.querySelectorAll(".pop,.coach,#rp_hud,#rp_cursor,#rp_net,#rp_continue,#rp_busy,#vp_guard").forEach(el=>el.remove());
+  document.querySelectorAll(".pop,.coach,#rp_hud,#rp_cursor,#rp_net,#rp_continue,#rp_busy").forEach(el=>el.remove());
   if(window.CSS && CSS.highlights){ CSS.highlights.clear(); }
 }
 
 /* ---------- TASK TRIAL ---------- */
-let pendingCaseData=null, pendingAOIGeom=null, pendingRecon=null;
+let pendingCaseData=null, pendingRecon=null;
 
 function submitCase(){
   pendingCaseData = serializeCaseData();
@@ -2088,8 +1764,8 @@ function addBannerSubmit(){
   });
 }
 
-function makeCaseTrial(caseObj, withGaze){
-  const trial = {
+function makeCaseTrial(caseObj){
+  return {
     type: jsPsychHtmlKeyboardResponse, choices: "NO_KEYS",
     stimulus: '<div id="ot_mount"></div>',
     data: { trial_tag:"case", case_id:caseObj.id, case_role:caseObj.role, case_name:caseObj.name },
@@ -2097,33 +1773,20 @@ function makeCaseTrial(caseObj, withGaze){
       mountAppInto("ot_mount");
       CASE = caseObj; state = freshState(); seq = 0; beginCaseClock();
       renderCase();
-      attachCursorSampling();
-      setupWalkthrough();     // practice only (no-op for real cases)
-      addBannerSubmit();      // real cases only
-      pendingAOIGeom = captureAOIGeometry();
-      installViewportGuard(caseObj);
+      attachCursorSampling();     // cursor track (replay reconstruction only; not analyzed)
+      setupWalkthrough();         // practice only (no-op for real cases)
+      addBannerSubmit();          // real cases only
     },
     on_finish: function(data){
       if(pendingCaseData){ data.case_data = pendingCaseData; }
-      const geom = pendingAOIGeom || { rects:null, rects_norm:null, adequacy:null };
-      data.aoi_rects_start = geom.rects;
-      data.gaze_tracked = !!withGaze;
       data.case_started_offset_ms = study.session_started_at_ms ? (Date.now() - study.session_started_at_ms) : null;
       const rec = study.cases[caseObj.id] = study.cases[caseObj.id] || {};
       rec.task = pendingCaseData;
-      rec.aoi_rects_start = geom.rects;
-      rec.aoi_rects_start_norm = geom.rects_norm;
-      rec.aoi_adequacy = geom.adequacy;
-      rec.gaze_tracked = !!withGaze;
       rec.case_started_offset_ms = data.case_started_offset_ms;
       rec.recon = pendingRecon;          // replay-only; NEVER exported
-      if(vpGuardState){ rec.viewport_events = vpGuardState.events; rec.viewport_changed_after_calibration = vpGuardState.changed; }
-      detachViewportGuard(); vpGuardState = null;
-      pendingCaseData = null; pendingAOIGeom = null; pendingRecon = null;
+      pendingCaseData = null; pendingRecon = null;
     }
   };
-  if(withGaze) trial.extensions = [{ type: jsPsychExtensionWebgazer, params: { targets: AOI_SELECTORS } }];
-  return trial;
 }
 
 /* ---------- WHISPER (post-replay transcription) ---------- */
@@ -2270,13 +1933,6 @@ function makeReplayTrial(caseObj){
 }
 
 /* ---------- CHUNK 4: ONE-FILE EXPORT ---------- */
-function collectGazeForCase(caseId){
-  try{
-    const rows = jsPsych.data.get().filter({ trial_tag:"case", case_id:caseId }).values();
-    if(rows.length && rows[0].webgazer_data) return rows[0].webgazer_data;
-  }catch(e){}
-  return [];
-}
 function buildSessionExport(){
   return {
     schema:"ot_prof_reasoning_v1",
@@ -2285,10 +1941,8 @@ function buildSessionExport(){
     session:{
       started_at:study.started_at, user_agent:study.user_agent,
       session_started_at_ms:study.session_started_at_ms,
-      fullscreen_viewport:study.fullscreen_viewport, task_viewport:study.task_viewport,
-      gaze_enabled:study.gaze_enabled, gaze_skip_reason:study.gaze_skip_reason, gaze_threshold_used:study.gaze_threshold_used,
-      calibration:study.calibration, calibration_viewport:study.calibration_viewport,
-      screen_geometry:study.screen_geometry, browser_check:study.browser_check, permissions:study.permissions,
+      task_viewport:study.task_viewport,
+      browser_check:study.browser_check, permissions:study.permissions,
       rta_silence_threshold_ms: CONFIG.RTA_SILENCE_MS
     },
     cases: CASES_IN_ORDER.map(c=>{
@@ -2296,17 +1950,10 @@ function buildSessionExport(){
       return {
         case_id:c.id, case_role:c.role, case_name:c.name,
         analyzed:(c.role!=="Practice"),
-        gaze_tracked:!!rec.gaze_tracked,
         case_started_offset_ms: rec.case_started_offset_ms != null ? rec.case_started_offset_ms : null,
-        aoi_rects: rec.aoi_rects_start || null,
-        aoi_rects_norm: rec.aoi_rects_start_norm || null,
-        aoi_adequacy: rec.aoi_adequacy || null,
-        viewport_changed_after_calibration: !!rec.viewport_changed_after_calibration,
-        viewport_events: rec.viewport_events || [],
-        task: rec.task || null,                                   // event_log + descriptive state (Stream 1 source)
-        rta: (rec.rta && rec.rta.narration) || [],                // Stream 2, re-anchored to task time
-        rta_silence_prompts: (rec.rta && rec.rta.silence_prompts) || [],
-        gaze: collectGazeForCase(c.id)                            // raw {x,y,t} for RQA
+        task: rec.task || null,                                   // Stream 1: event_log + descriptive state
+        rta: (rec.rta && rec.rta.narration) || [],                // Stream 2: re-anchored think-aloud
+        rta_silence_prompts: (rec.rta && rec.rta.silence_prompts) || []
       };
     })
     /* NOTE: state.recon (deltas + cursor) is intentionally NOT exported. */
@@ -2338,15 +1985,8 @@ function makeExportTrial(){
   };
 }
 
-/* ---------- TIMELINE: interleave task + replay per case; gaze-gated ---------- */
-timeline.push({
-  conditional_function: function(){ return study.gaze_enabled; },
-  timeline: CASES_IN_ORDER.reduce((acc,c)=>{ acc.push(makeCaseTrial(c,true)); acc.push(makeReplayTrial(c)); return acc; }, [])
-});
-timeline.push({
-  conditional_function: function(){ return !study.gaze_enabled; },
-  timeline: CASES_IN_ORDER.reduce((acc,c)=>{ acc.push(makeCaseTrial(c,false)); acc.push(makeReplayTrial(c)); return acc; }, [])
-});
+/* ---------- TIMELINE: task + replay per case, then export ---------- */
+CASES_IN_ORDER.forEach(c=>{ timeline.push(makeCaseTrial(c)); timeline.push(makeReplayTrial(c)); });
 timeline.push(makeExportTrial());
 
 jsPsych.run(timeline);
