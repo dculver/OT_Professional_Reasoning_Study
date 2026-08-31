@@ -265,19 +265,51 @@
       };`;
     function initWhisperWorker() {
       if (__whisperWorker) return;
+      if (typeof window!=='undefined' && window.setWhisperStatus) window.setWhisperStatus('init');
       const url = URL.createObjectURL(new Blob([WORKER_CODE], { type: 'text/javascript' }));
       __whisperWorker = new Worker(url, { type: 'module' });
       __whisperWorker.onmessage = (e) => {
         const { type, progress } = e.data || {};
-        if (type === 'progress') __modelProgress = progress || 0;
-        else if (type === 'ready') __workerReady = true;
-        else if (type === 'error') console.error('Whisper worker error:', e.data.message);
+        if (type === 'progress') { __modelProgress = progress || 0; if (typeof window!=='undefined' && window.setWhisperStatus) window.setWhisperStatus('downloading',{progress:__modelProgress}); }
+        else if (type === 'ready') { __workerReady = true; if (typeof window!=='undefined' && window.setWhisperStatus) window.setWhisperStatus('ready'); }
+        else if (type === 'error') { console.error('Whisper worker error:', e.data.message); if (typeof window!=='undefined' && window.setWhisperStatus) window.setWhisperStatus('error'); if (typeof window!=='undefined' && window.__onWhisperError) window.__onWhisperError(e.data); }
         else if (type === 'result') { if (typeof window!=='undefined' && window.__onWhisperResult) window.__onWhisperResult(e.data); }
       };
-      __whisperWorker.onerror = (e) => console.error('Whisper worker onerror:', e);
+      __whisperWorker.onerror = (e) => { console.error('Whisper worker onerror:', e); if (typeof window!=='undefined' && window.setWhisperStatus) window.setWhisperStatus('error'); if (typeof window!=='undefined' && window.__onWhisperError) window.__onWhisperError({ message: (e && e.message) || 'worker error' }); };
       __whisperWorker.postMessage({ type: 'warmup', model: CONFIG.WHISPER_MODEL });
     }
     function warmUpTranscriber() { initWhisperWorker(); }
+
+    window.__whisperUI = { state:'idle', progress:0, compact:false };
+    window.setWhisperStatus = function(state, detail){
+      var w = window.__whisperUI; w.state = state;
+      if (detail && detail.progress != null) w.progress = detail.progress;
+      w.compact = false;
+      if (state === 'ready') { clearTimeout(w._c); w._c = setTimeout(function(){ w.compact = true; window.__renderWhisperChip(); }, 5000); }
+      if (state === 'transcribed' || state === 'empty') { clearTimeout(w._r); w._r = setTimeout(function(){ window.setWhisperStatus('ready'); }, 6000); }
+      window.__renderWhisperChip();
+    };
+    window.__renderWhisperChip = function(){
+      if (!document.body) return;
+      var w = window.__whisperUI, st = w.state;
+      if (st === 'idle') { var ex=document.getElementById('whisper_status'); if(ex) ex.remove(); return; }
+      var el = document.getElementById('whisper_status');
+      if (!el) { el = document.createElement('div'); el.id = 'whisper_status';
+        el.style.cssText = 'position:fixed;top:10px;right:12px;z-index:10009;font:600 12px system-ui;padding:5px 10px;border-radius:999px;display:flex;align-items:center;gap:6px;box-shadow:0 1px 6px rgba(0,0,0,.15);pointer-events:none;transition:opacity .3s';
+        document.body.appendChild(el); }
+      var M = { init:['#4b5563','#f3f4f6','Preparing speech model…'],
+                downloading:['#92400e','#fef3c7','Loading speech model… '+Math.round(w.progress||0)+'%'],
+                ready:['#166534','#dcfce7','Speech model ready'],
+                transcribing:['#1e40af','#dbeafe','Transcribing your narration…'],
+                transcribed:['#166534','#dcfce7','Narration transcribed'],
+                empty:['#92400e','#fef3c7','No speech detected'],
+                error:['#991b1b','#fee2e2','Speech model unavailable'] };
+      var m = M[st] || M.init;
+      el.style.color = m[0]; el.style.background = m[1];
+      var dot = '<span style="width:8px;height:8px;border-radius:50%;background:'+m[0]+';display:inline-block;flex:0 0 auto"></span>';
+      el.innerHTML = (w.compact && st==='ready') ? dot : dot + '<span>'+m[2]+'</span>';
+    };
+
   </script>
   <script src="js/reanchor.js"></script>
 </head>
@@ -1018,13 +1050,12 @@ function wireSynthesis(){
     if(text===last) return;
     const ts=Date.now();
     revs.push({version:revs.length+1, text, ts});
-    recordDelta("impression",{text});
     updateWalkthrough();
     state.synthesis.impression=text; state.synthesis.impression_stamp=ts;
     logEvent("synthesis_revision",{version:revs.length, len:text.length});
     st.textContent="rev "+revs.length+" · "+new Date(ts).toLocaleTimeString();
   };
-  ta.addEventListener("input", ()=>{ state.synthesis.impression=ta.value; clearTimeout(t); t=setTimeout(snapshot, 800); });
+  ta.addEventListener("input", ()=>{ state.synthesis.impression=ta.value; recordDelta("impression",{text:ta.value}); clearTimeout(t); t=setTimeout(snapshot, 800); });
   ta.addEventListener("blur", ()=>{ clearTimeout(t); snapshot(); });
 }
 function wireOutcomes(){
@@ -1202,7 +1233,7 @@ function renderPlan(){
    SELECTION → CLASSIFY POPOVER  (symmetric support/barrier, OTPF-4 aspect)
    ===================================================================== */
 let popEl=null, pendingRange=null;
-function removePop(){ if(popEl){popEl.remove();popEl=null;} pendingRange=null; }
+function removePop(){ if(popEl){ if(state&&state.recon){ try{ recordDelta("pop_close",{}); }catch(e){} } popEl.remove();popEl=null;} pendingRange=null; }
 document.addEventListener("mousedown", e=>{ if(popEl && !popEl.contains(e.target)) removePop(); });
 window.addEventListener("scroll", removePop, true);
 
@@ -1226,7 +1257,7 @@ function attachSelectionHandlers(){
 function openPopover(text, src, rect){
   removePopKeepRange();
   popEl=document.createElement("div"); popEl.className="pop"; popEl.innerHTML=choiceStep(text);
-  document.body.appendChild(popEl); positionPop(rect); wireChoiceStep(text, src);
+  document.body.appendChild(popEl); positionPop(rect); wireChoiceStep(text, src); recordDelta("pop_open",{excerpt:text, src:src, loc: serializeRange(pendingRange, src)});
 }
 function removePopKeepRange(){ if(popEl){popEl.remove();popEl=null;} } /* keep pendingRange */
 function positionPop(rect){
@@ -1248,6 +1279,7 @@ function wireChoiceStep(text, src){
 /* Symmetric classify step; prompt wording varies by valence. */
 function classifyStep(type, text, src){
   if(!state.occupations.length){ needOccupationsWarn(); return; }
+  recordDelta("pop_choice",{valence:type});
   const isBar=type==="barrier";
   const mechQ = isBar ? "What is getting in the way of this occupation?" : "What capacity or resource enables this?";
   const mechPH= isBar ? "e.g., left shoulder active reach; sustained grip" : "e.g., intact cognition; home health aide support";
@@ -1261,10 +1293,10 @@ function classifyStep(type, text, src){
     <div class="q">${occQ}</div>
     <select id="pk_occ"><option value="">— select occupation —</option>${state.occupations.map(o=>`<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select>
     <button class="confirm" id="pk_go" disabled>${isBar?'Add barrier':'Add support'}</button>`;
-  document.getElementById("pk_back").onclick=()=>{ popEl.innerHTML=choiceStep(text); wireChoiceStep(text,src); };
+  document.getElementById("pk_back").onclick=()=>{ recordDelta("pop_back",{}); popEl.innerHTML=choiceStep(text); wireChoiceStep(text,src); };
   const mech=document.getElementById("pk_mech"), asp=document.getElementById("pk_aspect"), occSel=document.getElementById("pk_occ"), go=document.getElementById("pk_go");
   const check=()=> go.disabled=!(mech.value.trim() && occSel.value);
-  mech.oninput=check; occSel.onchange=check; mech.focus();
+  mech.oninput=()=>{ recordDelta("pop_mech",{value:mech.value}); check(); }; occSel.onchange=()=>{ recordDelta("pop_occ",{occId:occSel.value}); check(); }; asp.onchange=()=>{ recordDelta("pop_aspect",{value:asp.value}); }; mech.focus();
   go.onclick=()=>{ commitEntry({ type, excerpt:text, src, mechanism:mech.value.trim(), aspect:asp.value||null, occId:occSel.value }); removePop(); };
 }
 function needOccupationsWarn(){
@@ -1602,6 +1634,11 @@ const Replay = (function(){
     // re-apply tab after renderCase rebuilds DOM
     if(S.activeTab){ const tb=document.querySelector('.tab[data-tab="'+S.activeTab+'"]'); if(tb){ document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); tb.classList.add('active');
        document.querySelectorAll('[data-tabpane]').forEach(pp=>pp.style.display = pp.getAttribute('data-tabpane')===S.activeTab?'':'none'); } }
+    // renderCase() just rebuilt #app, detaching the highlight ranges resolved
+    // above. Re-resolve each entry's range against the fresh source DOM and repaint.
+    state.entries.forEach(e=>{ e.range = e.loc ? rangeFromOffsets(e.loc) : null; });
+    if(typeof refreshHighlights==='function') refreshHighlights();
+    if(typeof renderReplayPopup==='function') renderReplayPopup(recon, tMs);
     makeNonInteractive();
   }
 
@@ -1738,7 +1775,7 @@ function cleanupOverlays(){
   if(typeof removePop==="function"){ try{ removePop(); }catch(e){} }
   if(typeof removeCoach==="function"){ try{ removeCoach(); }catch(e){} }
   const cl = document.getElementById("cl"); if(cl) cl.remove();
-  document.querySelectorAll(".pop,.coach,#rp_hud,#rp_cursor,#rp_net,#rp_continue,#rp_busy").forEach(el=>el.remove());
+  document.querySelectorAll(".pop,.coach,#rp_hud,#rp_cursor,#rp_net,#rp_continue,#rp_busy,#rp_pop,#rp_empty").forEach(el=>el.remove());
   if(window.CSS && CSS.highlights){ CSS.highlights.clear(); }
 }
 
@@ -1818,14 +1855,81 @@ let __whisperSeq = 0;
 /* Returns { text, chunks:[{text, timestamp:[s,e]}] }. Robust to a missing/failed
    worker (resolves empty) so the study never blocks on transcription. */
 function transcribeAudio(float32){
+  const S = (s)=>{ if(window.setWhisperStatus) window.setWhisperStatus(s); };
   return new Promise((resolve)=>{
-    if(typeof __whisperWorker === "undefined" || !__whisperWorker){ resolve({text:"", chunks:[]}); return; }
+    if(typeof __whisperWorker === "undefined" || !__whisperWorker){ S('error'); resolve({text:"", chunks:[]}); return; }
     let done=false; const id = ++__whisperSeq;
-    window.__onWhisperResult = (data)=>{ if(done) return; done=true; resolve({ text:(data&&data.text)||"", chunks:(data&&data.chunks)||[] }); };
+    const settle=(data)=>{ if(done) return; done=true; resolve({ text:(data&&data.text)||"", chunks:(data&&data.chunks)||[] }); };
+    S('transcribing');
+    window.__onWhisperResult = (data)=>{ const t=(data&&data.text)||""; S(t&&t.trim()?'transcribed':'empty'); settle(data); };
+    window.__onWhisperError  = ()=>{ S('error'); settle({text:"", chunks:[]}); };   // worker/model failure -> resolve empty, never hang
     try{ __whisperWorker.postMessage({ type:'transcribe', audioData:float32, id }); }
-    catch(e){ if(!done){ done=true; resolve({text:"", chunks:[]}); } }
-    setTimeout(()=>{ if(!done){ done=true; resolve({text:"", chunks:[]}); } }, 180000);
+    catch(e){ S('error'); settle({text:"", chunks:[]}); }
+    setTimeout(()=>{ S('error'); settle({text:"", chunks:[]}); }, 180000);
   });
+}
+
+/* ---------- RTA REPLAY: reconstruct the transient classify popup ----------
+   The classify popup (highlight -> Support/Barrier -> mechanism -> OTPF-4 aspect
+   -> occupation -> confirm) is captured as pop_* deltas during the task. Here we
+   fold them back into the popup's visible state at time t and render a NON-
+   interactive replica, so the participant re-sees (and can narrate) the actual
+   classification decision, not just its result. */
+function popupAt(recon, tMs){
+  let p = null;
+  for(const d of recon.deltas){
+    if(d.t > tMs) break;
+    switch(d.op){
+      case "pop_open":   p = { excerpt:d.excerpt, src:d.src, loc:d.loc, step:"choice",
+                               valence:null, mech:"", aspect:"", occId:"" }; break;
+      case "pop_choice": if(p){ p.valence=d.valence; p.step="mech"; } break;
+      case "pop_back":   if(p){ p.step="choice"; } break;
+      case "pop_mech":   if(p){ p.mech=d.value; } break;
+      case "pop_aspect": if(p){ p.aspect=d.value; } break;
+      case "pop_occ":    if(p){ p.occId=d.occId; } break;
+      case "pop_close":  p = null; break;
+      case "entry_add":  p = null; break;   // confirming a classification closes the popup
+    }
+  }
+  return p;
+}
+function renderReplayPopup(recon, tMs){
+  const p = popupAt(recon, tMs);
+  let el = document.getElementById("rp_pop");
+  if(!p){ if(el) el.remove(); return; }
+  if(!el){ el=document.createElement("div"); el.id="rp_pop"; el.className="pop"; document.body.appendChild(el); }
+  el.style.pointerEvents="none"; el.style.zIndex="10001";
+  const _esc = (typeof esc==="function") ? esc : (s)=>String(s==null?"":s);
+  if(p.step==="choice" && typeof choiceStep==="function"){
+    el.innerHTML = choiceStep(p.excerpt);
+  } else {
+    const isBar = p.valence==="barrier";
+    const mechQ = isBar ? "What is getting in the way of this occupation?" : "What capacity or resource enables this?";
+    const occQ  = isBar ? "A barrier to which occupation?" : "This supports which occupation?";
+    let occName = "";
+    try{ const o=(state.occupations||[]).find(x=>x.id===p.occId); occName = o?o.name:""; }catch(e){}
+    el.innerHTML =
+      '<div class="q">'+mechQ+'</div>'
+      + '<input type="text" value="'+_esc(p.mech||"")+'" disabled />'
+      + '<div class="q">OTPF-4 aspect <span class="opt">(optional)</span></div>'
+      + '<select disabled>'+(p.aspect? '<option>'+_esc(p.aspect)+'</option>' : '<option>— skip —</option>')+'</select>'
+      + '<div class="q">'+occQ+'</div>'
+      + '<select disabled>'+(occName? '<option>'+_esc(occName)+'</option>' : '<option>— select occupation —</option>')+'</select>'
+      + '<button class="confirm" disabled>'+(isBar?'Add barrier':'Add support')+'</button>';
+  }
+  // Position at the source text's current rect (the source tab is active while the
+  // popup is open). Fall back to a fixed corner if the range can't be resolved.
+  try{
+    const r = (p.loc && typeof rangeFromOffsets==="function") ? rangeFromOffsets(p.loc) : null;
+    const rect = r ? r.getBoundingClientRect() : null;
+    if(rect && (rect.width||rect.height)){
+      const w=el.offsetWidth||290, h=el.offsetHeight||170, pad=10;
+      let left=rect.left+rect.width/2-w/2, top=rect.bottom+8;
+      if(top+h>window.innerHeight-pad) top=rect.top-h-8;
+      left=Math.max(pad,Math.min(left,window.innerWidth-w-pad)); top=Math.max(pad,top);
+      el.style.left=left+"px"; el.style.top=top+"px";
+    } else { el.style.left="40px"; el.style.top="120px"; }
+  }catch(e){ el.style.left="40px"; el.style.top="120px"; }
 }
 
 /* ---------- RTA RECONSTRUCTION-REPLAY TRIAL ---------- */
@@ -1905,13 +2009,24 @@ function makeReplayTrial(caseObj){
         });
       }
 
-      let finishing=false;
+      let finishing=false, ended=false;
+      function endOnce(arr){ if(ended) return; ended=true; storeAndEnd(arr||[]); }
       function finishReplay(){
         if(finishing) return; finishing=true;
         clearInterval(clockTimer);
-        showBusy("Processing your narration. This can take up to a minute.");
+        // PRACTICE: the practice narration is not analyzed, so there is nothing to
+        // transcribe. Release the mic and advance immediately -- no "processing"
+        // wait, and no dependency on the Whisper model being loaded.
+        if(caseObj.role === "Practice"){
+          const t=setTimeout(()=>endOnce([]), 4000);   // safety: never hang
+          stopAudio().catch(()=>{}).then(()=>{ clearTimeout(t); endOnce([]); });
+          return;
+        }
+        showBusy("Processing your narration. This can take up to a minute. Please don't close this tab.");
+        // Absolute backstop: the study advances even if transcription never returns.
+        const hardCap = setTimeout(()=>endOnce([]), 240000);
         stopAudio().then(blob=>{
-          if(!blob || !cap){ storeAndEnd([]); return; }
+          if(!blob || !cap){ clearTimeout(hardCap); endOnce([]); return; }
           pcm16kFromBlob(blob).then(pcm=>transcribeAudio(pcm)).then(res=>{
             const chunks = (res.chunks && res.chunks.length) ? res.chunks : (res.text ? [{text:res.text, timestamp:[0,0]}] : []);
             chunks.forEach(ch=>{
@@ -1919,9 +2034,9 @@ function makeReplayTrial(caseObj){
               const wall = (audio.startWall || Date.now()) + s*1000;
               cap.noteUtterance((ch.text||"").trim(), playTAtWall(wall), { paused:false, kind:'final' });
             });
-            storeAndEnd(window.Reanchor.reanchorAll(cap.getNarration(), offset));
-          }).catch(()=>storeAndEnd([]));
-        });
+            clearTimeout(hardCap); endOnce(window.Reanchor.reanchorAll(cap.getNarration(), offset));
+          }).catch(()=>{ clearTimeout(hardCap); endOnce([]); });
+        }).catch(()=>{ clearTimeout(hardCap); endOnce([]); });
       }
       function storeAndEnd(reanchored){
         store.rta = { narration:reanchored, silence_prompts:(function(){ try{ return Replay._state().fires; }catch(e){ return []; } })() };
