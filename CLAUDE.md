@@ -75,8 +75,9 @@ NOTE: OTPF-4 tags are data-capture affordances, NOT the analytic codebook (see 8
   js/replay_engine.js (reconstructStateAt). Re-anchoring = js/reanchor.js. Mic +
   Whisper capture wired in. NEEDS live verification (mic/Whisper across browsers).
 - Export (Chunk 4): event_log + descriptive state + re-anchored RTA per case +
-  session metadata -> in-browser JSON download. recon NOT exported. Qualtrics URL is
-  a placeholder.
+  session metadata -> in-browser JSON download. recon NOT exported. End-of-study
+  screen = gated 2-step (download session file -> return-to-survey redirect, sub_id
+  appended). QUALTRICS_UPLOAD_URL still a placeholder -> PENDING from Dennis (ASK AGAIN).
 - HISTORICAL (pre-gaze-removal; STILL CONTAIN webgazer/calibration; superseded by
   index_full.html): index_chunk1.html, index_chunk2.html, OT_Replay_Harness_chunk3.html.
 
