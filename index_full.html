@@ -327,8 +327,12 @@ const CONFIG = {
   QUALTRICS_UPLOAD_URL: "REPLACE_WITH_QUALTRICS_UPLOAD_URL"
 };
 
+const __q = new URLSearchParams(location.search);
 const study = {
-  sub_id_from_url: new URLSearchParams(location.search).get("sub_id"),
+  sub_id_from_url: __q.get("sub_id"),
+  group: __q.get("group"),
+  year_in_program: __q.get("year"),
+  url_params: Object.fromEntries(__q.entries()),
   browser_check: null,
   permissions: {},
   session_started_at_ms: null,     // ms epoch session clock anchor (set at fullscreen); RTA/case-offset zero
@@ -1429,7 +1433,7 @@ function attachCursorSampling(){
     let aoi = null;
     const el = document.elementFromPoint(e.clientX, e.clientY);
     if(el){ const a = el.closest("[data-aoi]"); if(a) aoi = a.dataset.aoi; }
-    state.recon.cursor.push({ x:e.clientX, y:e.clientY, aoi, t:now });
+    state.recon.cursor.push({ x:e.clientX, y:e.clientY, aoi, t:nowRel() });
   }, { passive:true });
 }
 
@@ -1638,25 +1642,31 @@ const Replay = (function(){
     hud.querySelector('#rp_time').textContent = mm(Math.min(playT,dur))+' / '+mm(dur);
     hud.querySelector('#rp_bar_fill').style.width = (100*Math.min(playT,dur)/(dur||1))+'%';
     hud.querySelector('#rp_toggle').textContent = playing? 'Pause' : 'Resume';
+    const live=hud.querySelector('#rp_live'), lbl=hud.querySelector('#rp_live_label');
+    if(live){ live.className = playing? 'playing' : '';
+      const dot=live.querySelector('.dot'); if(dot) dot.style.background = playing? '#3ddc84' : '#94a3b8'; }
+    if(lbl){ lbl.textContent = playing? 'Playing' : 'Paused'; }
   }
 
   function buildHUD(){
+    if(!document.getElementById('rp_hud_style')){
+      const stl=document.createElement('style'); stl.id='rp_hud_style';
+      stl.textContent='@keyframes rp_pulse{0%{opacity:1;transform:scale(1)}50%{opacity:.2;transform:scale(.65)}100%{opacity:1;transform:scale(1)}}'
+        +'#rp_live .dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#3ddc84;margin-right:7px;vertical-align:middle}'
+        +'#rp_live.playing .dot{animation:rp_pulse 1.1s ease-in-out infinite}';
+      document.head.appendChild(stl);
+    }
     hud=document.createElement('div'); hud.id='rp_hud';
     Object.assign(hud.style,{position:'fixed',left:'0',right:'0',bottom:'0',height:'64px',background:'#0f172a',
       color:'#fff',display:'flex',alignItems:'center',gap:'16px',padding:'0 20px',zIndex:10002,font:'14px system-ui'});
     hud.innerHTML = `
       <button id="rp_toggle" style="background:#d95a30;color:#fff;border:0;border-radius:6px;padding:8px 18px;font:600 14px system-ui;cursor:pointer">Pause</button>
+      <span id="rp_live" class="playing" style="white-space:nowrap;font-weight:600"><span class="dot"></span><span id="rp_live_label">Playing</span></span>
       <div style="font-variant-numeric:tabular-nums" id="rp_time">00:00 / 00:00</div>
       <div style="flex:1;height:8px;background:#334155;border-radius:4px;overflow:hidden"><div id="rp_bar_fill" style="height:100%;width:0;background:#d95a30"></div></div>
-      <div style="opacity:.8">Replay — keep describing what you were thinking</div>`;
+      <div style="opacity:.8">Keep describing what you were thinking</div>`;
     document.body.appendChild(hud);
     hud.querySelector('#rp_toggle').onclick=()=>{ playing?pause():resume(); };
-    // DEV-ONLY (harness): simulate a transcribed utterance to exercise re-anchor capture.
-    var sim=document.createElement('input'); sim.id='rp_sim'; sim.type='text';
-    sim.placeholder='sim utterance -> Enter (dev)';
-    Object.assign(sim.style,{marginLeft:'8px',padding:'6px 10px',border:'0',borderRadius:'6px',font:'13px system-ui',width:'220px'});
-    sim.addEventListener('keydown',function(e){ if(e.key==='Enter'&&sim.value.trim()){ var u=noteUtterance(sim.value.trim()); sim.value=''; showNet('captured "'+u.text+'" @ '+u.playT+' ms'); } });
-    hud.appendChild(sim);
   }
 
   function start(reconRecord, opts){
@@ -1831,6 +1841,25 @@ function makeReplayTrial(caseObj){
 
       mountAppInto("ot_mount");
       CASE = caseObj; state = freshState(); seq = 0;
+      walk = null;   // no practice walkthrough during replay
+      const __cl = document.getElementById("cl"); if(__cl) __cl.remove();
+
+      // EMPTY-RECON GUARD: never show a silent blank replay. If no actions were
+      // recorded for this case, say so plainly and let the participant continue.
+      if(!rec || !rec.deltas || !rec.deltas.length){
+        cleanupOverlays();
+        const g=document.createElement("div"); g.id="rp_empty";
+        Object.assign(g.style,{position:'fixed',inset:'0',background:'#0f172a',color:'#fff',display:'flex',
+          alignItems:'center',justifyContent:'center',zIndex:10006,font:'16px system-ui',textAlign:'left',padding:'0 24px'});
+        g.innerHTML='<div style="max-width:560px;line-height:1.7">'
+          +'<h2 style="color:#ffd8a8;margin:0 0 12px">Nothing to replay for this case</h2>'
+          +'<p style="margin:0 0 20px">No actions were recorded for this case, so there is nothing to play back or narrate here. This is not your fault — you can continue to the next step.</p>'
+          +'<button id="rp_empty_go" style="background:#1e8e4e;color:#fff;border:0;border-radius:8px;padding:11px 22px;font:700 15px system-ui;cursor:pointer">Continue</button>'
+          +'</div>';
+        document.body.appendChild(g);
+        document.getElementById("rp_empty_go").onclick=function(){ cleanupOverlays(); jsPsych.finishTrial(); };
+        return;
+      }
 
       const cap = (window.Reanchor ? window.Reanchor.makeNarrationCapture() : null);
       const audio = { stream:null, recorder:null, chunks:[], startWall:null, map:[], vadTimer:null, ac:null, analyser:null };
@@ -1941,6 +1970,7 @@ function buildSessionExport(){
     session:{
       started_at:study.started_at, user_agent:study.user_agent,
       session_started_at_ms:study.session_started_at_ms,
+      group:study.group, year_in_program:study.year_in_program, url_params:study.url_params,
       task_viewport:study.task_viewport,
       browser_check:study.browser_check, permissions:study.permissions,
       rta_silence_threshold_ms: CONFIG.RTA_SILENCE_MS
