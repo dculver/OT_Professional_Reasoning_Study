@@ -1110,8 +1110,9 @@ function wireOccupations(){
   const input=document.getElementById("occ_input");
   const add=()=>{ const name=input.value.trim(); if(!name) return;
     const id=uid("occ_"); state.occupations.push({id,name}); logEvent("occupation_add",{name}); recordDelta("occ_add",{id,name});
-    input.value=""; renderOccupations(); renderPlan(); };
+    input.value=""; recordDelta("occ_input",{value:""}); renderOccupations(); renderPlan(); };
   document.getElementById("occ_add").addEventListener("click", add);
+  input.addEventListener("input", ()=>recordDelta("occ_input",{value:input.value}));
   input.addEventListener("keydown", e=>{ if(e.key==="Enter") add(); });
 }
 function renderOccupations(){
@@ -1493,6 +1494,7 @@ function reconstructStateAt(recon, tMs){
     entries: [],
     synthesis: { impression: "", desired_outcomes: [] },
     plan: { selectedBarrierIds: [], perBarrier: {}, prioritization:"", approach:"", method:"", type:"", grading:"", goal:"", immediate:"" },
+    occInput: "",
     activeTab: "profile"
   };
   for(const d of recon.deltas){
@@ -1507,6 +1509,7 @@ function reconstructStateAt(recon, tMs){
 function applyDelta(S, d){
   switch(d.op){
     case "tab":            S.activeTab = d.tab; break;
+    case "occ_input":      S.occInput = d.value; break;
     case "occ_add":        S.occupations.push({ id:d.id, name:d.name }); break;
     case "occ_remove":     S.occupations = S.occupations.filter(o=>o.id!==d.id);
                            S.entries.forEach(e=>{ if(e.occId===d.id) e.occId=null; }); break;
@@ -1631,14 +1634,21 @@ const Replay = (function(){
     // set active tab to what was showing
     if(S.activeTab && typeof setActiveTab==='function'){ try{ setActiveTab(S.activeTab); }catch(e){} }
     renderCase();
-    // re-apply tab after renderCase rebuilds DOM
-    if(S.activeTab){ const tb=document.querySelector('.tab[data-tab="'+S.activeTab+'"]'); if(tb){ document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); tb.classList.add('active');
-       document.querySelectorAll('[data-tabpane]').forEach(pp=>pp.style.display = pp.getAttribute('data-tabpane')===S.activeTab?'':'none'); } }
-    // renderCase() just rebuilt #app, detaching the highlight ranges resolved
-    // above. Re-resolve each entry's range against the fresh source DOM and repaint.
+    // Re-apply the active tab AND its content pane. Panes are .tabpage[data-page]
+    // toggled by an .active class -- the old code targeted [data-tabpane]/display,
+    // so switching the tab button never switched the panel content.
+    if(S.activeTab){
+      document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active', x.dataset.tab===S.activeTab));
+      document.querySelectorAll('.tabpage').forEach(pp=>pp.classList.toggle('active', pp.getAttribute('data-page')===S.activeTab));
+    }
+    // replay the occupation name being typed into the (transient) occupation input
+    { var __oi=document.getElementById('occ_input'); if(__oi) __oi.value = S.occInput || ''; }
+    // renderCase() rebuilt #app, detaching the highlight ranges resolved above.
+    // Re-resolve each entry's range against the fresh source DOM and repaint.
     state.entries.forEach(e=>{ e.range = e.loc ? rangeFromOffsets(e.loc) : null; });
     if(typeof refreshHighlights==='function') refreshHighlights();
     if(typeof renderReplayPopup==='function') renderReplayPopup(recon, tMs);
+    if(typeof replayFollowActive==='function') replayFollowActive(recon, tMs);
     makeNonInteractive();
   }
 
@@ -1869,6 +1879,36 @@ function transcribeAudio(float32){
   });
 }
 
+/* ---------- RTA REPLAY: show the raw text selection (highlighting) ----------
+   Every >=3-char selection opens the classify popup, captured as pop_open with a
+   loc. We paint that selected text during the popup-open window so the participant
+   sees themselves highlighting text even when they never classify it. */
+var __selHL = (typeof Highlight!=="undefined") ? new Highlight() : null;
+function ensureSelReg(){
+  try{
+    if(__selHL && window.CSS && CSS.highlights){ CSS.highlights.set("ot-selection", __selHL);
+      if(!document.getElementById("rp_sel_style")){ var s=document.createElement("style"); s.id="rp_sel_style";
+        s.textContent="::highlight(ot-selection){background-color:#bcd4ff;}"; document.head.appendChild(s); } }
+  }catch(e){}
+}
+/* Follow the participant's focus: gently scroll the field they just touched into
+   view within its panel, so edits below the fold aren't missed on replay. */
+function replayFollowActive(recon, tMs){
+  try{
+    var last=null;
+    for(var i=0;i<recon.deltas.length;i++){ var d=recon.deltas[i]; if(d.t>tMs) break; last=d; }
+    if(!last) return;
+    var sel=null;
+    switch(last.op){
+      case "impression": sel="#synthesis_impression"; break;
+      case "plan_field": sel = last.field==="goal"?"#ip_goal":last.field==="immediate"?"#ip_immediate":last.field==="prioritization"?"#ip_prioritization":null; break;
+      case "plan_barrier": sel='[data-bid="'+last.bid+'"][data-f="'+last.field+'"]'; break;
+      case "occ_add": case "occ_input": sel="#occ_input"; break;
+    }
+    if(sel){ var el=document.querySelector(sel); if(el && el.scrollIntoView){ el.scrollIntoView({block:"nearest", inline:"nearest"}); } }
+  }catch(e){}
+}
+
 /* ---------- RTA REPLAY: reconstruct the transient classify popup ----------
    The classify popup (highlight -> Support/Barrier -> mechanism -> OTPF-4 aspect
    -> occupation -> confirm) is captured as pop_* deltas during the task. Here we
@@ -1896,7 +1936,7 @@ function popupAt(recon, tMs){
 function renderReplayPopup(recon, tMs){
   const p = popupAt(recon, tMs);
   let el = document.getElementById("rp_pop");
-  if(!p){ if(el) el.remove(); return; }
+  if(!p){ if(el) el.remove(); try{ if(__selHL) __selHL.clear(); }catch(e){} return; }
   if(!el){ el=document.createElement("div"); el.id="rp_pop"; el.className="pop"; document.body.appendChild(el); }
   el.style.pointerEvents="none"; el.style.zIndex="10001";
   const _esc = (typeof esc==="function") ? esc : (s)=>String(s==null?"":s);
@@ -1921,6 +1961,8 @@ function renderReplayPopup(recon, tMs){
   // popup is open). Fall back to a fixed corner if the range can't be resolved.
   try{
     const r = (p.loc && typeof rangeFromOffsets==="function") ? rangeFromOffsets(p.loc) : null;
+    // paint the raw selection (highlighting) for the whole popup-open window
+    try{ if(__selHL){ __selHL.clear(); if(r) __selHL.add(r); ensureSelReg(); } }catch(e){}
     const rect = r ? r.getBoundingClientRect() : null;
     if(rect && (rect.width||rect.height)){
       const w=el.offsetWidth||290, h=el.offsetHeight||170, pad=10;
@@ -1964,6 +2006,10 @@ function makeReplayTrial(caseObj){
         document.getElementById("rp_empty_go").onclick=function(){ cleanupOverlays(); jsPsych.finishTrial(); };
         return;
       }
+
+      // Reserve the bottom 64px (the playback bar's height) so the replayed
+      // interface sits ABOVE the bar and no field is hidden under it.
+      const __mnt = document.getElementById("ot_mount"); if(__mnt) __mnt.style.bottom = "64px";
 
       const cap = (window.Reanchor ? window.Reanchor.makeNarrationCapture() : null);
       const audio = { stream:null, recorder:null, chunks:[], startWall:null, map:[], vadTimer:null, ac:null, analyser:null };
