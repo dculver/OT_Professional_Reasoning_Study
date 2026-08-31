@@ -241,9 +241,14 @@
        (Inline Blob Worker: no external file, no CORS issues on GitHub Pages.) -->
   <script>
     let __whisperWorker = null, __workerReady = false, __modelProgress = 0;
+    const __TF_BASE = location.origin + '/js/vendor/transformers/';
+    const __MODEL_BASE = location.origin + '/models/';
     const WORKER_CODE = `
-      import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
-      env.allowLocalModels = false;
+      import { pipeline, env } from '${__TF_BASE}transformers.min.js';
+      env.allowRemoteModels = false;
+      env.allowLocalModels = true;
+      env.localModelPath = '${__MODEL_BASE}';
+      env.backends.onnx.wasm.wasmPaths = '${__TF_BASE}';
       let transcriber = null, MODEL = 'Xenova/whisper-small.en';
       self.onmessage = async (e) => {
         const { type } = e.data;
@@ -483,6 +488,7 @@ timeline.push({
       setTimeout(() => {
         const vh = window.innerHeight, vw = window.innerWidth;
         study.task_viewport = { w: vw, h: vh };   // definitive task viewport
+        study.__fsActive = true; if(typeof installFullscreenGuardian==="function") installFullscreenGuardian();
         jsPsych.finishTrial();
       }, 350);
     });
@@ -1034,7 +1040,7 @@ function renderCase(){
     </div>`;
 
   registerHighlights();
-  wireSynthesis(); wireTabs(); wireOccupations(); wireOutcomes(); attachSelectionHandlers();
+  wireSynthesis(); wireTabs(); wireOccupations(); wireOutcomes(); attachSelectionHandlers(); attachScrollCapture();
   renderOccupations(); renderPerformance(); renderOutcomes(); renderPlan(); refreshHighlights();
 }
 
@@ -1253,6 +1259,18 @@ function attachSelectionHandlers(){
       pendingRange=rng.cloneRange();
       openPopover(text, src, rng.getBoundingClientRect());
     },1);
+  });
+}
+function attachScrollCapture(){
+  document.querySelectorAll('#app .panel-body').forEach(function(pb){
+    var panel=pb.closest('.panel'); if(!panel||!panel.id) return;
+    var key=panel.id, lastTop=-1, lastT=-100000;
+    pb.addEventListener('scroll', function(){
+      if(window.__rtaReplaying) return;                 // don't capture programmatic replay scrolls
+      var now=nowRel(); if(now-lastT<100) return;        // throttle
+      var top=Math.round(pb.scrollTop); if(top===lastTop) return;
+      lastTop=top; lastT=now; recordDelta('scroll',{key:key, top:top});
+    });
   });
 }
 function openPopover(text, src, rect){
@@ -1495,6 +1513,7 @@ function reconstructStateAt(recon, tMs){
     synthesis: { impression: "", desired_outcomes: [] },
     plan: { selectedBarrierIds: [], perBarrier: {}, prioritization:"", approach:"", method:"", type:"", grading:"", goal:"", immediate:"" },
     occInput: "",
+    scroll: {},
     activeTab: "profile"
   };
   for(const d of recon.deltas){
@@ -1510,6 +1529,7 @@ function applyDelta(S, d){
   switch(d.op){
     case "tab":            S.activeTab = d.tab; break;
     case "occ_input":      S.occInput = d.value; break;
+    case "scroll":         (S.scroll = S.scroll || {})[d.key] = d.top; break;
     case "occ_add":        S.occupations.push({ id:d.id, name:d.name }); break;
     case "occ_remove":     S.occupations = S.occupations.filter(o=>o.id!==d.id);
                            S.entries.forEach(e=>{ if(e.occId===d.id) e.occId=null; }); break;
@@ -1648,7 +1668,9 @@ const Replay = (function(){
     state.entries.forEach(e=>{ e.range = e.loc ? rangeFromOffsets(e.loc) : null; });
     if(typeof refreshHighlights==='function') refreshHighlights();
     if(typeof renderReplayPopup==='function') renderReplayPopup(recon, tMs);
-    if(typeof replayFollowActive==='function') replayFollowActive(recon, tMs);
+    // restore each panel's scroll position -- what the participant had scrolled to,
+    // so highlights and fields below the fold come into view on replay.
+    if(S.scroll){ Object.keys(S.scroll).forEach(function(k){ var pb=document.querySelector('#'+k+' .panel-body'); if(pb) pb.scrollTop=S.scroll[k]; }); }
     makeNonInteractive();
   }
 
@@ -1755,6 +1777,35 @@ const CASES_IN_ORDER = [PATRICIA, FLORENCE, YVONNE];
 
 /* Per-case captured records assembled for the final export. Keyed by case id. */
 study.cases = {};
+
+/* ---------- FULLSCREEN GUARDIAN ----------
+   Fullscreen can drop mid-study (Esc, a native dialog, a permission prompt). Re-
+   entering requires a user gesture, so if we detect an exit while the study is
+   live, show a blocking "return to full screen" panel with a button. */
+function installFullscreenGuardian(){
+  if(window.__fsGuardInstalled) return; window.__fsGuardInstalled = true;
+  function isFs(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  function reqFs(){ const el=document.documentElement; const fn=el.requestFullscreen||el.webkitRequestFullscreen;
+    if(fn){ try{ const p=fn.call(el); if(p&&p.catch) p.catch(function(){}); }catch(e){} } }
+  function overlay(show){
+    let o=document.getElementById("fs_return");
+    if(show){
+      if(!o){ o=document.createElement("div"); o.id="fs_return";
+        Object.assign(o.style,{position:"fixed",inset:"0",background:"#0f172a",color:"#fff",zIndex:2147483000,
+          display:"flex",alignItems:"center",justifyContent:"center",font:"16px system-ui",textAlign:"left",padding:"0 24px"});
+        o.innerHTML='<div style="max-width:520px;line-height:1.7">'
+          +'<h2 style="color:#93c5fd;margin:0 0 12px">Please return to full screen</h2>'
+          +'<p style="margin:0 0 20px">This study runs in full screen so the whole interface fits. Your progress is saved — click below to continue.</p>'
+          +'<button id="fs_return_btn" style="background:#1565c0;color:#fff;border:0;border-radius:8px;padding:12px 26px;font:700 15px system-ui;cursor:pointer">Return to full screen</button></div>';
+        document.body.appendChild(o);
+        document.getElementById("fs_return_btn").onclick=reqFs;
+      }
+      o.style.display="flex";
+    } else if(o){ o.style.display="none"; }
+  }
+  document.addEventListener("fullscreenchange", function(){ if(study.__fsActive) overlay(!isFs()); });
+  document.addEventListener("webkitfullscreenchange", function(){ if(study.__fsActive) overlay(!isFs()); });
+}
 
 /* Fresh #app host inside a trial's #ot_mount (engine renders into #app). */
 function mountAppInto(hostId){
@@ -2010,6 +2061,7 @@ function makeReplayTrial(caseObj){
       // Reserve the bottom 64px (the playback bar's height) so the replayed
       // interface sits ABOVE the bar and no field is hidden under it.
       const __mnt = document.getElementById("ot_mount"); if(__mnt) __mnt.style.bottom = "64px";
+      window.__rtaReplaying = true;   // suppress capture (cursor/scroll) during replay
 
       const cap = (window.Reanchor ? window.Reanchor.makeNarrationCapture() : null);
       const audio = { stream:null, recorder:null, chunks:[], startWall:null, map:[], vadTimer:null, ac:null, analyser:null };
@@ -2085,6 +2137,7 @@ function makeReplayTrial(caseObj){
         }).catch(()=>{ clearTimeout(hardCap); endOnce([]); });
       }
       function storeAndEnd(reanchored){
+        window.__rtaReplaying = false;
         store.rta = { narration:reanchored, silence_prompts:(function(){ try{ return Replay._state().fires; }catch(e){ return []; } })() };
         cleanupOverlays();
         jsPsych.finishTrial();
@@ -2153,8 +2206,11 @@ function buildSessionExport(){
 function makeExportTrial(){
   return {
     type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
+    stimulus: '<div></div>',   // required by the plugin; on_load renders the real screen
     data:{ trial_tag:"export" },
     on_load: function(){
+      study.__fsActive = false;   // study over: stop guarding fullscreen
+      const __fsr=document.getElementById("fs_return"); if(__fsr) __fsr.remove();
       cleanupOverlays();
       const payload = buildSessionExport();
       const fname = "ot_session_" + (study.sub_id_from_url || "anon") + "_" + Date.now() + ".json";
