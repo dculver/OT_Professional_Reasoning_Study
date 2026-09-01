@@ -1,0 +1,490 @@
+{
+ "schema": "ot_prof_reasoning_v1",
+ "study_id": "P001",
+ "generated_at": "2026-01-01T00:00:00Z",
+ "session": {
+  "started_at": "2026-01-01T00:00:00Z",
+  "user_agent": "test",
+  "session_started_at_ms": 1000,
+  "group": "faculty",
+  "year_in_program": "NA",
+  "url_params": {
+   "sub_id": "P001",
+   "group": "faculty",
+   "year": "NA"
+  },
+  "task_viewport": {
+   "w": 1440,
+   "h": 900
+  },
+  "browser_check": {},
+  "permissions": {},
+  "rta_silence_threshold_ms": 15000
+ },
+ "cases": [
+  {
+   "case_id": "practice",
+   "case_role": "Practice",
+   "case_name": "Patricia",
+   "analyzed": false,
+   "case_started_offset_ms": 0,
+   "task": null,
+   "rta": [],
+   "rta_silence_prompts": []
+  },
+  {
+   "case_id": "florence",
+   "case_role": "Case 1",
+   "case_name": "Florence",
+   "analyzed": true,
+   "case_started_offset_ms": 60000,
+   "task": {
+    "case_id": "florence",
+    "case_role": "Case 1",
+    "case_name": "Florence",
+    "synthesis": {
+     "impression": "Florence has reduced shoulder range after her replacement. Her rheumatoid arthritis limits grip and endurance, so morning routines are effortful.",
+     "impression_last_edit": null,
+     "impression_revisions": [
+      {
+       "version": 1,
+       "text": "Florence has reduced shoulder range after her replacement.",
+       "ts": 1000
+      },
+      {
+       "version": 2,
+       "text": "Florence has reduced shoulder range after her replacement. Her rheumatoid arthritis limits grip and endurance, so morning routines are effortful.",
+       "ts": 2000
+      }
+     ],
+     "desired_outcomes": [
+      {
+       "id": "out_a",
+       "text": "Dress upper body independently.",
+       "otpf4_outcome_type": "Occupational performance",
+       "ts": 111
+      },
+      {
+       "id": "out_b",
+       "text": "Prepare a simple meal safely.",
+       "otpf4_outcome_type": null,
+       "ts": 222
+      }
+     ]
+    },
+    "occupations": [
+     {
+      "id": "occ_1",
+      "name": "Upper-body dressing"
+     },
+     {
+      "id": "occ_2",
+      "name": "Meal preparation"
+     }
+    ],
+    "entries": [
+     {
+      "id": "ent_1",
+      "type": "support",
+      "excerpt": "reports strong family support",
+      "provenance_src": "fl_prof_2",
+      "mechanism": "family assists with setup",
+      "otpf4_aspect": "Context",
+      "occupation_id": "occ_1",
+      "ts": 1
+     },
+     {
+      "id": "ent_2",
+      "type": "barrier",
+      "excerpt": "pain with overhead reach",
+      "provenance_src": "fl_ch_pain",
+      "mechanism": "limited shoulder flexion",
+      "otpf4_aspect": "Client factor",
+      "occupation_id": "occ_1",
+      "ts": 2
+     }
+    ],
+    "intervention_plan": {
+     "selectedBarrierIds": [
+      "ent_2"
+     ],
+     "perBarrier": {
+      "ent_2": {
+       "approach": "Restore",
+       "method": "Graded overhead reach with pulleys. Progress to reaching a shelf.",
+       "type": "Occupation-based",
+       "grading": "Increase height weekly."
+      }
+     },
+     "prioritization": "Address shoulder reach first because it gates dressing. Endurance follows.",
+     "goal": "In 3 weeks Florence will don a front-open shirt independently.",
+     "immediate": "Set up adaptive equipment. Teach energy conservation."
+    },
+    "event_log": [
+     {
+      "t": 500,
+      "t_clock": "00:00.5",
+      "kind": "tab_switch",
+      "detail": {
+       "tab": "chart"
+      }
+     },
+     {
+      "t": 1200,
+      "t_clock": "00:01.2",
+      "kind": "occupation_add",
+      "detail": {
+       "name": "Upper-body dressing",
+       "occupation": "Upper-body dressing"
+      }
+     },
+     {
+      "t": 1500,
+      "t_clock": "00:01.5",
+      "kind": "occupation_add",
+      "detail": {
+       "name": "Meal preparation",
+       "occupation": "Meal preparation"
+      }
+     },
+     {
+      "t": 3000,
+      "t_clock": "00:03.0",
+      "kind": "classify",
+      "detail": {
+       "type": "support",
+       "excerpt": "reports strong family support",
+       "occId": "occ_1",
+       "occupation": "Upper-body dressing",
+       "mechanism": "family assists with setup",
+       "aspect": "Context",
+       "src": "fl_prof_2",
+       "source": "Profile \u00b62"
+      }
+     },
+     {
+      "t": 4500,
+      "t_clock": "00:04.5",
+      "kind": "classify",
+      "detail": {
+       "type": "barrier",
+       "excerpt": "pain with overhead reach",
+       "occId": "occ_1",
+       "occupation": "Upper-body dressing",
+       "mechanism": "limited shoulder flexion",
+       "aspect": "Client factor",
+       "src": "fl_ch_pain",
+       "source": "Chart: Pain"
+      }
+     },
+     {
+      "t": 6000,
+      "t_clock": "00:06.0",
+      "kind": "synthesis_revision",
+      "detail": {
+       "version": 1,
+       "len": 58
+      }
+     },
+     {
+      "t": 9000,
+      "t_clock": "00:09.0",
+      "kind": "synthesis_revision",
+      "detail": {
+       "version": 2,
+       "len": 140
+      }
+     },
+     {
+      "t": 11000,
+      "t_clock": "00:11.0",
+      "kind": "desired_outcome_add",
+      "detail": {
+       "text": "Dress upper body independently."
+      }
+     },
+     {
+      "t": 12000,
+      "t_clock": "00:12.0",
+      "kind": "desired_outcome_add",
+      "detail": {
+       "text": "Prepare a simple meal safely."
+      }
+     },
+     {
+      "t": 12500,
+      "t_clock": "00:12.5",
+      "kind": "desired_outcome_tag",
+      "detail": {
+       "id": "out_a",
+       "type": "Occupational performance",
+       "outcome": "Dress upper body independently."
+      }
+     },
+     {
+      "t": 13000,
+      "t_clock": "00:13.0",
+      "kind": "barrier_select",
+      "detail": {
+       "id": "ent_2",
+       "on": true,
+       "entry": "pain with overhead reach"
+      }
+     },
+     {
+      "t": 14000,
+      "t_clock": "00:14.0",
+      "kind": "plan_edit",
+      "detail": {
+       "scope": "barrier",
+       "barrier_id": "ent_2",
+       "field": "method",
+       "len": 20
+      }
+     },
+     {
+      "t": 15000,
+      "t_clock": "00:15.0",
+      "kind": "plan_edit",
+      "detail": {
+       "scope": "barrier",
+       "barrier_id": "ent_2",
+       "field": "method",
+       "len": 64
+      }
+     },
+     {
+      "t": 16000,
+      "t_clock": "00:16.0",
+      "kind": "plan_edit",
+      "detail": {
+       "scope": "plan",
+       "field": "prioritization",
+       "len": 70
+      }
+     },
+     {
+      "t": 17000,
+      "t_clock": "00:17.0",
+      "kind": "plan_edit",
+      "detail": {
+       "scope": "plan",
+       "field": "goal",
+       "len": 58
+      }
+     },
+     {
+      "t": 18000,
+      "t_clock": "00:18.0",
+      "kind": "plan_edit",
+      "detail": {
+       "scope": "plan",
+       "field": "immediate",
+       "len": 48
+      }
+     },
+     {
+      "t": 19000,
+      "t_clock": "00:19.0",
+      "kind": "entry_remove",
+      "detail": {
+       "id": "ent_x",
+       "entry": "(removed draft)"
+      }
+     },
+     {
+      "t": 20000,
+      "t_clock": "00:20.0",
+      "kind": "occupation_remove",
+      "detail": {
+       "id": "occ_9",
+       "occupation": "(removed)"
+      }
+     }
+    ]
+   },
+   "rta": [
+    {
+     "text": "I started on the chart because I wanted the medical picture first.",
+     "case_relative_t": 700,
+     "session_offset_t": 60700,
+     "paused": false,
+     "kind": "final"
+    },
+    {
+     "text": "Here I was weighing whether the pain was the main barrier.",
+     "case_relative_t": 4600,
+     "session_offset_t": 64600,
+     "paused": true,
+     "kind": "final"
+    },
+    {
+     "text": "I prioritized the shoulder because dressing depends on it.",
+     "case_relative_t": 16200,
+     "session_offset_t": 76200,
+     "paused": false,
+     "kind": "final"
+    }
+   ],
+   "rta_silence_prompts": [
+    15000
+   ]
+  },
+  {
+   "case_id": "yvonne",
+   "case_role": "Case 2",
+   "case_name": "Yvonne",
+   "analyzed": true,
+   "case_started_offset_ms": 180000,
+   "task": {
+    "case_id": "yvonne",
+    "case_role": "Case 2",
+    "case_name": "Yvonne",
+    "synthesis": {
+     "impression": "Yvonne is recovering from a mastectomy with SLE-related fatigue.",
+     "impression_last_edit": null,
+     "impression_revisions": [
+      {
+       "version": 1,
+       "text": "Yvonne is recovering from a mastectomy with SLE-related fatigue.",
+       "ts": 1
+      }
+     ],
+     "desired_outcomes": [
+      {
+       "id": "out_c",
+       "text": "Return to gardening.",
+       "otpf4_outcome_type": "Participation",
+       "ts": 1
+      }
+     ]
+    },
+    "occupations": [
+     {
+      "id": "occ_3",
+      "name": "Gardening"
+     }
+    ],
+    "entries": [
+     {
+      "id": "ent_3",
+      "type": "barrier",
+      "excerpt": "fatigue after activity",
+      "provenance_src": "yv_ch_fatigue",
+      "mechanism": "low endurance",
+      "otpf4_aspect": "Client factor",
+      "occupation_id": "occ_3",
+      "ts": 1
+     }
+    ],
+    "intervention_plan": {
+     "selectedBarrierIds": [
+      "ent_3"
+     ],
+     "perBarrier": {
+      "ent_3": {
+       "approach": "Modify",
+       "method": "Pace tasks; sit to garden.",
+       "type": "Preparatory",
+       "grading": ""
+      }
+     },
+     "prioritization": "",
+     "goal": "Garden 20 minutes without a rest break in 4 weeks.",
+     "immediate": ""
+    },
+    "event_log": [
+     {
+      "t": 400,
+      "t_clock": "00:00.4",
+      "kind": "occupation_add",
+      "detail": {
+       "name": "Gardening",
+       "occupation": "Gardening"
+      }
+     },
+     {
+      "t": 2000,
+      "t_clock": "00:02.0",
+      "kind": "classify",
+      "detail": {
+       "type": "barrier",
+       "excerpt": "fatigue after activity",
+       "occId": "occ_3",
+       "occupation": "Gardening",
+       "mechanism": "low endurance",
+       "aspect": "Client factor",
+       "src": "yv_ch_fatigue",
+       "source": "Chart: Fatigue"
+      }
+     },
+     {
+      "t": 4000,
+      "t_clock": "00:04.0",
+      "kind": "synthesis_revision",
+      "detail": {
+       "version": 1,
+       "len": 62
+      }
+     },
+     {
+      "t": 6000,
+      "t_clock": "00:06.0",
+      "kind": "desired_outcome_add",
+      "detail": {
+       "text": "Return to gardening."
+      }
+     },
+     {
+      "t": 7000,
+      "t_clock": "00:07.0",
+      "kind": "barrier_select",
+      "detail": {
+       "id": "ent_3",
+       "on": true,
+       "entry": "fatigue after activity"
+      }
+     },
+     {
+      "t": 8000,
+      "t_clock": "00:08.0",
+      "kind": "plan_edit",
+      "detail": {
+       "scope": "barrier",
+       "barrier_id": "ent_3",
+       "field": "method",
+       "len": 26
+      }
+     },
+     {
+      "t": 9000,
+      "t_clock": "00:09.0",
+      "kind": "plan_edit",
+      "detail": {
+       "scope": "plan",
+       "field": "goal",
+       "len": 52
+      }
+     }
+    ]
+   },
+   "rta": [
+    {
+     "text": "Fatigue was the dominant concern for Yvonne.",
+     "case_relative_t": 2100,
+     "session_offset_t": 182100,
+     "paused": false,
+     "kind": "final"
+    },
+    {
+     "text": "I chose pacing rather than strengthening given the SLE.",
+     "case_relative_t": 8200,
+     "session_offset_t": 188200,
+     "paused": true,
+     "kind": "final"
+    }
+   ],
+   "rta_silence_prompts": []
+  }
+ ]
+}

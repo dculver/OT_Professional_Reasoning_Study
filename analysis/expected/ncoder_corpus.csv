@@ -1,0 +1,53 @@
+participant_id,group,year_in_program,case_id,case_name,line_index,time_ms,session_offset_ms,stream,kind,has_text,segment_index,text,occupation,source,excerpt,aspect,otpf_type,barrier_on,paused
+P001,faculty,NA,florence,Florence,2,700,60700,rta,rta_utterance,True,1,I started on the chart because I wanted the medical picture first.,,,,,,,False
+P001,faculty,NA,florence,Florence,3,1200,61200,action,occupation_add,True,1,Upper-body dressing,Upper-body dressing,,,,,,
+P001,faculty,NA,florence,Florence,4,1500,61500,action,occupation_add,True,1,Meal preparation,Meal preparation,,,,,,
+P001,faculty,NA,florence,Florence,5,3000,63000,action,classify,True,1,family assists with setup,Upper-body dressing,Profile ¶2,reports strong family support,Context,support,,
+P001,faculty,NA,florence,Florence,6,4500,64500,action,classify,True,1,limited shoulder flexion,Upper-body dressing,Chart: Pain,pain with overhead reach,Client factor,barrier,,
+P001,faculty,NA,florence,Florence,7,4600,64600,rta,rta_utterance,True,1,Here I was weighing whether the pain was the main barrier.,,,,,,,True
+P001,faculty,NA,florence,Florence,8,6000,66000,action,synthesis_revision,True,1,Florence has reduced shoulder range after her replacement.,,,,,,,
+P001,faculty,NA,florence,Florence,9,9000,69000,action,synthesis_revision,True,1,Florence has reduced shoulder range after her replacement.,,,,,,,
+P001,faculty,NA,florence,Florence,10,9000,69000,action,synthesis_revision,True,2,"Her rheumatoid arthritis limits grip and endurance, so morning routines are effortful.",,,,,,,
+P001,faculty,NA,florence,Florence,11,11000,71000,action,desired_outcome_add,True,1,Dress upper body independently.,,,,,,,
+P001,faculty,NA,florence,Florence,12,12000,72000,action,desired_outcome_add,True,1,Prepare a simple meal safely.,,,,,,,
+P001,faculty,NA,florence,Florence,15,15000,75000,action,plan_edit,True,1,Graded overhead reach with pulleys.,,,,,,,
+P001,faculty,NA,florence,Florence,16,15000,75000,action,plan_edit,True,2,Progress to reaching a shelf.,,,,,,,
+P001,faculty,NA,florence,Florence,17,16000,76000,action,plan_edit,True,1,Address shoulder reach first because it gates dressing.,,,,,,,
+P001,faculty,NA,florence,Florence,18,16000,76000,action,plan_edit,True,2,Endurance follows.,,,,,,,
+P001,faculty,NA,florence,Florence,19,16200,76200,rta,rta_utterance,True,1,I prioritized the shoulder because dressing depends on it.,,,,,,,False
+P001,faculty,NA,florence,Florence,20,17000,77000,action,plan_edit,True,1,In 3 weeks Florence will don a front-open shirt independently.,,,,,,,
+P001,faculty,NA,florence,Florence,21,18000,78000,action,plan_edit,True,1,Set up adaptive equipment.,,,,,,,
+P001,faculty,NA,florence,Florence,22,18000,78000,action,plan_edit,True,2,Teach energy conservation.,,,,,,,
+P001,faculty,NA,yvonne,Yvonne,1,400,180400,action,occupation_add,True,1,Gardening,Gardening,,,,,,
+P001,faculty,NA,yvonne,Yvonne,2,2000,182000,action,classify,True,1,low endurance,Gardening,Chart: Fatigue,fatigue after activity,Client factor,barrier,,
+P001,faculty,NA,yvonne,Yvonne,3,2100,182100,rta,rta_utterance,True,1,Fatigue was the dominant concern for Yvonne.,,,,,,,False
+P001,faculty,NA,yvonne,Yvonne,4,4000,184000,action,synthesis_revision,True,1,Yvonne is recovering from a mastectomy with SLE-related fatigue.,,,,,,,
+P001,faculty,NA,yvonne,Yvonne,5,6000,186000,action,desired_outcome_add,True,1,Return to gardening.,,,,,,,
+P001,faculty,NA,yvonne,Yvonne,7,8000,188000,action,plan_edit,True,1,Pace tasks; sit to garden.,,,,,,,
+P001,faculty,NA,yvonne,Yvonne,8,8200,188200,rta,rta_utterance,True,1,I chose pacing rather than strengthening given the SLE.,,,,,,,True
+P001,faculty,NA,yvonne,Yvonne,9,9000,189000,action,plan_edit,True,1,Garden 20 minutes without a rest break in 4 weeks.,,,,,,,
+P014,student,2,florence,Florence,2,700,60700,rta,rta_utterance,True,1,I started on the chart because I wanted the medical picture first.,,,,,,,False
+P014,student,2,florence,Florence,3,1200,61200,action,occupation_add,True,1,Upper-body dressing,Upper-body dressing,,,,,,
+P014,student,2,florence,Florence,4,1500,61500,action,occupation_add,True,1,Meal preparation,Meal preparation,,,,,,
+P014,student,2,florence,Florence,5,3000,63000,action,classify,True,1,family assists with setup,Upper-body dressing,Profile ¶2,reports strong family support,Context,support,,
+P014,student,2,florence,Florence,6,4500,64500,action,classify,True,1,limited shoulder flexion,Upper-body dressing,Chart: Pain,pain with overhead reach,Client factor,barrier,,
+P014,student,2,florence,Florence,7,4600,64600,rta,rta_utterance,True,1,Here I was weighing whether the pain was the main barrier.,,,,,,,True
+P014,student,2,florence,Florence,8,6000,66000,action,synthesis_revision,True,1,Florence has reduced shoulder range after her replacement.,,,,,,,
+P014,student,2,florence,Florence,9,9000,69000,action,synthesis_revision,True,1,Florence has reduced shoulder range after her replacement.,,,,,,,
+P014,student,2,florence,Florence,10,9000,69000,action,synthesis_revision,True,2,"Her rheumatoid arthritis limits grip and endurance, so morning routines are effortful.",,,,,,,
+P014,student,2,florence,Florence,11,11000,71000,action,desired_outcome_add,True,1,Dress upper body independently.,,,,,,,
+P014,student,2,florence,Florence,12,12000,72000,action,desired_outcome_add,True,1,Prepare a simple meal safely.,,,,,,,
+P014,student,2,florence,Florence,15,15000,75000,action,plan_edit,True,1,Graded overhead reach with pulleys.,,,,,,,
+P014,student,2,florence,Florence,16,15000,75000,action,plan_edit,True,2,Progress to reaching a shelf.,,,,,,,
+P014,student,2,florence,Florence,17,16000,76000,action,plan_edit,True,1,Address shoulder reach first because it gates dressing.,,,,,,,
+P014,student,2,florence,Florence,18,16000,76000,action,plan_edit,True,2,Endurance follows.,,,,,,,
+P014,student,2,florence,Florence,19,16200,76200,rta,rta_utterance,True,1,I prioritized the shoulder because dressing depends on it.,,,,,,,False
+P014,student,2,florence,Florence,20,17000,77000,action,plan_edit,True,1,In 3 weeks Florence will don a front-open shirt independently.,,,,,,,
+P014,student,2,florence,Florence,21,18000,78000,action,plan_edit,True,1,Set up adaptive equipment.,,,,,,,
+P014,student,2,florence,Florence,22,18000,78000,action,plan_edit,True,2,Teach energy conservation.,,,,,,,
+P014,student,2,yvonne,Yvonne,1,400,180400,action,occupation_add,True,1,Gardening,Gardening,,,,,,
+P014,student,2,yvonne,Yvonne,2,2000,182000,action,classify,True,1,low endurance,Gardening,Chart: Fatigue,fatigue after activity,Client factor,barrier,,
+P014,student,2,yvonne,Yvonne,3,4000,184000,action,synthesis_revision,True,1,Yvonne is recovering from a mastectomy with SLE-related fatigue.,,,,,,,
+P014,student,2,yvonne,Yvonne,4,6000,186000,action,desired_outcome_add,True,1,Return to gardening.,,,,,,,
+P014,student,2,yvonne,Yvonne,6,8000,188000,action,plan_edit,True,1,Pace tasks; sit to garden.,,,,,,,
+P014,student,2,yvonne,Yvonne,7,9000,189000,action,plan_edit,True,1,Garden 20 minutes without a rest break in 4 weeks.,,,,,,,
