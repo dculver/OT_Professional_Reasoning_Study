@@ -4,17 +4,43 @@
 by the instrument (schema `ot_prof_reasoning_v1`) into one tidy, long-format
 dataset ready for **nCoder** code development and, afterward, **rENA/ONA**.
 
-## Run it
+## How to run it
 
-```r
-install.packages("jsonlite")   # once; the only dependency
-```
+### First-time setup (once)
 
+1. Install **R** ([cran.r-project.org](https://cran.r-project.org)); optionally **RStudio**
+   ([posit.co/download/rstudio-desktop](https://posit.co/download/rstudio-desktop)) for a GUI.
+2. Install the only dependency — in the R/RStudio console:
+   ```r
+   install.packages("jsonlite")
+   ```
+   Everything else is base R.
+
+### Getting the logs
+Participants upload their session `.json` to Qualtrics. When you're ready to analyze,
+bulk-download those uploaded files out of Qualtrics into one folder (e.g. `analysis/logs/`).
+That folder is the script's input.
+
+### Option A — RStudio
+
+1. Open `merge_logs_for_ncoder.R`.
+2. **Session → Set Working Directory → To Source File Location** (puts you in `analysis/`).
+3. **Test first:** click **Source**. With no changes it runs on `sample_logs/` and writes `out/`.
+   The console prints the QA summary at the end.
+4. **Confirm correctness:** compare `out/ncoder_corpus.csv` to `expected/ncoder_corpus.csv` — they should match.
+5. **Real run:** put your participant `.json` files in a folder (e.g. `logs/`), then near the top change
+   ```r
+   IN_DIR  <- if (length(args) >= 1) args[[1]] else "sample_logs"
+   ```
+   replacing `"sample_logs"` with `"logs"` (or a full path). Click **Source** again. Output lands in `out/`.
+
+### Option B — Terminal
+
+The two words after the script are just *input folder* and *output folder* (no editing the file):
 ```bash
-# from this folder:
-Rscript merge_logs_for_ncoder.R <folder_of_json_logs> <output_folder>
-# e.g.
-Rscript merge_logs_for_ncoder.R sample_logs out
+cd ~/Documents/GitHub/proof-of-concept/analysis
+Rscript merge_logs_for_ncoder.R sample_logs out      # test on the samples
+Rscript merge_logs_for_ncoder.R logs results         # real run: logs/ in, results/ out
 ```
 
 It writes three files into the output folder:
