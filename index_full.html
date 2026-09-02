@@ -987,12 +987,10 @@ function renderCase(){
           <div class="tabs" role="tablist">
             <button class="tab active" data-tab="profile" role="tab">Occupational Profile</button>
             <button class="tab" data-tab="chart" role="tab">Initial Evaluation</button>
-            <button class="tab" data-tab="library" role="tab">Library</button>
           </div>
           <div class="panel-body" id="case_body">
             <div class="tabpage active" data-page="profile">${CASE.profileHTML}</div>
             <div class="tabpage" data-page="chart">${CASE.chartHTML}</div>
-            <div class="tabpage" data-page="library">${libCards}</div>
           </div>
         </div>
         <div class="panel" id="aoi_occupations" data-aoi="occupations" style="flex:1 1 50%">
@@ -1087,20 +1085,12 @@ function renderOutcomes(){
         <span class="dot"></span><span class="nm">${esc(o.text)}</span>
         <button class="rm" data-out="${o.id}" aria-label="Remove desired outcome">×</button>
       </div>
-      <select class="out-tag" data-out="${o.id}" aria-label="OTPF-4 outcome type (optional)">
-        <option value="">OTPF-4 outcome type (optional)…</option>
-        ${OUTCOME_TYPES.map(t=>`<option ${o.otpf4_outcome_type===t?'selected':''}>${t}</option>`).join("")}
-      </select>
     </div>`).join("");
   list.querySelectorAll(".rm").forEach(b=>b.addEventListener("click",()=>{
     const id=b.dataset.out;
     logEvent("desired_outcome_remove",{id}); recordDelta("outcome_remove",{id});
     state.synthesis.desired_outcomes=state.synthesis.desired_outcomes.filter(o=>o.id!==id);
     renderOutcomes(); updateWalkthrough();
-  }));
-  list.querySelectorAll(".out-tag").forEach(sel=>sel.addEventListener("change",()=>{
-    const o=state.synthesis.desired_outcomes.find(x=>x.id===sel.dataset.out);
-    if(o){ o.otpf4_outcome_type=sel.value||null; logEvent("desired_outcome_tag",{id:o.id,type:o.otpf4_outcome_type}); recordDelta("outcome_tag",{id:o.id, type:o.otpf4_outcome_type}); }
   }));
 }
 function wireTabs(){
@@ -1195,15 +1185,11 @@ function renderPlan(){
     const pb=state.plan.perBarrier[bid]||{};
     return `<div class="ip-card">
       <div class="cardh">${esc(b.mechanism||'barrier')} — ${esc(occ?occ.name:'?')}</div>
-      <div class="ip-field"><label>Intervention approach <span class="opt">(optional)</span></label>
-        <select class="ip" data-bid="${bid}" data-f="approach"><option value="">— select —</option>
-          ${APPROACHES.map(a=>`<option ${pb.approach===a?'selected':''}>${a}</option>`).join("")}</select></div>
-      <div class="ip-field"><label>Method (incl. safety / environment) <span class="opt">(optional)</span></label>
+      <div class="ip-field"><label>Describe your approach</label>
+        <textarea data-bid="${bid}" data-f="approach" placeholder="1–2 sentences">${esc(pb.approach||'')}</textarea></div>
+      <div class="ip-field"><label>Method (incl. safety / environment)</label>
         <textarea data-bid="${bid}" data-f="method" placeholder="2–3 sentences">${esc(pb.method||'')}</textarea></div>
-      <div class="ip-field"><label>Intervention type <span class="opt">(optional)</span></label>
-        <select class="ip" data-bid="${bid}" data-f="type"><option value="">— select —</option>
-          ${INTERVENTION_TYPES.map(a=>`<option ${pb.type===a?'selected':''}>${a}</option>`).join("")}</select></div>
-      <div class="ip-field"><label>Grading up / down <span class="opt">(optional)</span></label>
+      <div class="ip-field"><label>Grading up / down</label>
         <textarea data-bid="${bid}" data-f="grading" placeholder="1–2 sentences">${esc(pb.grading||'')}</textarea></div>
     </div>`;
   }).join("");
@@ -1213,7 +1199,7 @@ function renderPlan(){
       <span class="hint">Constrained to your own barrier classifications.</span>${barrierPick}</div>
     <div class="ip-step"><span class="lbl">2 · Why prioritize these over the others?</span>
       <textarea class="ip" id="ip_prioritization" placeholder="2–3 sentences">${esc(state.plan.prioritization)}</textarea></div>
-    <div class="ip-step"><span class="lbl">3 · For each barrier: approach, method, type, grading</span>
+    <div class="ip-step"><span class="lbl">3 · For each barrier: approach, method, grading</span>
       ${state.plan.selectedBarrierIds.length?cards:'<div class="empty">Select at least one barrier above.</div>'}</div>
     <div class="ip-step"><span class="lbl">4 · One objective, measurable, occupation-based long-term goal that addresses a desired outcome</span>
       <textarea class="ip" id="ip_goal" placeholder="1–2 sentences">${esc(state.plan.goal)}</textarea></div>
@@ -1313,16 +1299,14 @@ function classifyStep(type, text, src){
     <button class="back" id="pk_back">← back</button>
     <div class="q">${mechQ}</div>
     <input type="text" id="pk_mech" maxlength="140" placeholder="${mechPH}" />
-    <div class="q">OTPF-4 aspect <span class="opt">(optional)</span></div>
-    <select id="pk_aspect"><option value="">— skip —</option>${ASPECTS.map(a=>`<option>${a}</option>`).join("")}</select>
     <div class="q">${occQ}</div>
     <select id="pk_occ"><option value="">— select occupation —</option>${state.occupations.map(o=>`<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select>
     <button class="confirm" id="pk_go" disabled>${isBar?'Add barrier':'Add support'}</button>`;
   document.getElementById("pk_back").onclick=()=>{ recordDelta("pop_back",{}); popEl.innerHTML=choiceStep(text); wireChoiceStep(text,src); };
-  const mech=document.getElementById("pk_mech"), asp=document.getElementById("pk_aspect"), occSel=document.getElementById("pk_occ"), go=document.getElementById("pk_go");
+  const mech=document.getElementById("pk_mech"), occSel=document.getElementById("pk_occ"), go=document.getElementById("pk_go");
   const check=()=> go.disabled=!(mech.value.trim() && occSel.value);
-  mech.oninput=()=>{ recordDelta("pop_mech",{value:mech.value}); check(); }; occSel.onchange=()=>{ recordDelta("pop_occ",{occId:occSel.value}); check(); }; asp.onchange=()=>{ recordDelta("pop_aspect",{value:asp.value}); }; mech.focus();
-  go.onclick=()=>{ commitEntry({ type, excerpt:text, src, mechanism:mech.value.trim(), aspect:asp.value||null, occId:occSel.value }); removePop(); };
+  mech.oninput=()=>{ recordDelta("pop_mech",{value:mech.value}); check(); }; occSel.onchange=()=>{ recordDelta("pop_occ",{occId:occSel.value}); check(); }; mech.focus();
+  go.onclick=()=>{ commitEntry({ type, excerpt:text, src, mechanism:mech.value.trim(), aspect:null, occId:occSel.value }); removePop(); };
 }
 function needOccupationsWarn(){
   popEl.innerHTML=`<div class="warn"><b>Add an occupation first.</b><br>A support or barrier is classified <em>in relation to an occupation</em>. Name at least one occupation, then highlight again.</div>`;
@@ -1352,7 +1336,7 @@ let walk = null;
 function isPractice(){ return CASE && CASE.role==="Practice"; }
 
 const REQUIRED = [
-  ["tabs",            "Open the Initial Evaluation & Library tabs"],
+  ["tabs",            "Open the Initial Evaluation tab"],
   ["impression",     "Write a clinical impression"],
   ["occupation",     "Add an occupation"],
   ["support",        "Mark a support"],
@@ -1366,12 +1350,12 @@ const REQUIRED = [
 ];
 const TOUR = [
   {req:null,             sel:null,               h:"Welcome — this is practice", p:"This run is just to learn the tool before the real cases. Nothing here counts. Work through the checklist at the bottom in any order; when it's complete you can continue."},
-  {req:"tabs",           sel:".tabs",            h:"Open every tab",            p:"The case material has three tabs. Open Initial Evaluation and the Library at least once so you've seen all of it."},
+  {req:"tabs",           sel:".tabs",            h:"Open every tab",            p:"The case material has two tabs. Open the Initial Evaluation tab at least once so you've seen all of it."},
   {req:"occupation",     sel:"#occ_input",       h:"Add an occupation",         p:"Name one occupation the client needs or wants to do, then briefly describe it (what they want and need to do). Press Add. Everything you classify links to an occupation."},
-  {req:"support",        sel:"#case_body",       h:"Mark a support",            p:"Select any phrase in the case text. In the popup choose Support, name what enables it, optionally tag an OTPF-4 aspect, and link it to an occupation."},
-  {req:"barrier",        sel:"#case_body",       h:"Mark a barrier",            p:"Select another phrase and choose Barrier. Name what's getting in the way, optionally tag an aspect, and link it to an occupation."},
-  {req:"synthesis",      sel:"#aoi_synthesis",   h:"Synthesize the evaluation", p:"Write your clinical impression integrating the profile and your analysis, then add at least one desired outcome. You can optionally tag each outcome with an OTPF-4 outcome type."},
-  {req:"plan",           sel:"#aoi_intervention",h:"Build the plan",            p:"Select one of your barriers to address, then fill its approach, method, type, and grading — plus the prioritization, goal, and immediate-attention boxes."},
+  {req:"support",        sel:"#case_body",       h:"Mark a support",            p:"Select any phrase in the case text. In the popup choose Support, name what enables it, and link it to an occupation."},
+  {req:"barrier",        sel:"#case_body",       h:"Mark a barrier",            p:"Select another phrase and choose Barrier. Name what's getting in the way and link it to an occupation."},
+  {req:"synthesis",      sel:"#aoi_synthesis",   h:"Synthesize the evaluation", p:"Write your clinical impression integrating the profile and your analysis, then add at least one desired outcome."},
+  {req:"plan",           sel:"#aoi_intervention",h:"Build the plan",            p:"Select one of your barriers to address, then fill its approach, method, and grading — plus the prioritization, goal, and immediate-attention boxes."},
   {req:null,             sel:"#cl",              h:"That's everything",         p:"When every checklist item is checked, Continue turns on. Reopen this guide anytime with “Show guide.”"}
 ];
 
@@ -1389,9 +1373,9 @@ function firstIncompleteStep(){
 
 function checklistState(){
   const s=state, w=walk;
-  const card = s.plan.selectedBarrierIds.some(id=>{const pb=s.plan.perBarrier[id]||{}; return pb.approach&&pb.method&&pb.type&&(pb.grading||'').trim();});
+  const card = s.plan.selectedBarrierIds.some(id=>{const pb=s.plan.perBarrier[id]||{}; return (pb.approach||'').trim()&&(pb.method||'').trim()&&(pb.grading||'').trim();});
   return {
-    tabs: !!(w.tabsSeen.chart && w.tabsSeen.library),
+    tabs: !!(w.tabsSeen.chart),
     impression: s.synthesis.impression_revisions.length>0,
     occupation: s.occupations.length>0,
     support: s.entries.some(e=>e.type==="support"),
@@ -1871,6 +1855,24 @@ function addBannerSubmit(){
   banner.style.display = "flex"; banner.style.alignItems = "center";
   banner.appendChild(btn);
   btn.addEventListener("click", ()=>{
+    // Required text fields (none are optional): the clinical impression, the
+    // plan-level prioritization/goal/immediate boxes, and -- for every barrier
+    // the participant chose to address -- its approach, method, and grading.
+    const p = state.plan || {};
+    const missing = [];
+    if(!(state.synthesis.impression||"").trim()) missing.push("Write a clinical impression.");
+    if(!(p.prioritization||"").trim())            missing.push("Complete the prioritization box.");
+    if(!(p.goal||"").trim())                       missing.push("Complete the long-term goal box.");
+    if(!(p.immediate||"").trim())                  missing.push("Complete the immediate-attention box.");
+    const incompleteBars = (p.selectedBarrierIds||[]).filter(id=>{
+      const pb = (p.perBarrier||{})[id] || {};
+      return !((pb.approach||"").trim() && (pb.method||"").trim() && (pb.grading||"").trim());
+    });
+    if(incompleteBars.length) missing.push("Fill approach, method, and grading for every barrier you're addressing (" + incompleteBars.length + " still incomplete).");
+    if(missing.length){
+      window.alert("Please complete the following before submitting this case:\n\n• " + missing.join("\n• "));
+      return;
+    }
     const ok = window.confirm(
       "Submit this case and continue to the replay? You will not be able to return to it.\n\n" +
       "Recorded so far:\n" +
@@ -2012,8 +2014,6 @@ function renderReplayPopup(recon, tMs){
     el.innerHTML =
       '<div class="q">'+mechQ+'</div>'
       + '<input type="text" value="'+_esc(p.mech||"")+'" disabled />'
-      + '<div class="q">OTPF-4 aspect <span class="opt">(optional)</span></div>'
-      + '<select disabled>'+(p.aspect? '<option>'+_esc(p.aspect)+'</option>' : '<option>— skip —</option>')+'</select>'
       + '<div class="q">'+occQ+'</div>'
       + '<select disabled>'+(occName? '<option>'+_esc(occName)+'</option>' : '<option>— select occupation —</option>')+'</select>'
       + '<button class="confirm" disabled>'+(isBar?'Add barrier':'Add support')+'</button>';
