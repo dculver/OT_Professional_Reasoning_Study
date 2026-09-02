@@ -55,18 +55,20 @@ It writes three files into the output folder:
 
 - **Stream 1 is event-centric.** One row per `event_log` entry, in task-time order.
   Text-bearing events carry their typed text: `occupation_add` → the occupation
-  name, `classify` → the mechanism (with the highlighted `excerpt`, `source`,
-  `aspect`, and support/barrier `type` kept as metadata columns), `desired_outcome_add`
-  → the outcome text, `synthesis_revision` → the impression text, `plan_edit` → the
-  plan free-text. No-text moves (`tab_switch`, `entry_remove`, `barrier_select`,
-  `occupation_remove`, `desired_outcome_remove`, `desired_outcome_tag`) stay as rows
-  with empty text — they're real moves in the ONA but aren't text-coded.
+  **description** (the coded reasoning line; the short `name` is kept in the
+  `occupation` column as metadata), `classify` → the mechanism (with the highlighted
+  `excerpt`, `source`, `aspect`, and support/barrier `type` kept as metadata columns),
+  `desired_outcome_add` → the outcome text, `synthesis_revision` → the impression text,
+  `plan_edit` → the plan free-text. No-text moves (`tab_switch`, `entry_remove`,
+  `barrier_select`, `occupation_remove`, `desired_outcome_remove`, `desired_outcome_tag`)
+  stay as rows with empty text — they're real moves in the ONA but aren't text-coded.
 - **Stream 2 is the re-anchored RTA** think-aloud, on the *same* case-relative
   millisecond clock, so spoken and typed reasoning interleave in true task order.
-- **Sentence splitting:** the clinical impression (every settled revision) and the
-  plan free-text are split into sentences — one coded line per sentence, each tagged
-  with its source event `kind` and time. Everything else is one line per event; RTA
-  uses Whisper's phrase-level chunks as they come.
+- **Sentence splitting:** the clinical impression (every settled revision), the
+  plan free-text, and the **occupation description** are split into sentences — one
+  coded line per sentence, each tagged with its source event `kind` and time.
+  Everything else is one line per event; RTA uses Whisper's phrase-level chunks as
+  they come.
 - The **practice case** (`analyzed: false`) is excluded automatically.
 
 ## Columns

@@ -128,7 +128,9 @@ parse_session <- function(doc, source_file) {
       asp  <- d$aspect %||% NA;     otype <- d$type %||% NA
       bon  <- if (identical(k, "barrier_select")) (d$on %||% NA) else NA
 
-      if (identical(k, "occupation_add"))        text <- d$name
+      # Occupation is a CODED reasoning line now: the description is the coded text
+      # (sentence-split), the short name rides along in the occupation column.
+      if (identical(k, "occupation_add"))        { text <- d$description %||% d$name; segmentable <- TRUE; occ <- d$name %||% occ }
       else if (identical(k, "classify"))         text <- d$mechanism
       else if (identical(k, "desired_outcome_add")) text <- d$text
       else if (identical(k, "synthesis_revision")) { text <- imp_rev[[as.character(d$version)]]; segmentable <- TRUE }

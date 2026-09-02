@@ -1,5 +1,5 @@
 participant_id,case_id,n_action_rows,n_action_text,n_rta,rta_empty_FLAG
-P001,florence,21,16,3,False
-P001,yvonne,7,6,2,False
-P014,florence,21,16,3,False
-P014,yvonne,7,6,0,True
+P001,florence,23,18,3,False
+P001,yvonne,8,7,2,False
+P014,florence,23,18,3,False
+P014,yvonne,8,7,0,True

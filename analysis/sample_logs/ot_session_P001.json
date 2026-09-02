@@ -75,11 +75,13 @@
     "occupations": [
      {
       "id": "occ_1",
-      "name": "Upper-body dressing"
+      "name": "Upper-body dressing",
+      "description": "She wants to dress herself in the morning without waiting for the aide. She needs to don a front-open shirt and manage the buttons."
      },
      {
       "id": "occ_2",
-      "name": "Meal preparation"
+      "name": "Meal preparation",
+      "description": "She wants to make a simple lunch on her own. She needs to reach a low shelf and carry a plate to the table."
      }
     ],
     "entries": [
@@ -135,7 +137,7 @@
       "kind": "occupation_add",
       "detail": {
        "name": "Upper-body dressing",
-       "occupation": "Upper-body dressing"
+       "description": "She wants to dress herself in the morning without waiting for the aide. She needs to don a front-open shirt and manage the buttons."
       }
      },
      {
@@ -144,7 +146,7 @@
       "kind": "occupation_add",
       "detail": {
        "name": "Meal preparation",
-       "occupation": "Meal preparation"
+       "description": "She wants to make a simple lunch on her own. She needs to reach a low shelf and carry a plate to the table."
       }
      },
      {
@@ -362,7 +364,8 @@
     "occupations": [
      {
       "id": "occ_3",
-      "name": "Gardening"
+      "name": "Gardening",
+      "description": "She wants to return to tending her raised beds. She needs to kneel, reach, and work for stretches without exhausting herself."
      }
     ],
     "entries": [
@@ -400,7 +403,7 @@
       "kind": "occupation_add",
       "detail": {
        "name": "Gardening",
-       "occupation": "Gardening"
+       "description": "She wants to return to tending her raised beds. She needs to kneel, reach, and work for stretches without exhausting herself."
       }
      },
      {

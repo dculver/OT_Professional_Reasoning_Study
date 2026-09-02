@@ -316,6 +316,13 @@
     };
 
   </script>
+  <style>
+  .occ-add{flex-wrap:wrap}
+  #occ_desc{flex:1 1 100%;min-width:0;box-sizing:border-box;resize:vertical;font-family:inherit;font-size:13px;line-height:1.45;padding:8px 11px;border:1px solid var(--line);border-radius:7px}
+  #occ_desc:focus{outline:none;border-color:var(--occ)}
+  .occ-card{flex-wrap:wrap}
+  .occ-card .occ-desc{flex:1 1 100%;font-size:12px;color:var(--occ-ink);opacity:.85;line-height:1.45;margin-top:4px}
+  </style>
   <script src="js/reanchor.js"></script>
 </head>
 <body>
@@ -997,6 +1004,7 @@ function renderCase(){
           <div class="panel-body">
             <div class="occ-add">
               <input id="occ_input" type="text" maxlength="80" placeholder="Name an occupation…" aria-label="Name an occupation"/>
+              <textarea id="occ_desc" maxlength="600" rows="2" placeholder="Briefly describe this occupation. What do they want and what do they need to do?" aria-label="Briefly describe this occupation. What do they want and what do they need to do?"></textarea>
               <button class="btn btn-occ" id="occ_add">Add</button>
             </div>
             <div id="occ_list"></div>
@@ -1114,20 +1122,22 @@ function wireTabs(){
 }
 function wireOccupations(){
   const input=document.getElementById("occ_input");
-  const add=()=>{ const name=input.value.trim(); if(!name) return;
-    const id=uid("occ_"); state.occupations.push({id,name}); logEvent("occupation_add",{name}); recordDelta("occ_add",{id,name});
-    input.value=""; recordDelta("occ_input",{value:""}); renderOccupations(); renderPlan(); };
+  const desc=document.getElementById("occ_desc");
+  const add=()=>{ const name=input.value.trim(); const description=(desc?desc.value.trim():""); if(!name) return; if(!description){ if(desc) desc.focus(); return; }
+    const id=uid("occ_"); state.occupations.push({id,name,description}); logEvent("occupation_add",{name,description}); recordDelta("occ_add",{id,name,description});
+    input.value=""; if(desc) desc.value=""; recordDelta("occ_input",{value:""}); recordDelta("occ_desc_input",{value:""}); renderOccupations(); renderPlan(); };
   document.getElementById("occ_add").addEventListener("click", add);
   input.addEventListener("input", ()=>recordDelta("occ_input",{value:input.value}));
+  if(desc) desc.addEventListener("input", ()=>recordDelta("occ_desc_input",{value:desc.value}));
   input.addEventListener("keydown", e=>{ if(e.key==="Enter") add(); });
 }
 function renderOccupations(){
   const list=document.getElementById("occ_list");
   document.getElementById("occ_count").textContent=state.occupations.length;
-  if(!state.occupations.length){ list.innerHTML=`<div class="empty"><b>No occupations yet</b>Name the occupations this client needs or wants to do. Supports and barriers you identify link to these.</div>`; return; }
+  if(!state.occupations.length){ list.innerHTML=`<div class="empty"><b>No occupations yet</b>Name and briefly describe the occupations this client needs or wants to do. Supports and barriers you identify link to these.</div>`; return; }
   list.innerHTML=state.occupations.map(o=>{
     const n=state.entries.filter(e=>e.occId===o.id).length;
-    return `<div class="occ-card"><span class="dot"></span><span class="nm">${esc(o.name)}</span><span class="tally">${n}</span><button class="rm" data-occ="${o.id}" aria-label="Remove ${esc(o.name)}">×</button></div>`;
+    return `<div class="occ-card"><span class="dot"></span><span class="nm">${esc(o.name)}</span><span class="tally">${n}</span><button class="rm" data-occ="${o.id}" aria-label="Remove ${esc(o.name)}">×</button>${o.description?`<div class="occ-desc">${esc(o.description)}</div>`:""}</div>`;
   }).join("");
   list.querySelectorAll(".rm").forEach(b=>b.addEventListener("click",()=>{
     const id=b.dataset.occ;
@@ -1361,7 +1371,7 @@ const REQUIRED = [
 const TOUR = [
   {req:null,             sel:null,               h:"Welcome — this is practice", p:"This run is just to learn the tool before the real cases. Nothing here counts. Work through the checklist at the bottom in any order; when it's complete you can continue."},
   {req:"tabs",           sel:".tabs",            h:"Open every tab",            p:"The case material has three tabs. Open the Chart and the Library at least once so you've seen all of it."},
-  {req:"occupation",     sel:"#occ_input",       h:"Add an occupation",         p:"Name one occupation the client needs or wants to do, then press Add. Everything you classify links to an occupation."},
+  {req:"occupation",     sel:"#occ_input",       h:"Add an occupation",         p:"Name one occupation the client needs or wants to do, then briefly describe it (what they want and need to do). Press Add. Everything you classify links to an occupation."},
   {req:"support",        sel:"#case_body",       h:"Mark a support",            p:"Select any phrase in the case text. In the popup choose Support, name what enables it, optionally tag an OTPF-4 aspect, and link it to an occupation."},
   {req:"barrier",        sel:"#case_body",       h:"Mark a barrier",            p:"Select another phrase and choose Barrier. Name what's getting in the way, optionally tag an aspect, and link it to an occupation."},
   {req:"synthesis",      sel:"#aoi_synthesis",   h:"Synthesize the evaluation", p:"Write your clinical impression integrating the profile and your analysis, then add at least one desired outcome. You can optionally tag each outcome with an OTPF-4 outcome type."},
@@ -1513,6 +1523,7 @@ function reconstructStateAt(recon, tMs){
     synthesis: { impression: "", desired_outcomes: [] },
     plan: { selectedBarrierIds: [], perBarrier: {}, prioritization:"", approach:"", method:"", type:"", grading:"", goal:"", immediate:"" },
     occInput: "",
+    occDesc: "",
     scroll: {},
     activeTab: "profile"
   };
@@ -1529,8 +1540,9 @@ function applyDelta(S, d){
   switch(d.op){
     case "tab":            S.activeTab = d.tab; break;
     case "occ_input":      S.occInput = d.value; break;
+    case "occ_desc_input": S.occDesc = d.value; break;
     case "scroll":         (S.scroll = S.scroll || {})[d.key] = d.top; break;
-    case "occ_add":        S.occupations.push({ id:d.id, name:d.name }); break;
+    case "occ_add":        S.occupations.push({ id:d.id, name:d.name, description:d.description }); break;
     case "occ_remove":     S.occupations = S.occupations.filter(o=>o.id!==d.id);
                            S.entries.forEach(e=>{ if(e.occId===d.id) e.occId=null; }); break;
     case "entry_add":      S.entries.push({ id:d.id, type:d.type, excerpt:d.excerpt, src:d.src,
@@ -1661,8 +1673,9 @@ const Replay = (function(){
       document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active', x.dataset.tab===S.activeTab));
       document.querySelectorAll('.tabpage').forEach(pp=>pp.classList.toggle('active', pp.getAttribute('data-page')===S.activeTab));
     }
-    // replay the occupation name being typed into the (transient) occupation input
+    // replay the occupation name + description being typed into the (transient) inputs
     { var __oi=document.getElementById('occ_input'); if(__oi) __oi.value = S.occInput || ''; }
+    { var __od=document.getElementById('occ_desc'); if(__od) __od.value = S.occDesc || ''; }
     // renderCase() rebuilt #app, detaching the highlight ranges resolved above.
     // Re-resolve each entry's range against the fresh source DOM and repaint.
     state.entries.forEach(e=>{ e.range = e.loc ? rangeFromOffsets(e.loc) : null; });
@@ -1955,6 +1968,7 @@ function replayFollowActive(recon, tMs){
       case "plan_field": sel = last.field==="goal"?"#ip_goal":last.field==="immediate"?"#ip_immediate":last.field==="prioritization"?"#ip_prioritization":null; break;
       case "plan_barrier": sel='[data-bid="'+last.bid+'"][data-f="'+last.field+'"]'; break;
       case "occ_add": case "occ_input": sel="#occ_input"; break;
+      case "occ_desc_input": sel="#occ_desc"; break;
     }
     if(sel){ var el=document.querySelector(sel); if(el && el.scrollIntoView){ el.scrollIntoView({block:"nearest", inline:"nearest"}); } }
   }catch(e){}
