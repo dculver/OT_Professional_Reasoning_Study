@@ -241,28 +241,24 @@
        (Inline Blob Worker: no external file, no CORS issues on GitHub Pages.) -->
   <script>
     let __whisperWorker = null, __workerReady = false, __modelProgress = 0;
-    const __TF_BASE = location.origin + '/js/vendor/transformers/';
-    const __MODEL_BASE = location.origin + '/models/';
     const WORKER_CODE = `
-      import { pipeline, env } from '${__TF_BASE}transformers.min.js';
-      env.allowRemoteModels = false;
-      env.allowLocalModels = true;
-      env.localModelPath = '${__MODEL_BASE}';
-      env.backends.onnx.wasm.wasmPaths = '${__TF_BASE}';
-      let transcriber = null, MODEL = 'Xenova/whisper-small.en';
+      import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
+      env.allowLocalModels = false;
+      let transcriber = null, MODEL = 'Xenova/whisper-small.en', MODEL_REVISION = 'fa16a75f5d91e83ecb6a2ccb690f14d91ef00ca4';
       self.onmessage = async (e) => {
         const { type } = e.data;
         if (type === 'warmup') {
           MODEL = e.data.model || MODEL;
           try {
             transcriber = await pipeline('automatic-speech-recognition', MODEL, {
+              revision: MODEL_REVISION,
               progress_callback: (p) => { if (p && p.progress != null) self.postMessage({ type:'progress', progress: p.progress }); }
             });
             self.postMessage({ type:'ready' });
           } catch (err) { self.postMessage({ type:'error', message: String(err) }); }
         } else if (type === 'transcribe') {
           try {
-            if (!transcriber) transcriber = await pipeline('automatic-speech-recognition', MODEL);
+            if (!transcriber) transcriber = await pipeline('automatic-speech-recognition', MODEL, { revision: MODEL_REVISION });
             const out = await transcriber(e.data.audioData, { chunk_length_s: 30, stride_length_s: 5, return_timestamps: true });
             self.postMessage({ type:'result', text: out && out.text ? out.text : '', chunks: out && out.chunks ? out.chunks : [] });
           } catch (err) { self.postMessage({ type:'error', message: String(err) }); }
@@ -890,13 +886,13 @@ function clockStr(ms){ const s=ms/1000; const m=Math.floor(s/60); const r=(s-m*6
 /* Source-element id -> plain-ASCII section label (case-independent; case is known
    at the session level, so it is not duplicated into every event). */
 const SRC_SECTION = {
-  "ch_ref":"Chart - Referral", "ch_interim":"Chart - Interim note",
-  "ch_neuro":"Chart - Neuromuscular/balance", "ch_pain":"Chart - Sensory/pain",
-  "ch_move":"Chart - ROM/strength", "ch_mob":"Chart - Functional mobility",
-  "ch_adl":"Chart - ADL", "ch_iadl":"Chart - IADL",
-  "ch_ment":"Chart - Mental status/cognition", "ch_soc":"Chart - Social history",
-  "ch_sleep":"Chart - Sleep", "ch_cp":"Chart - Cardiopulmonary/MET",
-  "ch_dc":"Chart - Discharge plan"
+  "ch_ref":"Initial Evaluation - Referral", "ch_interim":"Initial Evaluation - Interim note",
+  "ch_neuro":"Initial Evaluation - Neuromuscular/balance", "ch_pain":"Initial Evaluation - Sensory/pain",
+  "ch_move":"Initial Evaluation - ROM/strength", "ch_mob":"Initial Evaluation - Functional mobility",
+  "ch_adl":"Initial Evaluation - ADL", "ch_iadl":"Initial Evaluation - IADL",
+  "ch_ment":"Initial Evaluation - Mental status/cognition", "ch_soc":"Initial Evaluation - Social history",
+  "ch_sleep":"Initial Evaluation - Sleep", "ch_cp":"Initial Evaluation - Cardiopulmonary/MET",
+  "ch_dc":"Initial Evaluation - Discharge plan"
 };
 function srcLabel(src){
   if(!src) return null;
@@ -990,7 +986,7 @@ function renderCase(){
         <div class="panel" id="aoi_case_material" data-aoi="case_material" style="flex:1 1 50%">
           <div class="tabs" role="tablist">
             <button class="tab active" data-tab="profile" role="tab">Occupational Profile</button>
-            <button class="tab" data-tab="chart" role="tab">Chart</button>
+            <button class="tab" data-tab="chart" role="tab">Initial Evaluation</button>
             <button class="tab" data-tab="library" role="tab">Library</button>
           </div>
           <div class="panel-body" id="case_body">
@@ -1199,15 +1195,15 @@ function renderPlan(){
     const pb=state.plan.perBarrier[bid]||{};
     return `<div class="ip-card">
       <div class="cardh">${esc(b.mechanism||'barrier')} — ${esc(occ?occ.name:'?')}</div>
-      <div class="ip-field"><label>Intervention approach (Table 13)</label>
+      <div class="ip-field"><label>Intervention approach <span class="opt">(optional)</span></label>
         <select class="ip" data-bid="${bid}" data-f="approach"><option value="">— select —</option>
           ${APPROACHES.map(a=>`<option ${pb.approach===a?'selected':''}>${a}</option>`).join("")}</select></div>
-      <div class="ip-field"><label>Method (incl. safety / environment)</label>
+      <div class="ip-field"><label>Method (incl. safety / environment) <span class="opt">(optional)</span></label>
         <textarea data-bid="${bid}" data-f="method" placeholder="2–3 sentences">${esc(pb.method||'')}</textarea></div>
-      <div class="ip-field"><label>Intervention type (Table 12)</label>
+      <div class="ip-field"><label>Intervention type <span class="opt">(optional)</span></label>
         <select class="ip" data-bid="${bid}" data-f="type"><option value="">— select —</option>
           ${INTERVENTION_TYPES.map(a=>`<option ${pb.type===a?'selected':''}>${a}</option>`).join("")}</select></div>
-      <div class="ip-field"><label>Grading up / down</label>
+      <div class="ip-field"><label>Grading up / down <span class="opt">(optional)</span></label>
         <textarea data-bid="${bid}" data-f="grading" placeholder="1–2 sentences">${esc(pb.grading||'')}</textarea></div>
     </div>`;
   }).join("");
@@ -1356,7 +1352,7 @@ let walk = null;
 function isPractice(){ return CASE && CASE.role==="Practice"; }
 
 const REQUIRED = [
-  ["tabs",            "Open the Chart & Library tabs"],
+  ["tabs",            "Open the Initial Evaluation & Library tabs"],
   ["impression",     "Write a clinical impression"],
   ["occupation",     "Add an occupation"],
   ["support",        "Mark a support"],
@@ -1370,7 +1366,7 @@ const REQUIRED = [
 ];
 const TOUR = [
   {req:null,             sel:null,               h:"Welcome — this is practice", p:"This run is just to learn the tool before the real cases. Nothing here counts. Work through the checklist at the bottom in any order; when it's complete you can continue."},
-  {req:"tabs",           sel:".tabs",            h:"Open every tab",            p:"The case material has three tabs. Open the Chart and the Library at least once so you've seen all of it."},
+  {req:"tabs",           sel:".tabs",            h:"Open every tab",            p:"The case material has three tabs. Open Initial Evaluation and the Library at least once so you've seen all of it."},
   {req:"occupation",     sel:"#occ_input",       h:"Add an occupation",         p:"Name one occupation the client needs or wants to do, then briefly describe it (what they want and need to do). Press Add. Everything you classify links to an occupation."},
   {req:"support",        sel:"#case_body",       h:"Mark a support",            p:"Select any phrase in the case text. In the popup choose Support, name what enables it, optionally tag an OTPF-4 aspect, and link it to an occupation."},
   {req:"barrier",        sel:"#case_body",       h:"Mark a barrier",            p:"Select another phrase and choose Barrier. Name what's getting in the way, optionally tag an aspect, and link it to an occupation."},

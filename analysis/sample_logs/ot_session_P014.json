@@ -176,7 +176,7 @@
        "mechanism": "limited shoulder flexion",
        "aspect": "Client factor",
        "src": "fl_ch_pain",
-       "source": "Chart: Pain"
+       "source": "Initial Evaluation: Pain"
       }
      },
      {
@@ -418,7 +418,7 @@
        "mechanism": "low endurance",
        "aspect": "Client factor",
        "src": "yv_ch_fatigue",
-       "source": "Chart: Fatigue"
+       "source": "Initial Evaluation: Fatigue"
       }
      },
      {

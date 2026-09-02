@@ -5,7 +5,7 @@ P001,faculty,NA,florence,Florence,4,1200,61200,action,occupation_add,True,2,She 
 P001,faculty,NA,florence,Florence,5,1500,61500,action,occupation_add,True,1,She wants to make a simple lunch on her own.,Meal preparation,,,,,,
 P001,faculty,NA,florence,Florence,6,1500,61500,action,occupation_add,True,2,She needs to reach a low shelf and carry a plate to the table.,Meal preparation,,,,,,
 P001,faculty,NA,florence,Florence,7,3000,63000,action,classify,True,1,family assists with setup,Upper-body dressing,Profile ¶2,reports strong family support,Context,support,,
-P001,faculty,NA,florence,Florence,8,4500,64500,action,classify,True,1,limited shoulder flexion,Upper-body dressing,Chart: Pain,pain with overhead reach,Client factor,barrier,,
+P001,faculty,NA,florence,Florence,8,4500,64500,action,classify,True,1,limited shoulder flexion,Upper-body dressing,Initial Evaluation: Pain,pain with overhead reach,Client factor,barrier,,
 P001,faculty,NA,florence,Florence,9,4600,64600,rta,rta_utterance,True,1,Here I was weighing whether the pain was the main barrier.,,,,,,,True
 P001,faculty,NA,florence,Florence,10,6000,66000,action,synthesis_revision,True,1,Florence has reduced shoulder range after her replacement.,,,,,,,
 P001,faculty,NA,florence,Florence,11,9000,69000,action,synthesis_revision,True,1,Florence has reduced shoulder range after her replacement.,,,,,,,
@@ -22,7 +22,7 @@ P001,faculty,NA,florence,Florence,23,18000,78000,action,plan_edit,True,1,Set up 
 P001,faculty,NA,florence,Florence,24,18000,78000,action,plan_edit,True,2,Teach energy conservation.,,,,,,,
 P001,faculty,NA,yvonne,Yvonne,1,400,180400,action,occupation_add,True,1,She wants to return to tending her raised beds.,Gardening,,,,,,
 P001,faculty,NA,yvonne,Yvonne,2,400,180400,action,occupation_add,True,2,"She needs to kneel, reach, and work for stretches without exhausting herself.",Gardening,,,,,,
-P001,faculty,NA,yvonne,Yvonne,3,2000,182000,action,classify,True,1,low endurance,Gardening,Chart: Fatigue,fatigue after activity,Client factor,barrier,,
+P001,faculty,NA,yvonne,Yvonne,3,2000,182000,action,classify,True,1,low endurance,Gardening,Initial Evaluation: Fatigue,fatigue after activity,Client factor,barrier,,
 P001,faculty,NA,yvonne,Yvonne,4,2100,182100,rta,rta_utterance,True,1,Fatigue was the dominant concern for Yvonne.,,,,,,,False
 P001,faculty,NA,yvonne,Yvonne,5,4000,184000,action,synthesis_revision,True,1,Yvonne is recovering from a mastectomy with SLE-related fatigue.,,,,,,,
 P001,faculty,NA,yvonne,Yvonne,6,6000,186000,action,desired_outcome_add,True,1,Return to gardening.,,,,,,,
@@ -35,7 +35,7 @@ P014,student,2,florence,Florence,4,1200,61200,action,occupation_add,True,2,She n
 P014,student,2,florence,Florence,5,1500,61500,action,occupation_add,True,1,She wants to make a simple lunch on her own.,Meal preparation,,,,,,
 P014,student,2,florence,Florence,6,1500,61500,action,occupation_add,True,2,She needs to reach a low shelf and carry a plate to the table.,Meal preparation,,,,,,
 P014,student,2,florence,Florence,7,3000,63000,action,classify,True,1,family assists with setup,Upper-body dressing,Profile ¶2,reports strong family support,Context,support,,
-P014,student,2,florence,Florence,8,4500,64500,action,classify,True,1,limited shoulder flexion,Upper-body dressing,Chart: Pain,pain with overhead reach,Client factor,barrier,,
+P014,student,2,florence,Florence,8,4500,64500,action,classify,True,1,limited shoulder flexion,Upper-body dressing,Initial Evaluation: Pain,pain with overhead reach,Client factor,barrier,,
 P014,student,2,florence,Florence,9,4600,64600,rta,rta_utterance,True,1,Here I was weighing whether the pain was the main barrier.,,,,,,,True
 P014,student,2,florence,Florence,10,6000,66000,action,synthesis_revision,True,1,Florence has reduced shoulder range after her replacement.,,,,,,,
 P014,student,2,florence,Florence,11,9000,69000,action,synthesis_revision,True,1,Florence has reduced shoulder range after her replacement.,,,,,,,
@@ -52,7 +52,7 @@ P014,student,2,florence,Florence,23,18000,78000,action,plan_edit,True,1,Set up a
 P014,student,2,florence,Florence,24,18000,78000,action,plan_edit,True,2,Teach energy conservation.,,,,,,,
 P014,student,2,yvonne,Yvonne,1,400,180400,action,occupation_add,True,1,She wants to return to tending her raised beds.,Gardening,,,,,,
 P014,student,2,yvonne,Yvonne,2,400,180400,action,occupation_add,True,2,"She needs to kneel, reach, and work for stretches without exhausting herself.",Gardening,,,,,,
-P014,student,2,yvonne,Yvonne,3,2000,182000,action,classify,True,1,low endurance,Gardening,Chart: Fatigue,fatigue after activity,Client factor,barrier,,
+P014,student,2,yvonne,Yvonne,3,2000,182000,action,classify,True,1,low endurance,Gardening,Initial Evaluation: Fatigue,fatigue after activity,Client factor,barrier,,
 P014,student,2,yvonne,Yvonne,4,4000,184000,action,synthesis_revision,True,1,Yvonne is recovering from a mastectomy with SLE-related fatigue.,,,,,,,
 P014,student,2,yvonne,Yvonne,5,6000,186000,action,desired_outcome_add,True,1,Return to gardening.,,,,,,,
 P014,student,2,yvonne,Yvonne,7,8000,188000,action,plan_edit,True,1,Pace tasks; sit to garden.,,,,,,,

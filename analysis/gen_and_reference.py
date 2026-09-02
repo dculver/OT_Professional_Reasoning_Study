@@ -71,7 +71,7 @@ def florence_case(offset):
         ev(1200,"occupation_add",{"name":"Upper-body dressing","description":"She wants to dress herself in the morning without waiting for the aide. She needs to don a front-open shirt and manage the buttons."}),
         ev(1500,"occupation_add",{"name":"Meal preparation","description":"She wants to make a simple lunch on her own. She needs to reach a low shelf and carry a plate to the table."}),
         ev(3000,"classify",{"type":"support","excerpt":"reports strong family support","occId":"occ_1","occupation":"Upper-body dressing","mechanism":"family assists with setup","aspect":"Context","src":"fl_prof_2","source":"Profile ¶2"}),
-        ev(4500,"classify",{"type":"barrier","excerpt":"pain with overhead reach","occId":"occ_1","occupation":"Upper-body dressing","mechanism":"limited shoulder flexion","aspect":"Client factor","src":"fl_ch_pain","source":"Chart: Pain"}),
+        ev(4500,"classify",{"type":"barrier","excerpt":"pain with overhead reach","occId":"occ_1","occupation":"Upper-body dressing","mechanism":"limited shoulder flexion","aspect":"Client factor","src":"fl_ch_pain","source":"Initial Evaluation: Pain"}),
         ev(6000,"synthesis_revision",{"version":1,"len":58}),
         ev(9000,"synthesis_revision",{"version":2,"len":140}),
         ev(11000,"desired_outcome_add",{"text":"Dress upper body independently."}),
@@ -105,7 +105,7 @@ def yvonne_case(offset, empty_rta=False):
           "perBarrier":{"ent_3":{"approach":"Modify","method":"Pace tasks; sit to garden.","type":"Preparatory","grading":""}},
           "prioritization":"","goal":"Garden 20 minutes without a rest break in 4 weeks.","immediate":""}
     E=[ev(400,"occupation_add",{"name":"Gardening","description":"She wants to return to tending her raised beds. She needs to kneel, reach, and work for stretches without exhausting herself."}),
-       ev(2000,"classify",{"type":"barrier","excerpt":"fatigue after activity","occId":"occ_3","occupation":"Gardening","mechanism":"low endurance","aspect":"Client factor","src":"yv_ch_fatigue","source":"Chart: Fatigue"}),
+       ev(2000,"classify",{"type":"barrier","excerpt":"fatigue after activity","occId":"occ_3","occupation":"Gardening","mechanism":"low endurance","aspect":"Client factor","src":"yv_ch_fatigue","source":"Initial Evaluation: Fatigue"}),
        ev(4000,"synthesis_revision",{"version":1,"len":62}),
        ev(6000,"desired_outcome_add",{"text":"Return to gardening."}),
        ev(7000,"barrier_select",{"id":"ent_3","on":True,"entry":"fatigue after activity"}),
