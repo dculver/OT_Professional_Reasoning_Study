@@ -1201,8 +1201,8 @@ function renderPlan(){
       <textarea class="ip" id="ip_prioritization" placeholder="2–3 sentences">${esc(state.plan.prioritization)}</textarea></div>
     <div class="ip-step"><span class="lbl">3 · For each barrier: approach, method, grading</span>
       ${state.plan.selectedBarrierIds.length?cards:'<div class="empty">Select at least one barrier above.</div>'}</div>
-    <div class="ip-step"><span class="lbl">4 · One objective, measurable, occupation-based long-term goal that addresses a desired outcome</span>
-      <textarea class="ip" id="ip_goal" placeholder="1–2 sentences">${esc(state.plan.goal)}</textarea></div>
+    <div class="ip-step"><span class="lbl">4 · Objective, measurable, occupation-based long-term goals that address the desired outcomes</span>
+      <textarea class="ip" id="ip_goal" placeholder="one goal per line">${esc(state.plan.goal)}</textarea></div>
     <div class="ip-step"><span class="lbl">5 · Which goal or objective needs the most immediate attention, and why?</span>
       <textarea class="ip" id="ip_immediate" placeholder="2–3 sentences">${esc(state.plan.immediate)}</textarea></div>`;
 
