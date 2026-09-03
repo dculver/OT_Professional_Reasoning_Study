@@ -320,6 +320,8 @@
   .occ-card .occ-desc{flex:1 1 100%;font-size:12px;color:var(--occ-ink);opacity:.85;line-height:1.45;margin-top:4px}
   </style>
   <script src="js/reanchor.js"></script>
+  <script src="js/vendor/vad/ort.min.js"></script>
+  <script src="js/vendor/vad/bundle.min.js"></script>
 </head>
 <body>
 <script>
@@ -2074,7 +2076,8 @@ function makeReplayTrial(caseObj){
       window.__rtaReplaying = true;   // suppress capture (cursor/scroll) during replay
 
       const cap = (window.Reanchor ? window.Reanchor.makeNarrationCapture() : null);
-      const audio = { stream:null, recorder:null, chunks:[], startWall:null, map:[], vadTimer:null, ac:null, analyser:null };
+      const audio = { stream:null, recorder:null, chunks:[], startWall:null, map:[], vadTimer:null, ac:null, analyser:null,
+                      vadObj:null, vadReady:false, lastEnergy:0, speechSegs:[], energyTrace:[], _et:0, _segOn:null };
 
       function sampleClock(){ try{ audio.map.push({ wall:Date.now(), playT:Replay._state().playT }); }catch(e){} }
       function playTAtWall(wall){
@@ -2099,16 +2102,48 @@ function makeReplayTrial(caseObj){
             const node = audio.ac.createMediaStreamSource(stream);
             audio.analyser = audio.ac.createAnalyser(); audio.analyser.fftSize = 1024; node.connect(audio.analyser);
             const buf = new Uint8Array(audio.analyser.fftSize);
+            // ENERGY GATE: now the FALLBACK + a logged secondary signal. It drives the
+            // silence-net only while Silero isn't live (audio.vadReady false); it always
+            // logs a downsampled RMS trace so the detector can be validated post-hoc.
             audio.vadTimer = setInterval(()=>{
               audio.analyser.getByteTimeDomainData(buf);
               let sum=0; for(let i=0;i<buf.length;i++){ const v=(buf[i]-128)/128; sum+=v*v; }
-              if(Math.sqrt(sum/buf.length) > 0.04){ try{ Replay.noteSpeech(Replay._state().playT); }catch(e){} }
+              const rms = Math.sqrt(sum/buf.length); audio.lastEnergy = rms;
+              const nowMs = audio.ac ? audio.ac.currentTime*1000 : Date.now();
+              if(nowMs - audio._et > 500){ audio._et = nowMs; try{ audio.energyTrace.push({ playT:Replay._state().playT, rms:Math.round(rms*1000)/1000 }); }catch(e){} }
+              if(!audio.vadReady && rms > 0.04){ try{ Replay.noteSpeech(Replay._state().playT); }catch(e){} }
             }, 150);
+            // SILERO VAD (primary, self-hosted via window.vad). Fire-and-forget so replay
+            // never blocks on model load; energy covers the gap until it's ready. If the
+            // library/model is absent or init throws, vadReady stays false and energy stays
+            // in charge -- the silence-net never breaks.
+            (function initSilero(){
+              try{
+                if(!(window.vad && window.vad.AudioNodeVAD)) return;   // library absent -> energy fallback
+                var opts = {
+                  baseAssetPath:    location.origin + '/js/vendor/vad/',
+                  onnxWASMBasePath: location.origin + '/js/vendor/vad/',
+                  positiveSpeechThreshold: 0.5, negativeSpeechThreshold: 0.35,
+                  onSpeechStart: function(){ audio.vadReady = true; try{ audio._segOn = Replay._state().playT; Replay.noteSpeech(audio._segOn); }catch(e){} },
+                  onSpeechEnd:   function(){ try{ if(audio._segOn!=null){ audio.speechSegs.push({ on:audio._segOn, off:Replay._state().playT }); audio._segOn=null; } }catch(e){} },
+                  onFrameProcessed: function(probs){ audio.vadReady = true;
+                    var s = probs && (probs.isSpeech!=null ? probs.isSpeech : (typeof probs==='number'?probs:0));
+                    if(s > 0.5){ try{ Replay.noteSpeech(Replay._state().playT); }catch(e){} } }
+                };
+                window.vad.AudioNodeVAD.new(audio.ac, opts).then(function(v){
+                  audio.vadObj = v;
+                  try{ node.connect(v.getNode ? v.getNode() : v.node); }catch(e){}
+                  try{ v.start(); }catch(e){}
+                }).catch(function(){ audio.vadReady = false; });
+              }catch(e){ audio.vadReady = false; }
+            })();
           }catch(e){}
         }).catch(e=>{ /* no mic -> replay still runs, narration empty */ });
       }
       function stopAudio(){
         if(audio.vadTimer) clearInterval(audio.vadTimer);
+        try{ if(audio._segOn!=null){ audio.speechSegs.push({ on:audio._segOn, off:Replay._state().playT }); audio._segOn=null; } }catch(e){}
+        try{ if(audio.vadObj){ if(audio.vadObj.pause) audio.vadObj.pause(); else if(audio.vadObj.destroy) audio.vadObj.destroy(); } }catch(e){}
         try{ audio.ac && audio.ac.close(); }catch(e){}
         return new Promise(res=>{
           if(!audio.recorder || audio.recorder.state === "inactive"){ if(audio.stream) audio.stream.getTracks().forEach(t=>t.stop()); res(null); return; }
@@ -2148,7 +2183,10 @@ function makeReplayTrial(caseObj){
       }
       function storeAndEnd(reanchored){
         window.__rtaReplaying = false;
-        store.rta = { narration:reanchored, silence_prompts:(function(){ try{ return Replay._state().fires; }catch(e){ return []; } })() };
+        store.rta = { narration:reanchored, silence_prompts:(function(){ try{ return Replay._state().fires; }catch(e){ return []; } })(),
+                      vad: { primary_engine:(audio.vadReady?'silero':'energy'),
+                             speech_segments: audio.speechSegs.slice(),
+                             energy_rms_trace: audio.energyTrace.slice() } };
         cleanupOverlays();
         jsPsych.finishTrial();
       }
@@ -2181,6 +2219,7 @@ function makeReplayTrial(caseObj){
       const store = study.cases[caseObj.id];
       data.rta_narration = (store && store.rta && store.rta.narration) || [];
       data.rta_silence_prompts = (store && store.rta && store.rta.silence_prompts) || [];
+      data.rta_vad = (store && store.rta && store.rta.vad) || null;
     }
   };
 }
@@ -2207,7 +2246,8 @@ function buildSessionExport(){
         case_started_offset_ms: rec.case_started_offset_ms != null ? rec.case_started_offset_ms : null,
         task: rec.task || null,                                   // Stream 1: event_log + descriptive state
         rta: (rec.rta && rec.rta.narration) || [],                // Stream 2: re-anchored think-aloud
-        rta_silence_prompts: (rec.rta && rec.rta.silence_prompts) || []
+        rta_silence_prompts: (rec.rta && rec.rta.silence_prompts) || [],
+        rta_vad: (rec.rta && rec.rta.vad) || null
       };
     })
     /* NOTE: state.recon (deltas + cursor) is intentionally NOT exported. */
