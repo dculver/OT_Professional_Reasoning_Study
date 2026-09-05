@@ -33,8 +33,15 @@ get () {  # $1 base url, $2 filename, $3 = 1 if required/large
   echo "  -> $out"
   if curl -fSL --retry 3 --retry-delay 2 -o "$out" "$url"; then
     local sz; sz=$(wc -c < "$out" 2>/dev/null || echo 0)
-    if [ "$required" = "1" ] && [ "$sz" -lt 10000 ]; then
-      echo "    !! $out is only ${sz} bytes — likely an error page, not the real file."; fail=1
+    # Validate by CONTENT, not size: some real files are legitimately small
+    # (e.g. vad.worklet.bundle.min.js is ~2.5 KB). Flag only an actual HTML
+    # error/challenge page, or a truly empty download.
+    if [ "$required" = "1" ]; then
+      if head -c 200 "$out" | grep -qiE '<!doctype|<html'; then
+        echo "    !! $out looks like an HTML error page, not the real file."; fail=1
+      elif [ "$sz" -lt 500 ]; then
+        echo "    !! $out is only ${sz} bytes — suspiciously small, check it."; fail=1
+      fi
     fi
   else
     echo "    !! FAILED to download $url"; fail=1
