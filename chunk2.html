@@ -1,5 +1,36 @@
 <!DOCTYPE html>
-<!-- OT Professional Reasoning Study - FULL INSTRUMENT (Chunks 1-4 integrated). Assembled from index_chunk2.html scaffolding + Option-B engine/replay + integration layer. -->
+<!--
+  =====================================================================
+  OT PROFESSIONAL REASONING STUDY — jsPsych INTEGRATION, CHUNK 1
+  Session scaffolding: capability gate → browser-check → permissions →
+  ★ SCREEN SHARE + FULLSCREEN (moved FIRST) → chinrest → calibration.
+  ---------------------------------------------------------------------
+  WHY THIS ORDER (the correction from the original):
+    In the original index.html, screen recording started PER CASE, right
+    before each case ran, and therefore AFTER calibration. But entering
+    fullscreen and starting a tab share CHANGES THE VIEWPORT. WebGazer
+    calibration maps camera features to screen coordinates in ONE viewport;
+    if the viewport changes after calibration, every gaze estimate is
+    referred to the wrong coordinate space. So the viewport-changing steps
+    (fullscreen + getDisplayMedia) must happen BEFORE calibration, and
+    calibration then records that final viewport. This file does exactly
+    that: SHARE FIRST, then chinrest, then calibrate at the shared viewport.
+
+  Recording is now ONE continuous session stream (id "session"), not
+  per-case. study.recording_started_at anchors the recording clock so
+  each case's start offset can be computed later for RTA time-sync.
+
+  SCOPE: sink-agnostic and mount-agnostic. Ends at a "Chunk 1 complete"
+  placeholder. Chunk 2 mounts the renderCase engine (Option B wrapper
+  trial); Chunk 3 is the paused cued-RTA; save = Qualtrics file upload.
+
+  Reused VERBATIM from the original (proven, unchanged logic):
+    checkBrowser gate · permissionGate · pickVideoMime/startScreenRecording/
+    stopScreenRecording · virtual chinrest config · calibration/validation
+    trials + gaze scoring · Whisper warmup worker.
+  Requires the same js/ library folder as the original.
+  =====================================================================
+-->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -10,12 +41,37 @@
   <script src="js/jspsych.js"></script>
   <link href="js/jspsych.css" rel="stylesheet" type="text/css" />
   <script src="js/plugin-html-keyboard-response.js"></script>
+  <script src="js/plugin-survey-text.js"></script>
+  <script src="js/plugin-preload.js"></script>
+  <script src="js/plugin-call-function.js"></script>
 
+  <script src="js/webgazer.js"></script>
+  <script src="js/extension-webgazer.js"></script>
+  <script src="js/plugin-webgazer-init-camera.js"></script>
+  <script src="js/plugin-webgazer-init-calibrate.js"></script>
+  <script src="js/plugin-webgazer-validate.js"></script>
   <script src="js/plugin-initialize-microphone.js"></script>
+  <script src="js/plugin-virtual-chinrest.js"></script>
   <script src="js/plugin-browser-check.js"></script>
 
   <style>
+    /* Calibration/validation dot styling (from original) */
+    .jspsych-webgazer-calibrate-point,.jspsych-webgazer-validate-point,
+    .calibration-point,.validation-point,
+    div[id^="calibration-point"],div[id^="validation-point"],#webgazerGazeDot { z-index: 2147483000 !important; }
     body { font-family: 'Segoe UI', Arial, sans-serif; }
+    /* Session-level stream-ended banner (never auto-advances) */
+    #session_stream_warn {
+      position: fixed; inset: 0; z-index: 2147483600; background: rgba(20,30,40,.94);
+      color: #fff; display: flex; align-items: center; justify-content: center; text-align: left;
+    }
+    #session_stream_warn .box { max-width: 620px; padding: 0 24px; }
+    #session_stream_warn h2 { color: #ffb4a2; margin: 0 0 14px; }
+    #session_stream_warn p { font-size: 16px; line-height: 1.7; }
+    #session_stream_warn button {
+      margin-top: 18px; padding: 12px 26px; background: #1e8e4e; color: #fff; border: none;
+      border-radius: 6px; font-weight: 700; font-size: 15px; cursor: pointer;
+    }
   
   /* ============== OT REASONING ENGINE STYLES (verified prototype) ============== */
   :root{
@@ -32,7 +88,7 @@
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
   /* jsPsych owns <body>; engine host is #ot_mount (fixed, full viewport). */
-  #ot_mount{background:var(--page);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;position:fixed;inset:0;display:flex;flex-direction:column;overflow:hidden;z-index:1;text-align:left}
+  #ot_mount{background:var(--page);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;position:fixed;inset:0;display:flex;flex-direction:column;overflow:hidden;z-index:1}
   button{font-family:inherit}
   ::selection{background:#bcd7ef}
   .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
@@ -244,91 +300,46 @@
     const WORKER_CODE = `
       import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
       env.allowLocalModels = false;
-      let transcriber = null, MODEL = 'Xenova/whisper-small.en', MODEL_REVISION = 'fa16a75f5d91e83ecb6a2ccb690f14d91ef00ca4';
+      let transcriber = null, MODEL = 'Xenova/whisper-small.en';
       self.onmessage = async (e) => {
         const { type } = e.data;
         if (type === 'warmup') {
           MODEL = e.data.model || MODEL;
           try {
             transcriber = await pipeline('automatic-speech-recognition', MODEL, {
-              revision: MODEL_REVISION,
               progress_callback: (p) => { if (p && p.progress != null) self.postMessage({ type:'progress', progress: p.progress }); }
             });
             self.postMessage({ type:'ready' });
           } catch (err) { self.postMessage({ type:'error', message: String(err) }); }
         } else if (type === 'transcribe') {
           try {
-            if (!transcriber) transcriber = await pipeline('automatic-speech-recognition', MODEL, { revision: MODEL_REVISION });
-            const out = await transcriber(e.data.audioData, { chunk_length_s: 30, stride_length_s: 5, return_timestamps: true });
-            self.postMessage({ type:'result', text: out && out.text ? out.text : '', chunks: out && out.chunks ? out.chunks : [] });
+            if (!transcriber) transcriber = await pipeline('automatic-speech-recognition', MODEL);
+            const out = await transcriber(e.data.audioData, { chunk_length_s: 30, stride_length_s: 5 });
+            self.postMessage({ type:'result', text: out && out.text ? out.text : '' });
           } catch (err) { self.postMessage({ type:'error', message: String(err) }); }
         }
       };`;
     function initWhisperWorker() {
       if (__whisperWorker) return;
-      if (typeof window!=='undefined' && window.setWhisperStatus) window.setWhisperStatus('init');
       const url = URL.createObjectURL(new Blob([WORKER_CODE], { type: 'text/javascript' }));
       __whisperWorker = new Worker(url, { type: 'module' });
       __whisperWorker.onmessage = (e) => {
         const { type, progress } = e.data || {};
-        if (type === 'progress') { __modelProgress = progress || 0; if (typeof window!=='undefined' && window.setWhisperStatus) window.setWhisperStatus('downloading',{progress:__modelProgress}); }
-        else if (type === 'ready') { __workerReady = true; if (typeof window!=='undefined' && window.setWhisperStatus) window.setWhisperStatus('ready'); }
-        else if (type === 'error') { console.error('Whisper worker error:', e.data.message); if (typeof window!=='undefined' && window.setWhisperStatus) window.setWhisperStatus('error'); if (typeof window!=='undefined' && window.__onWhisperError) window.__onWhisperError(e.data); }
-        else if (type === 'result') { if (typeof window!=='undefined' && window.__onWhisperResult) window.__onWhisperResult(e.data); }
+        if (type === 'progress') __modelProgress = progress || 0;
+        else if (type === 'ready') __workerReady = true;
+        else if (type === 'error') console.error('Whisper worker error:', e.data.message);
       };
-      __whisperWorker.onerror = (e) => { console.error('Whisper worker onerror:', e); if (typeof window!=='undefined' && window.setWhisperStatus) window.setWhisperStatus('error'); if (typeof window!=='undefined' && window.__onWhisperError) window.__onWhisperError({ message: (e && e.message) || 'worker error' }); };
+      __whisperWorker.onerror = (e) => console.error('Whisper worker onerror:', e);
       __whisperWorker.postMessage({ type: 'warmup', model: CONFIG.WHISPER_MODEL });
     }
     function warmUpTranscriber() { initWhisperWorker(); }
-
-    window.__whisperUI = { state:'idle', progress:0, compact:false };
-    window.setWhisperStatus = function(state, detail){
-      var w = window.__whisperUI; w.state = state;
-      if (detail && detail.progress != null) w.progress = detail.progress;
-      w.compact = false;
-      if (state === 'ready') { clearTimeout(w._c); w._c = setTimeout(function(){ w.compact = true; window.__renderWhisperChip(); }, 5000); }
-      if (state === 'transcribed' || state === 'empty') { clearTimeout(w._r); w._r = setTimeout(function(){ window.setWhisperStatus('ready'); }, 6000); }
-      window.__renderWhisperChip();
-    };
-    window.__renderWhisperChip = function(){
-      if (!document.body) return;
-      var w = window.__whisperUI, st = w.state;
-      if (st === 'idle') { var ex=document.getElementById('whisper_status'); if(ex) ex.remove(); return; }
-      var el = document.getElementById('whisper_status');
-      if (!el) { el = document.createElement('div'); el.id = 'whisper_status';
-        el.style.cssText = 'position:fixed;top:10px;right:12px;z-index:10009;font:600 12px system-ui;padding:5px 10px;border-radius:999px;display:flex;align-items:center;gap:6px;box-shadow:0 1px 6px rgba(0,0,0,.15);pointer-events:none;transition:opacity .3s';
-        document.body.appendChild(el); }
-      var M = { init:['#4b5563','#f3f4f6','Preparing speech model…'],
-                downloading:['#92400e','#fef3c7','Loading speech model… '+Math.round(w.progress||0)+'%'],
-                ready:['#166534','#dcfce7','Speech model ready'],
-                transcribing:['#1e40af','#dbeafe','Transcribing your narration…'],
-                transcribed:['#166534','#dcfce7','Narration transcribed'],
-                empty:['#92400e','#fef3c7','No speech detected'],
-                error:['#991b1b','#fee2e2','Speech model unavailable'] };
-      var m = M[st] || M.init;
-      el.style.color = m[0]; el.style.background = m[1];
-      var dot = '<span style="width:8px;height:8px;border-radius:50%;background:'+m[0]+';display:inline-block;flex:0 0 auto"></span>';
-      el.innerHTML = (w.compact && st==='ready') ? dot : dot + '<span>'+m[2]+'</span>';
-    };
-
   </script>
-  <style>
-  .occ-add{flex-wrap:wrap}
-  #occ_desc{flex:1 1 100%;min-width:0;box-sizing:border-box;resize:vertical;font-family:inherit;font-size:13px;line-height:1.45;padding:8px 11px;border:1px solid var(--line);border-radius:7px}
-  #occ_desc:focus{outline:none;border-color:var(--occ)}
-  .occ-card{flex-wrap:wrap}
-  .occ-card .occ-desc{flex:1 1 100%;font-size:12px;color:var(--occ-ink);opacity:.85;line-height:1.45;margin-top:4px}
-  </style>
-  <script src="js/reanchor.js"></script>
-  <script src="js/vendor/vad/ort.min.js"></script>
-  <script src="js/vendor/vad/bundle.min.js"></script>
 </head>
 <body>
 <script>
-
 /* =====================================================================
    CAPABILITY GATE (hard) — from original checkBrowser. Fails fast on
-   browsers lacking getUserMedia / WebM MediaRecorder /
+   browsers lacking getDisplayMedia / getUserMedia / WebM MediaRecorder /
    WASM / Fullscreen, and on mobile.
    ===================================================================== */
 (function checkBrowser() {
@@ -337,9 +348,15 @@
   const isFirefox = /Firefox\//i.test(ua);
   const isSafari  = /^((?!chrome|android|crios|edg|edge).)*safari/i.test(ua);
   const missing = [];
+  if (!(navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === "function")) missing.push("screen recording (getDisplayMedia)");
   if (!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function"))    missing.push("microphone/camera access (getUserMedia)");
-  const recOK = (typeof MediaRecorder !== "undefined");
-  if (!recOK) missing.push("audio recording (MediaRecorder)");
+  let webmOK = false;
+  if (typeof MediaRecorder !== "undefined" && typeof MediaRecorder.isTypeSupported === "function") {
+    webmOK = MediaRecorder.isTypeSupported("video/webm") ||
+             MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ||
+             MediaRecorder.isTypeSupported("video/webm;codecs=vp8");
+  }
+  if (!webmOK) missing.push("WebM video recording (MediaRecorder)");
   if (typeof WebAssembly !== "object") missing.push("WebAssembly (speech processing)");
   const el = document.documentElement;
   if (!(el.requestFullscreen || el.webkitRequestFullscreen)) missing.push("fullscreen mode");
@@ -347,13 +364,15 @@
   if (isMobile || missing.length > 0) {
     let reason;
     if (isMobile)       reason = "mobile browsers (this study must run on a desktop or laptop)";
+    else if (isFirefox) reason = "Firefox, which does not support tab-level screen recording";
+    else if (isSafari)  reason = "Safari, which does not support the required recording format";
     else                reason = "this browser, which is missing: " + missing.join(", ");
     document.body.style.background = "#e3e9f0";
     document.body.innerHTML = `
       <div style="max-width:580px;margin:12% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;padding:0 20px;">
         <h2 style="color:#c0392b;">Unsupported Browser</h2>
-        <p style="font-size:17px;line-height:1.7;">This study runs in an up-to-date <strong>desktop web browser</strong> such as Chrome, Edge, Firefox, or Safari.</p>
-        <p style="font-size:15px;color:#566673;">The study uses local speech processing that is not supported in ${reason}. Please reopen this link in a supported browser on a desktop or laptop computer.</p>
+        <p style="font-size:17px;line-height:1.7;">This study requires a <strong>Chromium-based desktop browser</strong> such as Google Chrome, Microsoft Edge, Arc, Brave, or Vivaldi.</p>
+        <p style="font-size:15px;color:#566673;">The study uses tab-level screen recording and local speech processing that are not supported in ${reason}. Please reopen this link in a supported browser on a desktop or laptop computer.</p>
       </div>`;
     throw new Error("Unsupported browser — study halted (" + (isMobile ? "mobile" : missing.join("; ") || "ua") + ").");
   }
@@ -361,45 +380,101 @@
 
 /* =====================================================================
    CONFIG / SESSION STATE
+   Experimental scaffolding removed per the pivot: no condition, no phase,
+   no persistent-identifier survey, no OSF/DataPipe. Save = Qualtrics upload.
    ===================================================================== */
 const CONFIG = {
   WHISPER_MODEL: "Xenova/whisper-small.en",
+  SCREEN_FPS: 15,
+  RTA_MAX_SECONDS: 240,
+  /* Fullscreen viewport height at/above which gaze tracking is collected.
+     Below this, calibration is skipped and the session runs no-gaze (all
+     other data streams unaffected). Measured against AOI separability vs.
+     the WebGazer error envelope; see the methods chapter. */
+  GAZE_MIN_HEIGHT: 660,
   /* Qualtrics survey the participant returns to (to upload the session file).
      Filled in when the save chunk is built. */
   QUALTRICS_UPLOAD_URL: "REPLACE_WITH_QUALTRICS_UPLOAD_URL"
 };
 
-const __q = new URLSearchParams(location.search);
 const study = {
-  sub_id_from_url: __q.get("sub_id"),
-  group: __q.get("group"),
-  year_in_program: __q.get("year"),
-  url_params: Object.fromEntries(__q.entries()),
+  sub_id_from_url: new URLSearchParams(location.search).get("sub_id"),
+  calibration: {},
+  calibration_viewport: null,
+  fullscreen_viewport: null,       // viewport measured right after programmatic fullscreen
+  gaze_enabled: true,              // set false when fullscreen height < GAZE_MIN_HEIGHT
+  gaze_skip_reason: null,
+  gaze_threshold_used: null,       // the height cutoff this session was judged against (self-documenting)
+  screen_geometry: {},
   browser_check: null,
   permissions: {},
-  session_started_at_ms: null,     // ms epoch session clock anchor (set at fullscreen); RTA/case-offset zero
-  task_viewport: null,             // task viewport captured right after fullscreen settle
+  recording_started_at: null,      // ms epoch when the session recording began (RTA clock anchor)
+  recording_viewport: null,        // viewport captured right after share+fullscreen settle
   cases: {},
   user_agent: navigator.userAgent,
   started_at: new Date().toISOString()
 };
+const caseMedia = {};              // keyed by recording id; here just "session"
+
 /* =====================================================================
-   MICROPHONE PERMISSION GATE - converts an unanswered getUserMedia prompt
-   into visible, actionable text via a 30s timeout, asks from a user gesture,
-   and records granted/no_response/error/abandoned.
+   SCREEN RECORDING (from original, unchanged)
+   ===================================================================== */
+function pickVideoMime() {
+  for (const c of ["video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"])
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c;
+  return "";
+}
+async function startScreenRecording(id) {
+  const stream = await navigator.mediaDevices.getDisplayMedia({
+    video: { frameRate: CONFIG.SCREEN_FPS },
+    audio: false,
+    preferCurrentTab: true,        // Chrome/Edge 94+: pre-selects this tab in the picker
+    selfBrowserSurface: "include"
+  });
+  const mime = pickVideoMime();
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  const chunks = [];
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  caseMedia[id] = { stream, recorder: rec, chunks, blob: null, url: null };
+  rec.start(1000);
+  return stream;
+}
+function stopScreenRecording(id) {
+  return new Promise(res => {
+    const m = caseMedia[id];
+    if (!m || !m.recorder || m.recorder.state === "inactive") return res();
+    m.recorder.onstop = () => {
+      m.blob = new Blob(m.chunks, { type: m.recorder.mimeType || "video/webm" });
+      m.url  = URL.createObjectURL(m.blob);
+      m.stream.getTracks().forEach(t => t.stop());
+      res();
+    };
+    try { m.recorder.stop(); } catch (e) { res(); }
+  });
+}
+
+/* =====================================================================
+   PERMISSION GATE (from original, unchanged) — converts an unanswered
+   getUserMedia prompt into visible, actionable text via a 30s timeout,
+   asks from a user gesture, and records granted/no_response/error/abandoned.
    ===================================================================== */
 function permissionGate(kind) {
+  const isMic = (kind === "microphone");
+  const constraint = isMic ? { audio: true } : { video: true };
+  const why = isMic
+    ? "Your microphone is used only for the think-aloud after each case. The audio is turned into text on your own computer. The recording itself is never uploaded, and only the text is kept."
+    : "Your webcam is used only to estimate where you are looking on screen. This happens entirely on your own computer. No video is recorded or uploaded.";
   return {
     type: jsPsychHtmlKeyboardResponse,
     choices: "NO_KEYS",
     data: { trial_tag: "permission_gate_" + kind },
     stimulus: `<div style="max-width:560px;margin:8% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
-        <h3 style="color:#1565c0;margin:0 0 12px;">Microphone access</h3>
-        <p style="font-size:15px;line-height:1.7;margin:0 0 20px;">Your microphone is used only for the think-aloud after each case. The audio is turned into text on your own computer. The recording itself is never uploaded, and only the text is kept.</p>
+        <h3 style="color:#1565c0;margin:0 0 12px;">${isMic ? "Microphone access" : "Webcam access"}</h3>
+        <p style="font-size:15px;line-height:1.7;margin:0 0 20px;">${why}</p>
         <p id="pg_msg" style="font-size:14px;line-height:1.7;color:#44545f;margin:0 0 20px;">
           Click the button below. Your browser will ask for permission. Choose <strong>Allow</strong>.</p>
         <button id="pg_btn" style="background:#1565c0;color:#fff;border:none;border-radius:6px;padding:11px 22px;font-size:15px;cursor:pointer;font-family:inherit;">
-          Enable microphone</button>
+          Enable ${isMic ? "microphone" : "webcam"}</button>
         <div id="pg_exit_wrap" style="display:none;margin-top:22px;">
           <button id="pg_exit" style="background:transparent;color:#7a8894;border:none;font-size:13px;cursor:pointer;text-decoration:underline;font-family:inherit;">
             I'm unable to enable this. End the session</button>
@@ -416,16 +491,16 @@ function permissionGate(kind) {
       }
       btn.addEventListener("click", async () => {
         if (settled) return;
-        attempts++; btn.disabled = true; btn.style.opacity = ".6"; btn.textContent = "Waiting for your response...";
-        msg.innerHTML = `Look for the permission prompt near your browser's address bar and click <strong>Allow</strong>. If you don't see it, check for a small microphone icon at the right-hand end of the address bar.`;
+        attempts++; btn.disabled = true; btn.style.opacity = ".6"; btn.textContent = "Waiting for your response…";
+        msg.innerHTML = `Look for the permission prompt near your browser's address bar and click <strong>Allow</strong>. If you don't see it, check for a small ${isMic ? "microphone" : "camera"} icon at the right-hand end of the address bar.`;
         let timer;
         const timeout = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("PENDING_TIMEOUT")), 30000); });
         try {
-          const stream = await Promise.race([ navigator.mediaDevices.getUserMedia({ audio: true }), timeout ]);
+          const stream = await Promise.race([ navigator.mediaDevices.getUserMedia(constraint), timeout ]);
           clearTimeout(timer);
           stream.getTracks().forEach(t => t.stop());   // release; the plugin reopens it
           settled = true; record("granted");
-          msg.innerHTML = `<span style="color:#16692f;">Access granted. Continuing...</span>`;
+          msg.innerHTML = `<span style="color:#16692f;">Access granted. Continuing…</span>`;
           btn.style.display = "none";
           setTimeout(() => jsPsych.finishTrial(), 600);
         } catch (e) {
@@ -433,15 +508,16 @@ function permissionGate(kind) {
           const pending = (e && e.message === "PENDING_TIMEOUT");
           record(pending ? "no_response" : "error", e && e.name ? e.name : String(e));
           btn.disabled = false; btn.style.opacity = "1"; btn.textContent = "Try again";
+          const devWord = isMic ? "Microphone" : "Camera";
           const osHelp = `<br><br><strong>If no prompt appeared at all</strong>, your browser may not have permission from your operating system:<br>
-               &bull; <strong>macOS</strong>: System Settings &rsaquo; Privacy &amp; Security &rsaquo; Microphone, and switch on your browser.<br>
-               &bull; <strong>Windows</strong>: Settings &rsaquo; Privacy &amp; security &rsaquo; Microphone, and allow desktop apps.<br>
+               &bull; <strong>macOS</strong>: System Settings &rsaquo; Privacy &amp; Security &rsaquo; ${devWord}, and switch on your browser.<br>
+               &bull; <strong>Windows</strong>: Settings &rsaquo; Privacy &amp; security &rsaquo; ${devWord}, and allow desktop apps.<br>
                You may need to restart the browser afterwards.`;
           msg.innerHTML = pending
-            ? `<strong style="color:#c0392b;">No response received.</strong> If a prompt appeared, choose <strong>Allow</strong>. If it is hidden, click the padlock icon at the left of the address bar and set <strong>Microphone</strong> to <strong>Allow</strong>.${osHelp}`
+            ? `<strong style="color:#c0392b;">No response received.</strong> If a prompt appeared, choose <strong>Allow</strong>. If it is hidden, click the padlock icon at the left of the address bar and set <strong>${devWord}</strong> to <strong>Allow</strong>.${osHelp}`
             : (e && e.name === "NotFoundError")
-              ? `<strong style="color:#c0392b;">No microphone found.</strong> Your browser reports no microphone is connected. Connect one and click Try again.`
-              : `<strong style="color:#c0392b;">Access was blocked.</strong> Click the padlock icon at the left of the address bar, set <strong>Microphone</strong> to <strong>Allow</strong>, then click Try again.${osHelp}`;
+              ? `<strong style="color:#c0392b;">No ${isMic ? "microphone" : "camera"} found.</strong> Your browser reports no device of this type is connected. Connect one and click Try again.`
+              : `<strong style="color:#c0392b;">Access was blocked.</strong> Click the padlock icon at the left of the address bar, set <strong>${devWord}</strong> to <strong>Allow</strong>, then click Try again.${osHelp}`;
           if (attempts >= 2 && exitWrap) exitWrap.style.display = "block";
         }
       });
@@ -450,7 +526,7 @@ function permissionGate(kind) {
         settled = true; record("abandoned");
         jsPsych.endExperiment(`<div style="max-width:560px;margin:10% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
              <h3 style="color:#1565c0;">Session ended</h3>
-             <p style="font-size:15px;line-height:1.7;">This study can't run without microphone access. Nothing has been recorded. Please email
+             <p style="font-size:15px;line-height:1.7;">This study can't run without ${isMic ? "microphone" : "webcam"} access. Nothing has been recorded. Please email
              <a href="mailto:dennis.culver@drake.edu" style="color:#1565c0;">dennis.culver@drake.edu</a> if you'd like to take part on a different device.</p>
            </div>`);
       });
@@ -459,10 +535,79 @@ function permissionGate(kind) {
 }
 
 /* =====================================================================
-   jsPsych INIT
+   SESSION-LEVEL STREAM-ENDED HANDLER
+   If the participant stops sharing (Esc, "Stop sharing", tab switch), do
+   NOT advance the timeline. Show a persistent banner and require an explicit
+   decision to re-share. (Refined further when the sim exists — Chunk 2.)
+   ===================================================================== */
+function attachStreamEndedHandler(stream) {
+  const track = stream.getVideoTracks()[0];
+  if (!track) return;
+  track.addEventListener("ended", () => {
+    if (document.getElementById("session_stream_warn")) return;
+    const warn = document.createElement("div");
+    warn.id = "session_stream_warn";
+    warn.innerHTML = `<div class="box">
+        <h2>Screen sharing stopped</h2>
+        <p>The screen recording was interrupted, so nothing is being captured right now. The study can't continue until you resume sharing this tab.</p>
+        <p>Click below, then choose <strong>this study's tab</strong> in the browser's share picker.</p>
+        <button id="session_reshare">Resume screen sharing</button>
+      </div>`;
+    document.body.appendChild(warn);
+    document.getElementById("session_reshare").addEventListener("click", async () => {
+      try {
+        try { await document.documentElement.requestFullscreen(); } catch (e) {}
+        const s = await startScreenRecording("session");
+        if (!document.fullscreenElement) { try { await document.documentElement.requestFullscreen(); } catch (e) {} }
+        attachStreamEndedHandler(s);
+        warn.remove();
+      } catch (e) {
+        // stays on the banner; participant can click again
+        console.warn("Re-share failed:", e);
+      }
+    });
+  });
+}
+
+/* =====================================================================
+   GAZE SCORING HELPER (from original) — offset fallback when
+   percent_in_roi is null.
+   ===================================================================== */
+function gazeQualityFromOffsets(offsets, roiRadius) {
+  if (!offsets || !offsets.length) return { pct: null, quality: "unknown" };
+  const mean = offsets.reduce((s, o) => s + (o.r || 0), 0) / offsets.length;
+  const syntheticPct = Math.max(0, Math.min(100, Math.round((1 - mean / roiRadius) * 100)));
+  const quality = syntheticPct >= 75 ? "good" : syntheticPct >= 55 ? "acceptable" : "poor";
+  return { pct: syntheticPct, quality };
+}
+
+/* =====================================================================
+   jsPsych INIT (WebGazer extension attached)
    ===================================================================== */
 var jsPsych = initJsPsych({
-  on_finish: function () { /* terminal screen is the Chunk 4 export trial */ }
+  extensions: [{ type: jsPsychExtensionWebgazer }],
+  on_finish: function () {
+    // Chunk 1 placeholder end. (Real save = Qualtrics file upload, built later.)
+    document.body.innerHTML = `<div style="max-width:620px;margin:12% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+        <h2 style="color:#1565c0;">Study complete (Chunk 2 build)</h2>
+        <p style="font-size:16px;line-height:1.7;">Scaffolding ran end to end: permissions → screen share + fullscreen → chinrest → calibration, all at the shared viewport. The session recording is running and the calibration viewport is locked to the task viewport.</p>
+        <pre style="background:#f2f6fa;border:1px solid #d5dee7;border-radius:8px;padding:14px;font-size:12px;overflow:auto;">${
+          JSON.stringify({
+            recording_started_at: study.recording_started_at,
+            fullscreen_viewport: study.fullscreen_viewport,
+            recording_viewport: study.recording_viewport,
+            gaze_enabled: study.gaze_enabled,
+            gaze_skip_reason: study.gaze_skip_reason,
+            gaze_threshold_used: study.gaze_threshold_used,
+            calibration_viewport: study.calibration_viewport,
+            calibration: study.calibration,
+            screen_geometry: study.screen_geometry,
+            permissions: study.permissions
+          }, null, 2)
+        }</pre>
+        <p style="font-size:14px;color:#566673;">Next: Chunk 2 mounts the reasoning interface as an Option-B wrapper trial (practice → Florence → Yvonne).</p>
+      </div>`;
+  }
 });
 
 /* =====================================================================
@@ -470,30 +615,72 @@ var jsPsych = initJsPsych({
    ===================================================================== */
 var timeline = [];
 
+/* 1 — ★ SCREEN SHARE FIRST (Option 3). getDisplayMedia ONLY — no fullscreen yet,
+   so the share dialog has no fullscreen to drop. Recording is one continuous
+   session stream; recording_started_at anchors the RTA clock. Fullscreen is
+   entered on the NEXT step's fresh gesture, which then holds (nothing after it
+   opens a browser-level dialog). This eliminates the macOS/Chrome drop where a
+   post-await requestFullscreen is refused for lack of transient activation. */
+timeline.push({
+  type: jsPsychHtmlKeyboardResponse,
+  choices: "NO_KEYS",
+  data: { trial_tag: "session_screen_share" },
+  stimulus: `<div style="max-width:680px;margin:8% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#1565c0;">Share your screen to begin</h2>
+      <p style="font-size:17px;line-height:1.7;">This tab is recorded so you can watch it back and talk through your reasoning after each case. The video stays on your computer and is never uploaded. Only your spoken reasoning (saved as text) and a record of your on-screen actions are kept. The recording is cleared at the end of the session.</p>
+      <div style="background:#d3e4f5;border-left:4px solid #1565c0;padding:16px 20px;border-radius:6px;margin:18px 0;">
+        <p style="margin:0;font-size:16px;">Click the button, then your browser asks you to <strong>select a tab to share</strong>. Choose <strong>this study's tab</strong> (not Window or Entire Screen).</p>
+      </div>
+      <button id="share_btn" style="margin-top:6px;padding:14px 30px;background:#1e8e4e;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">Start recording</button>
+      <p id="share_err" style="color:#c0392b;margin-top:10px;"></p>
+    </div>`,
+  on_load: function () {
+    const btn = document.getElementById("share_btn");
+    const err = document.getElementById("share_err");
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        const s = await startScreenRecording("session");   // NO fullscreen here
+        study.recording_started_at = Date.now();
+        attachStreamEndedHandler(s);
+        setTimeout(() => jsPsych.finishTrial(), 300);
+      } catch (e) {
+        btn.disabled = false;
+        err.textContent = "Screen share cancelled. Click the button again and select this study's tab from the list.";
+        console.warn("getDisplayMedia failed/cancelled:", e);
+      }
+    });
+  }
+});
+
 /* 2 — ★ FULLSCREEN (Option 3), on its own fresh click AFTER share. Because no
    browser dialog follows, fullscreen HOLDS. We then measure the fullscreen
-   viewport (the task viewport) and set the session clock anchor. */
+   viewport (the definitive task viewport) and decide the gaze branch on it.
+   Calibration runs after this, so the calibration viewport == task viewport. */
 timeline.push({
   type: jsPsychHtmlKeyboardResponse,
   choices: "NO_KEYS",
   data: { trial_tag: "enter_fullscreen" },
   stimulus: `<div style="max-width:640px;margin:9% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
       <h2 style="color:#1565c0;">Continue in full screen</h2>
-      <p style="font-size:17px;line-height:1.7;">The study runs in full screen so the whole interface fits. Click the button to continue. Stay in full screen for the rest of the session.</p>
+      <p style="font-size:17px;line-height:1.7;">The study runs in full screen so the whole interface fits and the eye tracking stays accurate. Click the button to continue. Stay in full screen for the rest of the session.</p>
       <button id="fs_btn" style="margin-top:10px;padding:14px 30px;background:#1565c0;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer;">Continue in full screen</button>
       <p id="fs_err" style="color:#c0392b;margin-top:10px;"></p>
     </div>`,
   on_load: function () {
     const btn = document.getElementById("fs_btn");
     btn.addEventListener("click", async () => {
-      btn.disabled = true; study.session_started_at_ms = Date.now();
+      btn.disabled = true;
       try { await document.documentElement.requestFullscreen(); }
       catch (fe) { console.warn("requestFullscreen failed:", fe); }
       /* let the fullscreen resize settle before measuring the task viewport */
       setTimeout(() => {
         const vh = window.innerHeight, vw = window.innerWidth;
-        study.task_viewport = { w: vw, h: vh };   // definitive task viewport
-        study.__fsActive = true; if(typeof installFullscreenGuardian==="function") installFullscreenGuardian();
+        study.fullscreen_viewport = { w: vw, h: vh };
+        study.recording_viewport = { w: vw, h: vh };   // definitive task viewport
+        study.gaze_threshold_used = CONFIG.GAZE_MIN_HEIGHT;
+        study.gaze_enabled = vh >= CONFIG.GAZE_MIN_HEIGHT;
+        study.gaze_skip_reason = study.gaze_enabled ? null : "viewport_height_below_threshold";
         jsPsych.finishTrial();
       }, 350);
     });
@@ -501,8 +688,9 @@ timeline.push({
 });
 
 /* 2 — Browser-check: WIDTH is a hard gate (below 1000 the columns collide);
-   HEIGHT no longer rejects (minimum_height 0). Short screens proceed rather than being turned away. Runs after fullscreen,
-   so it measures the real task viewport. Custom message wording uses "study", not the
+   HEIGHT no longer rejects (minimum_height 0). Short screens proceed and run
+   no-gaze instead of being turned away. Runs AFTER fullscreen, so it measures
+   the real task viewport. Custom message wording uses "study", not the
    plugin default. */
 timeline.push({
   type: jsPsychBrowserCheck,
@@ -521,11 +709,137 @@ timeline.push({
   }
 });
 
-/* 3 — Microphone permission + init (ALWAYS — the RTA needs audio). */
+/* 3 — Microphone permission + init (ALWAYS — the RTA needs audio regardless
+   of the gaze branch). Camera is requested later, only in the gaze branch. */
 timeline.push(permissionGate("microphone"));
 timeline.push({
   type: jsPsychInitializeMicrophone,
   data: { trial_tag: "init_microphone" }
+});
+
+/* Gaze steps as named consts, mounted inside the conditional block below. */
+
+/* Virtual chinrest (from original, unchanged). Measures px2deg for
+   degrees-of-visual-angle gaze error. resize_units:"none" — measure only,
+   never rescale (would move AOI coordinates). Runs at the shared viewport. */
+const GAZE_CHINREST = {
+  type: jsPsychVirtualChinrest,
+  blindspot_reps: 5,
+  resize_units: "none",
+  item_path: null,
+  adjustment_prompt: `<div style="max-width:560px;margin:0 auto;color:#16263d;font-family:'Segoe UI',Arial,sans-serif;text-align:left;">
+      <p style="font-size:16px;line-height:1.6;">Hold a <strong>credit card, driver's license, or any card of that size</strong> up to the screen. Click and drag the lower-right corner of the image until it is exactly the same size as your card.</p>
+      <p style="font-size:14px;color:#444;">No card handy? A standard card is 85.6&nbsp;mm wide (3.37&nbsp;inches). You can measure with a ruler instead.</p>
+    </div>`,
+  blindspot_prompt: `<div style="max-width:560px;margin:0 auto;color:#16263d;font-family:'Segoe UI',Arial,sans-serif;text-align:left;">
+      <p style="font-size:16px;line-height:1.6;">Your distance from the screen will now be measured quickly.</p>
+      <ul style="font-size:15px;line-height:1.9;padding-left:20px;">
+        <li>Put your <strong>left hand on the space bar</strong>.</li>
+        <li>Cover your <strong>right eye</strong> with your right hand.</li>
+        <li>With your left eye, <strong>focus on the black square</strong> and keep focusing on it.</li>
+        <li>A red ball will move left and disappear. Press the <strong>space bar the moment it disappears</strong>.</li>
+      </ul>
+      <p style="font-size:15px;">Press the space bar when you are ready to begin.</p>
+    </div>`,
+  on_finish: function (data) {
+    study.screen_geometry = {
+      px2deg: data.px2deg != null ? data.px2deg : null,
+      px2mm:  data.px2mm  != null ? data.px2mm  : null,
+      view_dist_mm: data.view_dist_mm != null ? data.view_dist_mm : null,
+      win_width_deg: data.win_width_deg, win_height_deg: data.win_height_deg,
+      scale_factor: data.scale_factor,
+      measured: data.px2deg != null
+    };
+  }
+};
+
+/* Calibration → stabilise → validate (from original, unchanged).
+   calibration_viewport is captured here and now MATCHES the task viewport,
+   because share+fullscreen already happened above. */
+var calib_points = [[10,10],[50,10],[90,10],[10,50],[50,50],[90,50],[10,90],[50,90],[90,90],[30,30],[70,30],[30,70],[70,70]];
+
+var calibration_instructions = {
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: `<div style="max-width:620px;margin:10% auto;text-align:left;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#1565c0;margin-bottom:20px;">Eye-Tracking Calibration</h2>
+      <p style="font-size:17px;margin-bottom:16px;">A series of yellow dots will appear one at a time around the screen.</p>
+      <div style="background:#d3e4f5;border-left:4px solid #1565c0;padding:14px 18px;border-radius:6px;margin-bottom:16px;">
+        <p style="font-size:17px;margin:0;"><strong>Click each dot</strong> as it appears. Look directly at it before clicking.</p>
+      </div>
+      <p style="font-size:15px;color:#44545f;margin-bottom:8px;">Tips for best accuracy:</p>
+      <ul style="font-size:15px;color:#44545f;line-height:1.8;padding-left:20px;margin-bottom:24px;">
+        <li>Sit approximately 50cm (20 inches) from your screen</li>
+        <li>Keep your head still, move only your eyes</li>
+        <li>Ensure your face is evenly lit from the front</li>
+        <li>Maximize your screen brightness</li>
+      </ul>
+      <p style="color:#44545f;">Press any key to begin calibration.</p>
+    </div>`
+};
+var calibration_grid = {
+  type: jsPsychWebgazerCalibrate, calibration_mode: "click", calibration_points: calib_points, point_size: 26,
+  on_finish: function () { study.calibration_viewport = { w: window.innerWidth, h: window.innerHeight }; }
+};
+var calibration_stabilise = {
+  type: jsPsychHtmlKeyboardResponse, choices: "NO_KEYS", trial_duration: 1500,
+  stimulus: `<div style="max-width:620px;margin:10% auto;text-align:center;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <p style="font-size:17px;color:#1565c0;">Calibrating…</p></div>`
+};
+var validation_instructions = {
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: `<div style="max-width:620px;margin:10% auto;text-align:center;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
+      <h2 style="color:#1565c0;margin-bottom:20px;">Testing Accuracy</h2>
+      <p style="font-size:17px;">Another set of dots will appear. This time:</p>
+      <div style="background:#d3e4f5;border-left:4px solid #16692f;padding:14px 18px;border-radius:6px;margin:20px auto;max-width:420px;text-align:left;">
+        <p style="font-size:17px;margin:0;"><strong>Do not click.</strong> Just <strong>look</strong> directly at each dot until it disappears.</p>
+      </div>
+      <p style="color:#44545f;margin-top:24px;">Press any key to begin.</p>
+    </div>`
+};
+const GAZE_CALIBRATION = {
+  timeline: [ calibration_instructions, calibration_grid, calibration_stabilise, validation_instructions, {
+    type: jsPsychWebgazerValidate,
+    validation_points: calib_points,
+    roi_radius: 150,
+    time_limit: 2200,
+    show_validation_data: false,
+    on_finish: function (data) {
+      const pct = data.percent_in_roi;
+      const offsets = data.average_offset;
+      const scored = (pct != null)
+        ? { pct: Math.round(pct), quality: pct >= 75 ? "good" : pct >= 55 ? "acceptable" : "poor" }
+        : gazeQualityFromOffsets(offsets, 150);
+      const px2deg = (study.screen_geometry && study.screen_geometry.px2deg) || null;
+      let meanOffsetPx = null, meanOffsetDeg = null;
+      if (offsets && offsets.length) {
+        meanOffsetPx = offsets.reduce((s, o) => s + (o.r || 0), 0) / offsets.length;
+        if (px2deg != null && px2deg > 0) meanOffsetDeg = +(meanOffsetPx / px2deg).toFixed(3);
+      }
+      study.calibration = {
+        calibration_pct: scored.pct, calibration_pct_raw: pct,
+        average_offset: offsets, roi_radius_used: 150,
+        gaze_quality: scored.quality,
+        score_method: pct != null ? "percent_in_roi" : "offset_fallback",
+        mean_offset_px: meanOffsetPx != null ? Math.round(meanOffsetPx) : null,
+        mean_offset_deg: meanOffsetDeg, px2deg_used: px2deg,
+        view_dist_mm: (study.screen_geometry && study.screen_geometry.view_dist_mm) || null
+      };
+    }
+  }]
+};
+
+/* 5 — ★ GAZE BRANCH (conditional). Camera permission, camera init, chinrest,
+   and calibration/validation run ONLY when the fullscreen viewport cleared
+   GAZE_MIN_HEIGHT. Below it, this whole block is skipped: no webcam is even
+   requested, and the session proceeds no-gaze. All other streams unaffected. */
+timeline.push({
+  conditional_function: function () { return study.gaze_enabled; },
+  timeline: [
+    permissionGate("camera"),
+    { type: jsPsychWebgazerInitCamera, data: { trial_tag: "init_camera" } },
+    GAZE_CHINREST,
+    GAZE_CALIBRATION
+  ]
 });
 
 /* 6 — Whisper warmup (background). Loads the model while the participant
@@ -544,9 +858,12 @@ timeline.push({
 
 /* END OF CHUNK 1 — on_finish placeholder renders the captured session state. */
 
-
-</script>
-<script>
+/* =====================================================================
+   OT REASONING ENGINE (verified prototype engine, mounted via Option B)
+   ===================================================================== */
+/* =====================================================================
+   CASE DATA — Florence. renderCase(CASE) generalises to Yvonne/Patricia.
+   ===================================================================== */
 const FLORENCE = {
   id:1, role:"Case 1", name:"Florence", age:69,
   diagnosis:"s/p L total shoulder arthroplasty; RA", setting:"Outpatient OT",
@@ -859,11 +1176,11 @@ const OUTCOME_TYPES = ["Occupational performance","Prevention","Health and welln
 /* =====================================================================
    STATE
    ===================================================================== */
-/* Case registry. Order = review order: Practice (Patricia) → Case 1 (Florence) → Case 2 (Yvonne).
-   In the jsPsych build this ordering is the trial sequence; here the ribbon switcher
-   lets the content be reviewed. Each case keeps its own state so switching doesn't discard work. */
-let CASE = PATRICIA;
+/* jsPsych mount: engine renders into a fixed, full-viewport #ot_mount.
+   CASE/state/MOUNT set per case-trial in on_load. */
+let CASE = null;
 let state = null;
+let MOUNT = null;
 function freshState(){
   return {
     synthesis:{ impression:"", impression_stamp:null, impression_revisions:[], desired_outcomes:[] },
@@ -875,54 +1192,10 @@ function freshState(){
   };
 }
 let seq = 0; const uid = p => p + (++seq);
-/* ---- CASE CLOCK + HUMAN-READABLE LOG (Option B) ----
-   Timestamps are elapsed milliseconds from the moment the case began (not epoch),
-   so the first event is near 0 and t reads as "time into this case". t_clock is a
-   readable mm:ss.s string for eyeballing. Ids are kept (stable linkage) AND a
-   plain-text label is added alongside each (source/occupation/entry/outcome). */
-let caseStart = Date.now();
-function beginCaseClock(){ caseStart = Date.now(); }
-function nowRel(){ return Date.now() - caseStart; }
-function clockStr(ms){ const s=ms/1000; const m=Math.floor(s/60); const r=(s-m*60); return (m<10?"0":"")+m+":"+(r<10?"0":"")+r.toFixed(1); }
-
-/* Source-element id -> plain-ASCII section label (case-independent; case is known
-   at the session level, so it is not duplicated into every event). */
-const SRC_SECTION = {
-  "ch_ref":"Initial Evaluation - Referral", "ch_interim":"Initial Evaluation - Interim note",
-  "ch_neuro":"Initial Evaluation - Neuromuscular/balance", "ch_pain":"Initial Evaluation - Sensory/pain",
-  "ch_move":"Initial Evaluation - ROM/strength", "ch_mob":"Initial Evaluation - Functional mobility",
-  "ch_adl":"Initial Evaluation - ADL", "ch_iadl":"Initial Evaluation - IADL",
-  "ch_ment":"Initial Evaluation - Mental status/cognition", "ch_soc":"Initial Evaluation - Social history",
-  "ch_sleep":"Initial Evaluation - Sleep", "ch_cp":"Initial Evaluation - Cardiopulmonary/MET",
-  "ch_dc":"Initial Evaluation - Discharge plan"
-};
-function srcLabel(src){
-  if(!src) return null;
-  const rest = src.replace(/^[a-z]{2}_/, "");          // strip case prefix (fl_/yv_/pa_)
-  if(rest.indexOf("prof")===0){ const n=rest.split("_")[1]; return "Profile - para "+n; }
-  return SRC_SECTION[rest] || rest;
-}
-function occName(id){ const o=state.occupations.find(x=>x.id===id); return o?o.name:null; }
-function entryExcerpt(id){ const e=state.entries.find(x=>x.id===id); return e?e.excerpt:null; }
-function outcomeText(id){ const o=state.synthesis.desired_outcomes.find(x=>x.id===id); return o?o.text:null; }
-
-/* Add readable labels alongside ids, keyed by event kind (id means different
-   things for different kinds, so resolve explicitly). Non-destructive. */
-function enrich(kind, d){
-  if(!d) return d;
-  if(d.src != null && d.source === undefined) d.source = srcLabel(d.src);
-  if(d.occId != null && d.occupation === undefined) d.occupation = occName(d.occId);
-  if(d.id != null){
-    if(kind==="barrier_select" || kind==="entry_remove"){ const v=entryExcerpt(d.id); if(v!=null) d.entry=v; }
-    else if(kind==="occupation_remove"){ const v=occName(d.id); if(v!=null) d.occupation=v; }
-    else if(kind==="desired_outcome_remove" || kind==="desired_outcome_tag"){ const v=outcomeText(d.id); if(v!=null) d.outcome=v; }
-  }
-  return d;
-}
-function logEvent(kind, detail){ const t=nowRel(); state.log.push({ t, t_clock:clockStr(t), kind, detail:enrich(kind, detail)||null }); }
+function logEvent(kind, detail){ state.log.push({ t:Date.now(), kind, detail:detail||null }); }
 
 /* ---- RECONSTRUCTION CAPTURE (separate record; replay/cue infrastructure only) ---- */
-function recordDelta(op, payload){ state.recon.deltas.push(Object.assign({ op, t:nowRel() }, payload||{})); }
+function recordDelta(op, payload){ state.recon.deltas.push(Object.assign({ op, t:Date.now() }, payload||{})); }
 
 /* Serialize a selection Range as character offsets within its [data-src] element,
    so the in-text highlight can be faithfully repainted on replay (a live Range
@@ -971,7 +1244,7 @@ function renderCase(){
   const libCards = [...CASE.library, ...SHARED_LIBRARY].map(c=>`
     <div class="libcard ${c.ref?'ref':''}" id="lib_${c.id}"><h4>${c.title}</h4>${c.html}${c.cite?`<div class="cite">${c.cite}</div>`:''}</div>`).join("");
 
-  document.getElementById("app").innerHTML = `
+  MOUNT.innerHTML = `
     <div class="banner">
       <div>
         <h1>${CASE.name} <span class="role-badge ${CASE.role==='Practice'?'practice':'real'}">${CASE.role}</span></h1>
@@ -988,11 +1261,13 @@ function renderCase(){
         <div class="panel" id="aoi_case_material" data-aoi="case_material" style="flex:1 1 50%">
           <div class="tabs" role="tablist">
             <button class="tab active" data-tab="profile" role="tab">Occupational Profile</button>
-            <button class="tab" data-tab="chart" role="tab">Initial Evaluation</button>
+            <button class="tab" data-tab="chart" role="tab">Chart</button>
+            <button class="tab" data-tab="library" role="tab">Library</button>
           </div>
           <div class="panel-body" id="case_body">
             <div class="tabpage active" data-page="profile">${CASE.profileHTML}</div>
             <div class="tabpage" data-page="chart">${CASE.chartHTML}</div>
+            <div class="tabpage" data-page="library">${libCards}</div>
           </div>
         </div>
         <div class="panel" id="aoi_occupations" data-aoi="occupations" style="flex:1 1 50%">
@@ -1000,7 +1275,6 @@ function renderCase(){
           <div class="panel-body">
             <div class="occ-add">
               <input id="occ_input" type="text" maxlength="80" placeholder="Name an occupation…" aria-label="Name an occupation"/>
-              <textarea id="occ_desc" maxlength="600" rows="2" placeholder="Briefly describe this occupation. What do they want and what do they need to do?" aria-label="Briefly describe this occupation. What do they want and what do they need to do?"></textarea>
               <button class="btn btn-occ" id="occ_add">Add</button>
             </div>
             <div id="occ_list"></div>
@@ -1044,7 +1318,7 @@ function renderCase(){
     </div>`;
 
   registerHighlights();
-  wireSynthesis(); wireTabs(); wireOccupations(); wireOutcomes(); attachSelectionHandlers(); attachScrollCapture();
+  wireSynthesis(); wireTabs(); wireOccupations(); wireOutcomes(); attachSelectionHandlers();
   renderOccupations(); renderPerformance(); renderOutcomes(); renderPlan(); refreshHighlights();
 }
 
@@ -1060,12 +1334,13 @@ function wireSynthesis(){
     if(text===last) return;
     const ts=Date.now();
     revs.push({version:revs.length+1, text, ts});
+    recordDelta("impression",{text});
     updateWalkthrough();
     state.synthesis.impression=text; state.synthesis.impression_stamp=ts;
     logEvent("synthesis_revision",{version:revs.length, len:text.length});
     st.textContent="rev "+revs.length+" · "+new Date(ts).toLocaleTimeString();
   };
-  ta.addEventListener("input", ()=>{ state.synthesis.impression=ta.value; recordDelta("impression",{text:ta.value}); clearTimeout(t); t=setTimeout(snapshot, 800); });
+  ta.addEventListener("input", ()=>{ state.synthesis.impression=ta.value; clearTimeout(t); t=setTimeout(snapshot, 800); });
   ta.addEventListener("blur", ()=>{ clearTimeout(t); snapshot(); });
 }
 function wireOutcomes(){
@@ -1087,12 +1362,19 @@ function renderOutcomes(){
         <span class="dot"></span><span class="nm">${esc(o.text)}</span>
         <button class="rm" data-out="${o.id}" aria-label="Remove desired outcome">×</button>
       </div>
+      <select class="out-tag" data-out="${o.id}" aria-label="OTPF-4 outcome type (optional)">
+        <option value="">OTPF-4 outcome type (optional)…</option>
+        ${OUTCOME_TYPES.map(t=>`<option ${o.otpf4_outcome_type===t?'selected':''}>${t}</option>`).join("")}
+      </select>
     </div>`).join("");
   list.querySelectorAll(".rm").forEach(b=>b.addEventListener("click",()=>{
     const id=b.dataset.out;
-    logEvent("desired_outcome_remove",{id}); recordDelta("outcome_remove",{id});
     state.synthesis.desired_outcomes=state.synthesis.desired_outcomes.filter(o=>o.id!==id);
-    renderOutcomes(); updateWalkthrough();
+    logEvent("desired_outcome_remove",{id}); recordDelta("outcome_remove",{id}); renderOutcomes(); updateWalkthrough();
+  }));
+  list.querySelectorAll(".out-tag").forEach(sel=>sel.addEventListener("change",()=>{
+    const o=state.synthesis.desired_outcomes.find(x=>x.id===sel.dataset.out);
+    if(o){ o.otpf4_outcome_type=sel.value||null; logEvent("desired_outcome_tag",{id:o.id,type:o.otpf4_outcome_type}); recordDelta("outcome_tag",{id:o.id, type:o.otpf4_outcome_type}); }
   }));
 }
 function wireTabs(){
@@ -1110,29 +1392,26 @@ function wireTabs(){
 }
 function wireOccupations(){
   const input=document.getElementById("occ_input");
-  const desc=document.getElementById("occ_desc");
-  const add=()=>{ const name=input.value.trim(); const description=(desc?desc.value.trim():""); if(!name) return; if(!description){ if(desc) desc.focus(); return; }
-    const id=uid("occ_"); state.occupations.push({id,name,description}); logEvent("occupation_add",{name,description}); recordDelta("occ_add",{id,name,description});
-    input.value=""; if(desc) desc.value=""; recordDelta("occ_input",{value:""}); recordDelta("occ_desc_input",{value:""}); renderOccupations(); renderPlan(); };
+  const add=()=>{ const name=input.value.trim(); if(!name) return;
+    const id=uid("occ_"); state.occupations.push({id,name}); logEvent("occupation_add",{name}); recordDelta("occ_add",{id,name});
+    input.value=""; renderOccupations(); renderPlan(); };
   document.getElementById("occ_add").addEventListener("click", add);
-  input.addEventListener("input", ()=>recordDelta("occ_input",{value:input.value}));
-  if(desc) desc.addEventListener("input", ()=>recordDelta("occ_desc_input",{value:desc.value}));
   input.addEventListener("keydown", e=>{ if(e.key==="Enter") add(); });
 }
 function renderOccupations(){
   const list=document.getElementById("occ_list");
   document.getElementById("occ_count").textContent=state.occupations.length;
-  if(!state.occupations.length){ list.innerHTML=`<div class="empty"><b>No occupations yet</b>Name and briefly describe the occupations this client needs or wants to do. Supports and barriers you identify link to these.</div>`; return; }
+  if(!state.occupations.length){ list.innerHTML=`<div class="empty"><b>No occupations yet</b>Name the occupations this client needs or wants to do. Supports and barriers you identify link to these.</div>`; return; }
   list.innerHTML=state.occupations.map(o=>{
     const n=state.entries.filter(e=>e.occId===o.id).length;
-    return `<div class="occ-card"><span class="dot"></span><span class="nm">${esc(o.name)}</span><span class="tally">${n}</span><button class="rm" data-occ="${o.id}" aria-label="Remove ${esc(o.name)}">×</button>${o.description?`<div class="occ-desc">${esc(o.description)}</div>`:""}</div>`;
+    return `<div class="occ-card"><span class="dot"></span><span class="nm">${esc(o.name)}</span><span class="tally">${n}</span><button class="rm" data-occ="${o.id}" aria-label="Remove ${esc(o.name)}">×</button></div>`;
   }).join("");
   list.querySelectorAll(".rm").forEach(b=>b.addEventListener("click",()=>{
     const id=b.dataset.occ;
-    logEvent("occupation_remove",{id}); recordDelta("occ_remove",{id});
     state.occupations=state.occupations.filter(o=>o.id!==id);
     state.entries.forEach(e=>{ if(e.occId===id) e.occId=null; });
     state.plan.selectedBarrierIds=state.plan.selectedBarrierIds.filter(bid=>{ const en=state.entries.find(x=>x.id===bid); return en&&en.occId!==null; });
+    logEvent("occupation_remove",{id}); recordDelta("occ_remove",{id});
     renderOccupations(); renderPerformance(); renderPlan();
   }));
 }
@@ -1150,10 +1429,10 @@ function renderPerformance(){
   body.innerHTML=html;
   body.querySelectorAll(".rm").forEach(b=>b.addEventListener("click",()=>{
     const id=b.dataset.entry;
-    logEvent("entry_remove",{id}); recordDelta("entry_remove",{id});
     state.entries=state.entries.filter(e=>e.id!==id);
     state.plan.selectedBarrierIds=state.plan.selectedBarrierIds.filter(x=>x!==id);
     delete state.plan.perBarrier[id];
+    logEvent("entry_remove",{id}); recordDelta("entry_remove",{id});
     renderOccupations(); renderPerformance(); renderPlan(); refreshHighlights();
   }));
 }
@@ -1187,10 +1466,14 @@ function renderPlan(){
     const pb=state.plan.perBarrier[bid]||{};
     return `<div class="ip-card">
       <div class="cardh">${esc(b.mechanism||'barrier')} — ${esc(occ?occ.name:'?')}</div>
-      <div class="ip-field"><label>Describe your approach</label>
-        <textarea data-bid="${bid}" data-f="approach" placeholder="1–2 sentences">${esc(pb.approach||'')}</textarea></div>
+      <div class="ip-field"><label>Intervention approach (Table 13)</label>
+        <select class="ip" data-bid="${bid}" data-f="approach"><option value="">— select —</option>
+          ${APPROACHES.map(a=>`<option ${pb.approach===a?'selected':''}>${a}</option>`).join("")}</select></div>
       <div class="ip-field"><label>Method (incl. safety / environment)</label>
         <textarea data-bid="${bid}" data-f="method" placeholder="2–3 sentences">${esc(pb.method||'')}</textarea></div>
+      <div class="ip-field"><label>Intervention type (Table 12)</label>
+        <select class="ip" data-bid="${bid}" data-f="type"><option value="">— select —</option>
+          ${INTERVENTION_TYPES.map(a=>`<option ${pb.type===a?'selected':''}>${a}</option>`).join("")}</select></div>
       <div class="ip-field"><label>Grading up / down</label>
         <textarea data-bid="${bid}" data-f="grading" placeholder="1–2 sentences">${esc(pb.grading||'')}</textarea></div>
     </div>`;
@@ -1201,10 +1484,10 @@ function renderPlan(){
       <span class="hint">Constrained to your own barrier classifications.</span>${barrierPick}</div>
     <div class="ip-step"><span class="lbl">2 · Why prioritize these over the others?</span>
       <textarea class="ip" id="ip_prioritization" placeholder="2–3 sentences">${esc(state.plan.prioritization)}</textarea></div>
-    <div class="ip-step"><span class="lbl">3 · For each barrier: approach, method, grading</span>
+    <div class="ip-step"><span class="lbl">3 · For each barrier: approach, method, type, grading</span>
       ${state.plan.selectedBarrierIds.length?cards:'<div class="empty">Select at least one barrier above.</div>'}</div>
-    <div class="ip-step"><span class="lbl">4 · Objective, measurable, occupation-based long-term goals that address the desired outcomes</span>
-      <textarea class="ip" id="ip_goal" placeholder="one goal per line">${esc(state.plan.goal)}</textarea></div>
+    <div class="ip-step"><span class="lbl">4 · One objective, measurable, occupation-based long-term goal that addresses a desired outcome</span>
+      <textarea class="ip" id="ip_goal" placeholder="1–2 sentences">${esc(state.plan.goal)}</textarea></div>
     <div class="ip-step"><span class="lbl">5 · Which goal or objective needs the most immediate attention, and why?</span>
       <textarea class="ip" id="ip_immediate" placeholder="2–3 sentences">${esc(state.plan.immediate)}</textarea></div>`;
 
@@ -1234,7 +1517,7 @@ function renderPlan(){
    SELECTION → CLASSIFY POPOVER  (symmetric support/barrier, OTPF-4 aspect)
    ===================================================================== */
 let popEl=null, pendingRange=null;
-function removePop(){ if(popEl){ if(state&&state.recon){ try{ recordDelta("pop_close",{}); }catch(e){} } popEl.remove();popEl=null;} pendingRange=null; }
+function removePop(){ if(popEl){popEl.remove();popEl=null;} pendingRange=null; }
 document.addEventListener("mousedown", e=>{ if(popEl && !popEl.contains(e.target)) removePop(); });
 window.addEventListener("scroll", removePop, true);
 
@@ -1255,22 +1538,10 @@ function attachSelectionHandlers(){
     },1);
   });
 }
-function attachScrollCapture(){
-  document.querySelectorAll('#app .panel-body').forEach(function(pb){
-    var panel=pb.closest('.panel'); if(!panel||!panel.id) return;
-    var key=panel.id, lastTop=-1, lastT=-100000;
-    pb.addEventListener('scroll', function(){
-      if(window.__rtaReplaying) return;                 // don't capture programmatic replay scrolls
-      var now=nowRel(); if(now-lastT<100) return;        // throttle
-      var top=Math.round(pb.scrollTop); if(top===lastTop) return;
-      lastTop=top; lastT=now; recordDelta('scroll',{key:key, top:top});
-    });
-  });
-}
 function openPopover(text, src, rect){
   removePopKeepRange();
   popEl=document.createElement("div"); popEl.className="pop"; popEl.innerHTML=choiceStep(text);
-  document.body.appendChild(popEl); positionPop(rect); wireChoiceStep(text, src); recordDelta("pop_open",{excerpt:text, src:src, loc: serializeRange(pendingRange, src)});
+  document.body.appendChild(popEl); positionPop(rect); wireChoiceStep(text, src);
 }
 function removePopKeepRange(){ if(popEl){popEl.remove();popEl=null;} } /* keep pendingRange */
 function positionPop(rect){
@@ -1292,7 +1563,6 @@ function wireChoiceStep(text, src){
 /* Symmetric classify step; prompt wording varies by valence. */
 function classifyStep(type, text, src){
   if(!state.occupations.length){ needOccupationsWarn(); return; }
-  recordDelta("pop_choice",{valence:type});
   const isBar=type==="barrier";
   const mechQ = isBar ? "What is getting in the way of this occupation?" : "What capacity or resource enables this?";
   const mechPH= isBar ? "e.g., left shoulder active reach; sustained grip" : "e.g., intact cognition; home health aide support";
@@ -1301,14 +1571,16 @@ function classifyStep(type, text, src){
     <button class="back" id="pk_back">← back</button>
     <div class="q">${mechQ}</div>
     <input type="text" id="pk_mech" maxlength="140" placeholder="${mechPH}" />
+    <div class="q">OTPF-4 aspect <span class="opt">(optional)</span></div>
+    <select id="pk_aspect"><option value="">— skip —</option>${ASPECTS.map(a=>`<option>${a}</option>`).join("")}</select>
     <div class="q">${occQ}</div>
     <select id="pk_occ"><option value="">— select occupation —</option>${state.occupations.map(o=>`<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select>
     <button class="confirm" id="pk_go" disabled>${isBar?'Add barrier':'Add support'}</button>`;
-  document.getElementById("pk_back").onclick=()=>{ recordDelta("pop_back",{}); popEl.innerHTML=choiceStep(text); wireChoiceStep(text,src); };
-  const mech=document.getElementById("pk_mech"), occSel=document.getElementById("pk_occ"), go=document.getElementById("pk_go");
+  document.getElementById("pk_back").onclick=()=>{ popEl.innerHTML=choiceStep(text); wireChoiceStep(text,src); };
+  const mech=document.getElementById("pk_mech"), asp=document.getElementById("pk_aspect"), occSel=document.getElementById("pk_occ"), go=document.getElementById("pk_go");
   const check=()=> go.disabled=!(mech.value.trim() && occSel.value);
-  mech.oninput=()=>{ recordDelta("pop_mech",{value:mech.value}); check(); }; occSel.onchange=()=>{ recordDelta("pop_occ",{occId:occSel.value}); check(); }; mech.focus();
-  go.onclick=()=>{ commitEntry({ type, excerpt:text, src, mechanism:mech.value.trim(), aspect:null, occId:occSel.value }); removePop(); };
+  mech.oninput=check; occSel.onchange=check; mech.focus();
+  go.onclick=()=>{ commitEntry({ type, excerpt:text, src, mechanism:mech.value.trim(), aspect:asp.value||null, occId:occSel.value }); removePop(); };
 }
 function needOccupationsWarn(){
   popEl.innerHTML=`<div class="warn"><b>Add an occupation first.</b><br>A support or barrier is classified <em>in relation to an occupation</em>. Name at least one occupation, then highlight again.</div>`;
@@ -1316,7 +1588,7 @@ function needOccupationsWarn(){
 function commitEntry(e){
   e.id=uid("ent_"); e.ts=Date.now(); e.range=pendingRange||null;
   state.entries.push(e);
-  logEvent("classify",{type:e.type,excerpt:e.excerpt,occId:e.occId,mechanism:e.mechanism,aspect:e.aspect,src:e.src});
+  logEvent("classify",{type:e.type,occId:e.occId,mechanism:e.mechanism,aspect:e.aspect,src:e.src});
   recordDelta("entry_add",{id:e.id, type:e.type, excerpt:e.excerpt, src:e.src, mechanism:e.mechanism, aspect:e.aspect, occId:e.occId, loc: serializeRange(e.range, e.src)});
   if(window.getSelection) window.getSelection().removeAllRanges();
   renderOccupations(); renderPerformance(); renderPlan(); refreshHighlights();
@@ -1338,7 +1610,7 @@ let walk = null;
 function isPractice(){ return CASE && CASE.role==="Practice"; }
 
 const REQUIRED = [
-  ["tabs",            "Open the Initial Evaluation tab"],
+  ["tabs",            "Open the Chart & Library tabs"],
   ["impression",     "Write a clinical impression"],
   ["occupation",     "Add an occupation"],
   ["support",        "Mark a support"],
@@ -1352,12 +1624,12 @@ const REQUIRED = [
 ];
 const TOUR = [
   {req:null,             sel:null,               h:"Welcome — this is practice", p:"This run is just to learn the tool before the real cases. Nothing here counts. Work through the checklist at the bottom in any order; when it's complete you can continue."},
-  {req:"tabs",           sel:".tabs",            h:"Open every tab",            p:"The case material has two tabs. Open the Initial Evaluation tab at least once so you've seen all of it."},
-  {req:"occupation",     sel:"#occ_input",       h:"Add an occupation",         p:"Name one occupation the client needs or wants to do, then briefly describe it (what they want and need to do). Press Add. Everything you classify links to an occupation."},
-  {req:"support",        sel:"#case_body",       h:"Mark a support",            p:"Select any phrase in the case text. In the popup choose Support, name what enables it, and link it to an occupation."},
-  {req:"barrier",        sel:"#case_body",       h:"Mark a barrier",            p:"Select another phrase and choose Barrier. Name what's getting in the way and link it to an occupation."},
-  {req:"synthesis",      sel:"#aoi_synthesis",   h:"Synthesize the evaluation", p:"Write your clinical impression integrating the profile and your analysis, then add at least one desired outcome."},
-  {req:"plan",           sel:"#aoi_intervention",h:"Build the plan",            p:"Select one of your barriers to address, then fill its approach, method, and grading — plus the prioritization, goal, and immediate-attention boxes."},
+  {req:"tabs",           sel:".tabs",            h:"Open every tab",            p:"The case material has three tabs. Open the Chart and the Library at least once so you've seen all of it."},
+  {req:"occupation",     sel:"#occ_input",       h:"Add an occupation",         p:"Name one occupation the client needs or wants to do, then press Add. Everything you classify links to an occupation."},
+  {req:"support",        sel:"#case_body",       h:"Mark a support",            p:"Select any phrase in the case text. In the popup choose Support, name what enables it, optionally tag an OTPF-4 aspect, and link it to an occupation."},
+  {req:"barrier",        sel:"#case_body",       h:"Mark a barrier",            p:"Select another phrase and choose Barrier. Name what's getting in the way, optionally tag an aspect, and link it to an occupation."},
+  {req:"synthesis",      sel:"#aoi_synthesis",   h:"Synthesize the evaluation", p:"Write your clinical impression integrating the profile and your analysis, then add at least one desired outcome. You can optionally tag each outcome with an OTPF-4 outcome type."},
+  {req:"plan",           sel:"#aoi_intervention",h:"Build the plan",            p:"Select one of your barriers to address, then fill its approach, method, type, and grading — plus the prioritization, goal, and immediate-attention boxes."},
   {req:null,             sel:"#cl",              h:"That's everything",         p:"When every checklist item is checked, Continue turns on. Reopen this guide anytime with “Show guide.”"}
 ];
 
@@ -1375,9 +1647,9 @@ function firstIncompleteStep(){
 
 function checklistState(){
   const s=state, w=walk;
-  const card = s.plan.selectedBarrierIds.some(id=>{const pb=s.plan.perBarrier[id]||{}; return (pb.approach||'').trim()&&(pb.method||'').trim()&&(pb.grading||'').trim();});
+  const card = s.plan.selectedBarrierIds.some(id=>{const pb=s.plan.perBarrier[id]||{}; return pb.approach&&pb.method&&pb.type&&(pb.grading||'').trim();});
   return {
-    tabs: !!(w.tabsSeen.chart),
+    tabs: !!(w.tabsSeen.chart && w.tabsSeen.library),
     impression: s.synthesis.impression_revisions.length>0,
     occupation: s.occupations.length>0,
     support: s.entries.some(e=>e.type==="support"),
@@ -1423,7 +1695,8 @@ function buildChecklist(){
   document.getElementById("cl_bar").onclick=(e)=>{ if(e.target.id==="cl_guide") return; walk.listOpen=!walk.listOpen; buildChecklist(); };
   document.getElementById("cl_guide").onclick=(e)=>{ e.stopPropagation(); walk.tourOpen=true; showCoach(firstIncompleteStep()); };
   const cont=document.getElementById("cl_continue");
-  if(cont) cont.onclick=()=>{ if(done===REQUIRED.length){ walk.tourOpen=false; removeCoach(); submitCase(); } };
+  if(cont) cont.onclick=()=>{ if(done===REQUIRED.length){ walk.tourOpen=false; removeCoach();
+    submitCase(); } };
 }
 
 let coachEl=null;
@@ -1476,1097 +1749,177 @@ function attachCursorSampling(){
     let aoi = null;
     const el = document.elementFromPoint(e.clientX, e.clientY);
     if(el){ const a = el.closest("[data-aoi]"); if(a) aoi = a.dataset.aoi; }
-    state.recon.cursor.push({ x:e.clientX, y:e.clientY, aoi, t:nowRel() });
+    state.recon.cursor.push({ x:e.clientX, y:e.clientY, aoi, t:now });
   }, { passive:true });
 }
 
-/* ===== INJECTED: REPLAY ENGINE ===== */
-/* =====================================================================
-   RTA RECONSTRUCTION REPLAY ENGINE  (Chunk 3 core)
-   Rebuilds the participant's session visually from the recon record
-   (deltas + cursor) alone -- NO screen recording. True-tempo playback.
-   The participant watches this reconstruction and thinks aloud (van Gog
-   continuous narration); pause/resume buys time to explain. No cues.
-
-   Pure function of the recon record -> reconstructed state at any time t.
-   This module is deterministic and testable outside the browser: given a
-   recon record, replayStateAt(t) returns the exact state the participant
-   saw at case-relative time t.
-   ===================================================================== */
-
-/* Rebuild the full interface state as it existed at case-relative time tMs,
-   by applying every delta with delta.t <= tMs in order. This is the
-   reconstruction: state is a pure fold over the delta list. */
-function reconstructStateAt(recon, tMs){
-  // fresh empty state mirror (only the fields the deltas write)
-  const S = {
-    occupations: [],
-    entries: [],
-    synthesis: { impression: "", desired_outcomes: [] },
-    plan: { selectedBarrierIds: [], perBarrier: {}, prioritization:"", approach:"", method:"", type:"", grading:"", goal:"", immediate:"" },
-    occInput: "",
-    occDesc: "",
-    scroll: {},
-    activeTab: "profile"
-  };
-  for(const d of recon.deltas){
-    if(d.t > tMs) break;               // deltas are time-ordered
-    applyDelta(S, d);
+/* ---- RECONSTRUCTION: rebuild the exact state at time tMax from the deltas ----
+   Faithful replay source. Applied to a fresh state; content + stable ids +
+   highlight span locators make each delta self-sufficient. */
+function reconstructState(deltas, tMax){
+  const s = freshState();
+  for(const d of deltas){
+    if(tMax != null && d.t > tMax) break;
+    switch(d.op){
+      case "occ_add": s.occupations.push({ id:d.id, name:d.name }); break;
+      case "occ_remove": s.occupations = s.occupations.filter(o=>o.id!==d.id);
+        s.entries.forEach(e=>{ if(e.occId===d.id) e.occId=null; });
+        s.plan.selectedBarrierIds = s.plan.selectedBarrierIds.filter(bid=>{ const en=s.entries.find(x=>x.id===bid); return en&&en.occId!==null; });
+        break;
+      case "entry_add": s.entries.push({ id:d.id, type:d.type, excerpt:d.excerpt, src:d.src, mechanism:d.mechanism, aspect:d.aspect, occId:d.occId, loc:d.loc, range:null }); break;
+      case "entry_remove": s.entries = s.entries.filter(e=>e.id!==d.id);
+        s.plan.selectedBarrierIds = s.plan.selectedBarrierIds.filter(x=>x!==d.id); delete s.plan.perBarrier[d.id]; break;
+      case "impression": s.synthesis.impression = d.text; break;
+      case "outcome_add": s.synthesis.desired_outcomes.push({ id:d.id, text:d.text, otpf4_outcome_type:null }); break;
+      case "outcome_remove": s.synthesis.desired_outcomes = s.synthesis.desired_outcomes.filter(o=>o.id!==d.id); break;
+      case "outcome_tag": { const o=s.synthesis.desired_outcomes.find(x=>x.id===d.id); if(o) o.otpf4_outcome_type = d.type; break; }
+      case "barrier_select": if(d.on){ if(!s.plan.selectedBarrierIds.includes(d.id)) s.plan.selectedBarrierIds.push(d.id); }
+        else s.plan.selectedBarrierIds = s.plan.selectedBarrierIds.filter(x=>x!==d.id); break;
+      case "plan_barrier": s.plan.perBarrier[d.bid] = s.plan.perBarrier[d.bid]||{}; s.plan.perBarrier[d.bid][d.field] = d.value; break;
+      case "plan_field": s.plan[d.field] = d.value; break;
+      case "tab": s._replayTab = d.tab; break;
+    }
   }
-  return S;
-}
-
-/* Apply one delta to the state mirror. This is the inverse of the capture:
-   each recordDelta op has a corresponding rebuild here. */
-function applyDelta(S, d){
-  switch(d.op){
-    case "tab":            S.activeTab = d.tab; break;
-    case "occ_input":      S.occInput = d.value; break;
-    case "occ_desc_input": S.occDesc = d.value; break;
-    case "scroll":         (S.scroll = S.scroll || {})[d.key] = d.top; break;
-    case "occ_add":        S.occupations.push({ id:d.id, name:d.name, description:d.description }); break;
-    case "occ_remove":     S.occupations = S.occupations.filter(o=>o.id!==d.id);
-                           S.entries.forEach(e=>{ if(e.occId===d.id) e.occId=null; }); break;
-    case "entry_add":      S.entries.push({ id:d.id, type:d.type, excerpt:d.excerpt, src:d.src,
-                             mechanism:d.mechanism, aspect:d.aspect, occId:d.occId, loc:d.loc }); break;
-    case "entry_remove":   S.entries = S.entries.filter(e=>e.id!==d.id);
-                           S.plan.selectedBarrierIds = S.plan.selectedBarrierIds.filter(x=>x!==d.id);
-                           delete S.plan.perBarrier[d.id]; break;
-    case "impression":     S.synthesis.impression = d.text; break;
-    case "outcome_add":    S.synthesis.desired_outcomes.push({ id:d.id, text:d.text, otpf4_outcome_type:null }); break;
-    case "outcome_remove": S.synthesis.desired_outcomes = S.synthesis.desired_outcomes.filter(o=>o.id!==d.id); break;
-    case "outcome_tag":    { const o=S.synthesis.desired_outcomes.find(x=>x.id===d.id); if(o) o.otpf4_outcome_type=d.type; } break;
-    case "barrier_select": if(d.on){ if(!S.plan.selectedBarrierIds.includes(d.id)) S.plan.selectedBarrierIds.push(d.id); }
-                           else { S.plan.selectedBarrierIds = S.plan.selectedBarrierIds.filter(x=>x!==d.id); } break;
-    case "plan_barrier":   (S.plan.perBarrier[d.bid] = S.plan.perBarrier[d.bid] || {})[d.field] = d.value; break;
-    case "plan_field":     S.plan[d.field] = d.value; break;
-  }
-}
-
-/* Cursor position at time tMs: last sample at or before tMs (step-hold),
-   for animating the cursor/attention marker during replay. */
-function cursorAt(recon, tMs){
-  let last = null;
-  for(const c of recon.cursor){ if(c.t > tMs) break; last = c; }
-  return last;  // {x,y,aoi,t} or null
-}
-
-/* The set of distinct event times where SOMETHING changed -- these are the
-   frames the replay must render to be faithful. (Deltas + cursor samples.) */
-function replayKeyframes(recon){
-  const ts = new Set();
-  recon.deltas.forEach(d=>ts.add(d.t));
-  recon.cursor.forEach(c=>ts.add(c.t));
-  return Array.from(ts).sort((a,b)=>a-b);
+  return s;
 }
 
 
-
-/* ===== INJECTED: REPLAY CONTROLLER ===== */
-
 /* =====================================================================
-   RTA REPLAY CONTROLLER  (Chunk 3)
-   Drives true-tempo playback of a recon record through the real interface.
-   Participant watches and narrates continuously (van Gog reinstatement).
-   Pause/resume buys time to explain. No predetermined cues.
-   Silence net: uniform keep-talking prompt on long unpaused silence.
+   CHUNK 2 — MOUNT THE ENGINE AS WRAPPER TRIALS
+   Option B: a generic html-keyboard-response trial whose on_load boots the
+   engine into a fixed, full-viewport #ot_mount. Practice (Patricia) is
+   gated by the walkthrough's Continue; real cases end via a banner Submit.
+   Sequence: Practice (Patricia) -> Case 1 (Florence) -> Case 2 (Yvonne).
    ===================================================================== */
-const Replay = (function(){
-  let recon=null, keyframes=[], t0=0, playT=0, playing=false, raf=null, lastRenderKF=-1;
-  let cursorEl=null, hud=null, onDone=null;
-
-  // ---- SILENCE NET (configurable a-priori threshold; NOT hard-coded) ----
-  // Value below is a placeholder; final threshold is a design decision with
-  // an a-priori justification (van Gog used 5s; TA convention ~15s).
-  const SILENCE_NET = {
-    thresholdMs: 15000,            // <-- OPEN PARAMETER: finalize with justification
-    prompt: "Please keep describing what you were thinking.",  // fixed, non-directive, uniform
-    lastSpeechAt: 0, armed:true, fires:[]
-  };
-  // In the live instrument this is driven by mic VAD / Whisper partials.
-  // Here it is exposed so it can be unit-tested and wired to the audio stream.
-  function noteSpeech(atMs){ SILENCE_NET.lastSpeechAt = atMs; }
-
-  // ---- NARRATION CAPTURE (re-anchoring) -- mirrors js/reanchor.js (canonical).
-  //      If js/reanchor.js changes, re-extract this block. Records each utterance
-  //      at the shown task-moment (playT); playT freezes during pause, so an
-  //      utterance spoken while paused anchors to the paused moment. ----
-  var narrationCap = (function(){
-    var narration=[];
-    return {
-      note:function(text, playTMs, opts){ if(text==null) return null; opts=opts||{};
-        var u={text:String(text), playT:Math.max(0,Math.round(Number(playTMs)||0)),
-               paused:!!opts.paused, wall_t:(opts.wall_t!=null?opts.wall_t:null), kind:opts.kind||'final'};
-        narration.push(u); return u; },
-      get:function(){ return narration.slice(); },
-      clear:function(){ narration.length=0; }
-    };
-  })();
-  function reanchorAllLocal(list, off){ off=(off==null?null:Number(off));
-    return (list||[]).map(function(u){ return {text:u.text, case_relative_t:u.playT,
-      session_offset_t:(off==null?null:off+u.playT), paused:!!u.paused, kind:u.kind||'final'}; }); }
-  /* Public: record a transcribed utterance at the current shown task-moment and
-     re-arm the silence net from the same event. The live mic/Whisper layer calls
-     this; noteSpeech(playT) remains the raw VAD hook. */
-  function noteUtterance(text, opts){
-    var u=narrationCap.note(text, playT, Object.assign({paused:!playing}, opts||{}));
-    noteSpeech(playT);
-    return u;
-  }
-  function checkSilenceNet(nowMs){
-    if(!playing || !SILENCE_NET.armed) return;
-    if(nowMs - SILENCE_NET.lastSpeechAt >= SILENCE_NET.thresholdMs){
-      SILENCE_NET.fires.push(nowMs);
-      showNet(SILENCE_NET.prompt);
-      SILENCE_NET.lastSpeechAt = nowMs;   // re-arm from now (uniform, non-selective)
-    }
-  }
-  function showNet(msg){
-    let n=document.getElementById('rp_net');
-    if(!n){ n=document.createElement('div'); n.id='rp_net'; document.body.appendChild(n);
-      Object.assign(n.style,{position:'fixed',left:'50%',bottom:'88px',transform:'translateX(-50%)',
-        background:'#1f2937',color:'#fff',font:'600 14px system-ui',padding:'10px 16px',borderRadius:'8px',
-        zIndex:10001,boxShadow:'0 4px 16px rgba(0,0,0,.25)',transition:'opacity .3s',opacity:'0'}); }
-    n.textContent=msg; n.style.opacity='1';
-    clearTimeout(n._h); n._h=setTimeout(()=>{ n.style.opacity='0'; }, 3500);
-  }
-
-  function hydrateAndRender(tMs){
-    // reconstruct state at tMs and push into the live `state`, then render
-    const S = reconstructStateAt(recon, tMs);
-    state.occupations = S.occupations.map(o=>({id:o.id,name:o.name}));
-    state.entries = S.entries.map(e=>{
-      const ent = {id:e.id,type:e.type,excerpt:e.excerpt,src:e.src,mechanism:e.mechanism,aspect:e.aspect,occId:e.occId,loc:e.loc};
-      ent.range = e.loc ? rangeFromOffsets(e.loc) : null;   // rebuild highlight span
-      return ent;
-    });
-    state.synthesis.impression = S.synthesis.impression;
-    state.synthesis.desired_outcomes = S.synthesis.desired_outcomes.map(o=>({id:o.id,text:o.text,otpf4_outcome_type:o.otpf4_outcome_type}));
-    state.plan.selectedBarrierIds = S.plan.selectedBarrierIds.slice();
-    state.plan.perBarrier = JSON.parse(JSON.stringify(S.plan.perBarrier||{}));
-    ['prioritization','approach','method','type','grading','goal','immediate'].forEach(k=>{ if(k in S.plan) state.plan[k]=S.plan[k]; });
-    // set active tab to what was showing
-    if(S.activeTab && typeof setActiveTab==='function'){ try{ setActiveTab(S.activeTab); }catch(e){} }
-    renderCase();
-    // Re-apply the active tab AND its content pane. Panes are .tabpage[data-page]
-    // toggled by an .active class -- the old code targeted [data-tabpane]/display,
-    // so switching the tab button never switched the panel content.
-    if(S.activeTab){
-      document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active', x.dataset.tab===S.activeTab));
-      document.querySelectorAll('.tabpage').forEach(pp=>pp.classList.toggle('active', pp.getAttribute('data-page')===S.activeTab));
-    }
-    // replay the occupation name + description being typed into the (transient) inputs
-    { var __oi=document.getElementById('occ_input'); if(__oi) __oi.value = S.occInput || ''; }
-    { var __od=document.getElementById('occ_desc'); if(__od) __od.value = S.occDesc || ''; }
-    // renderCase() rebuilt #app, detaching the highlight ranges resolved above.
-    // Re-resolve each entry's range against the fresh source DOM and repaint.
-    state.entries.forEach(e=>{ e.range = e.loc ? rangeFromOffsets(e.loc) : null; });
-    if(typeof refreshHighlights==='function') refreshHighlights();
-    if(typeof renderReplayPopup==='function') renderReplayPopup(recon, tMs);
-    // restore each panel's scroll position -- what the participant had scrolled to,
-    // so highlights and fields below the fold come into view on replay.
-    if(S.scroll){ Object.keys(S.scroll).forEach(function(k){ var pb=document.querySelector('#'+k+' .panel-body'); if(pb) pb.scrollTop=S.scroll[k]; }); }
-    makeNonInteractive();
-  }
-
-  function makeNonInteractive(){
-    const app=document.getElementById('app'); if(app) app.style.pointerEvents='none';
-  }
-
-  function positionCursor(tMs){
-    const c = cursorAt(recon, tMs);
-    if(!cursorEl){ cursorEl=document.createElement('div'); cursorEl.id='rp_cursor'; document.body.appendChild(cursorEl);
-      Object.assign(cursorEl.style,{position:'fixed',width:'18px',height:'18px',borderRadius:'50%',
-        border:'2px solid #d95a30',background:'rgba(217,90,48,.25)',zIndex:10000,pointerEvents:'none',
-        transform:'translate(-50%,-50%)',transition:'left .08s linear, top .08s linear'}); }
-    if(c){ cursorEl.style.display=''; cursorEl.style.left=c.x+'px'; cursorEl.style.top=c.y+'px'; }
-    else cursorEl.style.display='none';
-  }
-
-  function tick(ts){
-    if(!playing) return;
-    if(!t0) t0 = ts - playT;
-    playT = ts - t0;                       // true-tempo: 1ms wall == 1ms task time
-    // render at any keyframe we've crossed
-    for(let i=lastRenderKF+1;i<keyframes.length;i++){
-      if(keyframes[i] <= playT){ hydrateAndRender(keyframes[i]); lastRenderKF=i; }
-      else break;
-    }
-    positionCursor(playT);
-    checkSilenceNet(playT);
-    updateHUD();
-    if(playT >= keyframes[keyframes.length-1]){ playing=false; if(onDone) onDone(); return; }
-    raf = requestAnimationFrame(tick);
-  }
-
-  function updateHUD(){
-    if(!hud) return;
-    const dur = keyframes[keyframes.length-1]||0;
-    const mm=(x)=>{const s=Math.floor(x/1000);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');};
-    hud.querySelector('#rp_time').textContent = mm(Math.min(playT,dur))+' / '+mm(dur);
-    hud.querySelector('#rp_bar_fill').style.width = (100*Math.min(playT,dur)/(dur||1))+'%';
-    hud.querySelector('#rp_toggle').textContent = playing? 'Pause' : 'Resume';
-    const live=hud.querySelector('#rp_live'), lbl=hud.querySelector('#rp_live_label');
-    if(live){ live.className = playing? 'playing' : '';
-      const dot=live.querySelector('.dot'); if(dot) dot.style.background = playing? '#3ddc84' : '#94a3b8'; }
-    if(lbl){ lbl.textContent = playing? 'Playing' : 'Paused'; }
-  }
-
-  function buildHUD(){
-    if(!document.getElementById('rp_hud_style')){
-      const stl=document.createElement('style'); stl.id='rp_hud_style';
-      stl.textContent='@keyframes rp_pulse{0%{opacity:1;transform:scale(1)}50%{opacity:.2;transform:scale(.65)}100%{opacity:1;transform:scale(1)}}'
-        +'#rp_live .dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#3ddc84;margin-right:7px;vertical-align:middle}'
-        +'#rp_live.playing .dot{animation:rp_pulse 1.1s ease-in-out infinite}';
-      document.head.appendChild(stl);
-    }
-    hud=document.createElement('div'); hud.id='rp_hud';
-    Object.assign(hud.style,{position:'fixed',left:'0',right:'0',bottom:'0',height:'64px',background:'#0f172a',
-      color:'#fff',display:'flex',alignItems:'center',gap:'16px',padding:'0 20px',zIndex:10002,font:'14px system-ui'});
-    hud.innerHTML = `
-      <button id="rp_toggle" style="background:#d95a30;color:#fff;border:0;border-radius:6px;padding:8px 18px;font:600 14px system-ui;cursor:pointer">Pause</button>
-      <span id="rp_live" class="playing" style="white-space:nowrap;font-weight:600"><span class="dot"></span><span id="rp_live_label">Playing</span></span>
-      <div style="font-variant-numeric:tabular-nums" id="rp_time">00:00 / 00:00</div>
-      <div style="flex:1;height:8px;background:#334155;border-radius:4px;overflow:hidden"><div id="rp_bar_fill" style="height:100%;width:0;background:#d95a30"></div></div>
-      <div style="opacity:.8">Keep describing what you were thinking</div>`;
-    document.body.appendChild(hud);
-    hud.querySelector('#rp_toggle').onclick=()=>{ playing?pause():resume(); };
-  }
-
-  function start(reconRecord, opts){
-    recon = reconRecord; opts=opts||{};
-    if(opts.silenceThresholdMs) SILENCE_NET.thresholdMs=opts.silenceThresholdMs;
-    onDone = opts.onDone||null;
-    keyframes = replayKeyframes(recon); if(!keyframes.length) keyframes=[0];
-    playT=0; t0=0; lastRenderKF=-1; SILENCE_NET.lastSpeechAt=0; SILENCE_NET.fires=[]; narrationCap.clear();
-    buildHUD(); hydrateAndRender(0); positionCursor(0);
-    resume();
-  }
-  function pause(){ playing=false; if(raf) cancelAnimationFrame(raf); t0=0; updateHUD(); }
-  function resume(){ if(playing) return; playing=true; t0=0; raf=requestAnimationFrame(tick); }
-  function seek(tMs){ playT=Math.max(0,Math.min(tMs,keyframes[keyframes.length-1]||0)); t0=0; lastRenderKF=-1;
-    for(let i=0;i<keyframes.length;i++){ if(keyframes[i]<=playT){hydrateAndRender(keyframes[i]);lastRenderKF=i;} } positionCursor(playT); updateHUD(); }
-
-  return { start, pause, resume, seek, noteSpeech, noteUtterance,
-           getNarration:()=>narrationCap.get(), getReanchored:(off)=>reanchorAllLocal(narrationCap.get(), off),
-           _state:()=>({playT,playing,keyframes,fires:SILENCE_NET.fires.slice(),threshold:SILENCE_NET.thresholdMs}) };
-})();
-
-// Auto-start if a recon record was injected
-
-
-
-</script>
-<script>
-/* =====================================================================
-   CHUNK 2 + 3 + 4 INTEGRATION LAYER  (no eye tracking)
-   Mounts the Option-B engine (above) as jsPsych trials, adds the RTA
-   reconstruction-replay trial after each case (mic + Whisper + re-anchor),
-   and the one-file Chunk 4 export. Two analyzed streams: action+content and
-   RTA. No WebGazer, no calibration, no gaze capture. Uses window.Reanchor.
-   ===================================================================== */
-
-CONFIG.RTA_SILENCE_MS = 15000;   /* OPEN a-priori parameter (placeholder). */
-
-/* =====================================================================
-   RTA SPEECH-TRIGGERED AUTO-PAUSE + PAUSE INSTRUMENTATION  (rta_autopause_spec)
-   All participant-facing values below are exposed as NAMED CONSTANTS and are
-   DECISIONS OWNED BY DENNIS -- the defaults are the spec's proposed starting
-   values, not finalized choices. Sign-off items are tagged  <<SIGN-OFF>>.
-   ===================================================================== */
-CONFIG.RTA_AUTOPAUSE_ENABLED    = true;    /* master switch for speech-triggered auto-pause */
-CONFIG.RTA_AUTOPAUSE_CONFIRM_MS = 400;     /* <<SIGN-OFF>> confirm window: speech must persist this long
-                                              past onset for a provisional pause to CONFIRM (else rescind).
-                                              Spec A3 proposed default; pilot-tune against real audio. */
-CONFIG.RTA_CLOCK_SAMPLE_MS      = 50;      /* <<SIGN-OFF>> playback-position ring-buffer cadence (spec A2). */
-CONFIG.RTA_VAD_ONSET_BACKDATE_MS= 64;      /* onset estimate = detector-fire wall minus this (one Silero
-                                              frame ~32ms + pre-speech pad). Logged raw so latency is
-                                              characterizable (spec A2/C1); not a data-defining choice. */
-CONFIG.RTA_ENERGY_GATE          = 0.04;    /* RMS threshold for the ENERGY fallback detector (no Silero). */
-/* <<SIGN-OFF>> The prompt shown when the replay pauses (manual OR confirmed auto-pause).
-   NOTE / DISCREPANCY: the current build shows NO prompt on a manual pause -- it only
-   freezes the replay. The spec ("the same prompt a manual pause produces") assumes a
-   prompt exists, so this ADDS one on both routes. Wording is a draft for your approval. */
-CONFIG.RTA_PAUSE_PROMPT         = "Go ahead — explain what you were thinking here. Press Resume when you're ready to continue.";
-/* <<SIGN-OFF>> The uniform announcement shown before the RTA replay begins (spec A6). Draft. */
-CONFIG.RTA_AUTOPAUSE_ANNOUNCE   = "As your session plays back, the replay will stop on its own whenever you start talking, so you can explain your thinking. You can also stop it yourself at any time with the Pause button. When you're done speaking, press Resume to continue.";
-
+const AOI_SELECTORS = ["#aoi_case_material","#aoi_occupations","#aoi_performance","#aoi_synthesis","#aoi_intervention"];
 const CASES_IN_ORDER = [PATRICIA, FLORENCE, YVONNE];
 
-/* Per-case captured records assembled for the final export. Keyed by case id. */
-study.cases = {};
-
-/* ---------- FULLSCREEN GUARDIAN ----------
-   Fullscreen can drop mid-study (Esc, a native dialog, a permission prompt). Re-
-   entering requires a user gesture, so if we detect an exit while the study is
-   live, show a blocking "return to full screen" panel with a button. */
-function installFullscreenGuardian(){
-  if(window.__fsGuardInstalled) return; window.__fsGuardInstalled = true;
-  function isFs(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
-  function reqFs(){ const el=document.documentElement; const fn=el.requestFullscreen||el.webkitRequestFullscreen;
-    if(fn){ try{ const p=fn.call(el); if(p&&p.catch) p.catch(function(){}); }catch(e){} } }
-  function overlay(show){
-    let o=document.getElementById("fs_return");
-    if(show){
-      if(!o){ o=document.createElement("div"); o.id="fs_return";
-        Object.assign(o.style,{position:"fixed",inset:"0",background:"#0f172a",color:"#fff",zIndex:2147483000,
-          display:"flex",alignItems:"center",justifyContent:"center",font:"16px system-ui",textAlign:"left",padding:"0 24px"});
-        o.innerHTML='<div style="max-width:520px;line-height:1.7">'
-          +'<h2 style="color:#93c5fd;margin:0 0 12px">Please return to full screen</h2>'
-          +'<p style="margin:0 0 20px">This study runs in full screen so the whole interface fits. Your progress is saved — click below to continue.</p>'
-          +'<button id="fs_return_btn" style="background:#1565c0;color:#fff;border:0;border-radius:8px;padding:12px 26px;font:700 15px system-ui;cursor:pointer">Return to full screen</button></div>';
-        document.body.appendChild(o);
-        document.getElementById("fs_return_btn").onclick=reqFs;
-      }
-      o.style.display="flex";
-    } else if(o){ o.style.display="none"; }
-  }
-  document.addEventListener("fullscreenchange", function(){ if(study.__fsActive) overlay(!isFs()); });
-  document.addEventListener("webkitfullscreenchange", function(){ if(study.__fsActive) overlay(!isFs()); });
+/* Snapshot the five AOI rects at task start (before interaction). With the fixed
+   layout these equal the end-of-trial rects; captured for provenance/verification. */
+function snapshotAOIRects(){
+  const o = {};
+  AOI_SELECTORS.forEach(sel=>{
+    const el = document.querySelector(sel);
+    if(el){ const r = el.getBoundingClientRect();
+      o[el.dataset.aoi] = { x:Math.round(r.x), y:Math.round(r.y), w:Math.round(r.width), h:Math.round(r.height) }; }
+  });
+  return o;
 }
 
-/* Fresh #app host inside a trial's #ot_mount (engine renders into #app). */
-function mountAppInto(hostId){
-  const host = document.getElementById(hostId);
-  host.innerHTML = '<div id="app"></div>';
-  return host;
-}
-
-/* Analyzed data only (event_log + descriptive state). Recon is NOT included. */
+/* Serialize the current case's engine state into a plain data object. */
 function serializeCaseData(){
   return {
-    case_id:CASE.id, case_role:CASE.role, case_name:CASE.name,
-    synthesis:{
-      impression:state.synthesis.impression,
-      impression_last_edit:state.synthesis.impression_stamp,
-      impression_revisions:state.synthesis.impression_revisions,
-      desired_outcomes:state.synthesis.desired_outcomes.map(o=>({id:o.id, text:o.text, otpf4_outcome_type:o.otpf4_outcome_type, ts:o.ts}))
+    case_id: CASE.id, case_role: CASE.role, case_name: CASE.name,
+    synthesis: {
+      impression: state.synthesis.impression,
+      impression_last_edit: state.synthesis.impression_stamp,
+      impression_revisions: state.synthesis.impression_revisions,
+      desired_outcomes: state.synthesis.desired_outcomes.map(o=>({ id:o.id, text:o.text, otpf4_outcome_type:o.otpf4_outcome_type, ts:o.ts }))
     },
-    occupations:state.occupations,
-    entries:state.entries.map(e=>({id:e.id, type:e.type, excerpt:e.excerpt, provenance_src:e.src, mechanism:e.mechanism, otpf4_aspect:e.aspect, occupation_id:e.occId, ts:e.ts})),
-    intervention_plan:state.plan,
-    event_log:state.log
+    occupations: state.occupations,
+    entries: state.entries.map(e=>({ id:e.id, type:e.type, excerpt:e.excerpt, provenance_src:e.src, mechanism:e.mechanism, otpf4_aspect:e.aspect, occupation_id:e.occId, ts:e.ts })),
+    intervention_plan: state.plan,
+    event_log: state.log
   };
 }
 
-/* Remove any body-appended engine overlays so they never bleed between trials. */
+/* Remove any body-appended engine overlays (popover, coach-mark, checklist)
+   so they never bleed from one trial into the next. */
 function cleanupOverlays(){
+  ["ot_pop_host"].forEach(()=>{});
   if(typeof removePop==="function"){ try{ removePop(); }catch(e){} }
   if(typeof removeCoach==="function"){ try{ removeCoach(); }catch(e){} }
   const cl = document.getElementById("cl"); if(cl) cl.remove();
-  document.querySelectorAll(".pop,.coach,#rp_hud,#rp_cursor,#rp_net,#rp_continue,#rp_busy,#rp_pop,#rp_empty").forEach(el=>el.remove());
+  document.querySelectorAll(".pop,.coach").forEach(el=>el.remove());
   if(window.CSS && CSS.highlights){ CSS.highlights.clear(); }
 }
 
-/* ---------- TASK TRIAL ---------- */
-let pendingCaseData=null, pendingRecon=null;
-
+/* pendingCaseData is filled by submitCase() at the moment the participant ends
+   the case, then merged into the trial's data in on_finish. */
+let pendingCaseData = null;
+let pendingAOIStart = null;
 function submitCase(){
   pendingCaseData = serializeCaseData();
-  pendingRecon = { deltas: state.recon.deltas.slice(), cursor: state.recon.cursor.slice() };
   cleanupOverlays();
-  jsPsych.finishTrial();
+  jsPsych.finishTrial();   // participant-controlled end; no timers
 }
 
-/* Banner Submit for REAL cases (practice ends via the walkthrough Continue). */
+/* Banner Submit button for REAL cases (practice ends via the walkthrough).
+   Placed in the banner (outside the five AOIs) to avoid gaze contamination.
+   No hard completion gate — the participant may proceed (matches the
+   "let participants proceed" stance); a confirmation summarizes their work
+   because progression across cases is irreversible. [PROVISIONAL — see notes] */
 function addBannerSubmit(){
-  if(isPractice()) return;
-  const banner = document.querySelector("#app .banner");
+  if(isPractice()) return;   // practice uses the walkthrough Continue
+  const banner = MOUNT.querySelector(".banner");
   if(!banner || banner.querySelector(".case-submit")) return;
   const btn = document.createElement("button");
   btn.className = "case-submit";
-  btn.textContent = "Submit case and continue";
+  btn.textContent = "Submit case & continue";
   btn.style.cssText = "margin-left:auto;padding:10px 20px;background:#1e6bb8;color:#fff;border:none;border-radius:7px;font-weight:700;font-size:14px;cursor:pointer";
   banner.style.display = "flex"; banner.style.alignItems = "center";
   banner.appendChild(btn);
   btn.addEventListener("click", ()=>{
-    // Required text fields (none are optional): the clinical impression, the
-    // plan-level prioritization/goal/immediate boxes, and -- for every barrier
-    // the participant chose to address -- its approach, method, and grading.
-    const p = state.plan || {};
-    const missing = [];
-    if(!(state.synthesis.impression||"").trim()) missing.push("Write a clinical impression.");
-    if(!(p.prioritization||"").trim())            missing.push("Complete the prioritization box.");
-    if(!(p.goal||"").trim())                       missing.push("Complete the long-term goal box.");
-    if(!(p.immediate||"").trim())                  missing.push("Complete the immediate-attention box.");
-    const incompleteBars = (p.selectedBarrierIds||[]).filter(id=>{
-      const pb = (p.perBarrier||{})[id] || {};
-      return !((pb.approach||"").trim() && (pb.method||"").trim() && (pb.grading||"").trim());
-    });
-    if(incompleteBars.length) missing.push("Fill approach, method, and grading for every barrier you're addressing (" + incompleteBars.length + " still incomplete).");
-    if(missing.length){
-      window.alert("Please complete the following before submitting this case:\n\n• " + missing.join("\n• "));
-      return;
-    }
+    const nOcc = state.occupations.length;
+    const nEnt = state.entries.length;
+    const nOut = state.synthesis.desired_outcomes.length;
     const ok = window.confirm(
-      "Submit this case and continue to the replay? You will not be able to return to it.\n\n" +
-      "Recorded so far:\n" +
-      "  " + state.occupations.length + " occupation(s)\n" +
-      "  " + state.entries.length + " support/barrier classification(s)\n" +
-      "  " + state.synthesis.desired_outcomes.length + " desired outcome(s)");
+      "Submit this case and continue? You won't be able to return to it.\n\n" +
+      "So far you have recorded:\n" +
+      "  • " + nOcc + " occupation(s)\n" +
+      "  • " + nEnt + " support/barrier classification(s)\n" +
+      "  • " + nOut + " desired outcome(s)");
     if(ok) submitCase();
   });
 }
 
-function makeCaseTrial(caseObj){
-  return {
-    type: jsPsychHtmlKeyboardResponse, choices: "NO_KEYS",
+/* Build one wrapper trial for a case. gaze flag decides extension attach. */
+function makeCaseTrial(caseObj, withGaze){
+  const trial = {
+    type: jsPsychHtmlKeyboardResponse,
+    choices: "NO_KEYS",
     stimulus: '<div id="ot_mount"></div>',
-    data: { trial_tag:"case", case_id:caseObj.id, case_role:caseObj.role, case_name:caseObj.name },
+    data: { trial_tag: "case", case_id: caseObj.id, case_role: caseObj.role, case_name: caseObj.name },
     on_load: function(){
-      mountAppInto("ot_mount");
-      CASE = caseObj; state = freshState(); seq = 0; beginCaseClock();
-      renderCase();
-      attachCursorSampling();     // cursor track (replay reconstruction only; not analyzed)
-      setupWalkthrough();         // practice only (no-op for real cases)
-      addBannerSubmit();          // real cases only
-    },
-    on_finish: function(data){
-      if(pendingCaseData){ data.case_data = pendingCaseData; }
-      data.case_started_offset_ms = study.session_started_at_ms ? (Date.now() - study.session_started_at_ms) : null;
-      const rec = study.cases[caseObj.id] = study.cases[caseObj.id] || {};
-      rec.task = pendingCaseData;
-      rec.case_started_offset_ms = data.case_started_offset_ms;
-      rec.recon = pendingRecon;          // replay-only; NEVER exported
-      pendingCaseData = null; pendingRecon = null;
-    }
-  };
-}
-
-/* ---------- WHISPER (post-replay transcription) ---------- */
-/* Decode a recorded audio Blob to 16 kHz mono Float32 for the Whisper worker. */
-function pcm16kFromBlob(blob){
-  return blob.arrayBuffer().then(buf=>{
-    const AC = window.AudioContext || window.webkitAudioContext;
-    const ac = new AC();
-    return ac.decodeAudioData(buf).then(audio=>{
-      try{ ac.close && ac.close(); }catch(e){}
-      const rate = 16000;
-      const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(audio.duration*rate)), rate);
-      const src = off.createBufferSource(); src.buffer = audio; src.connect(off.destination); src.start(0);
-      return off.startRendering().then(rendered=>rendered.getChannelData(0));
-    });
-  });
-}
-let __whisperSeq = 0;
-/* Returns { text, chunks:[{text, timestamp:[s,e]}] }. Robust to a missing/failed
-   worker (resolves empty) so the study never blocks on transcription. */
-function transcribeAudio(float32){
-  const S = (s)=>{ if(window.setWhisperStatus) window.setWhisperStatus(s); };
-  return new Promise((resolve)=>{
-    if(typeof __whisperWorker === "undefined" || !__whisperWorker){ S('error'); resolve({text:"", chunks:[]}); return; }
-    let done=false; const id = ++__whisperSeq;
-    const settle=(data)=>{ if(done) return; done=true; resolve({ text:(data&&data.text)||"", chunks:(data&&data.chunks)||[] }); };
-    S('transcribing');
-    window.__onWhisperResult = (data)=>{ const t=(data&&data.text)||""; S(t&&t.trim()?'transcribed':'empty'); settle(data); };
-    window.__onWhisperError  = ()=>{ S('error'); settle({text:"", chunks:[]}); };   // worker/model failure -> resolve empty, never hang
-    try{ __whisperWorker.postMessage({ type:'transcribe', audioData:float32, id }); }
-    catch(e){ S('error'); settle({text:"", chunks:[]}); }
-    setTimeout(()=>{ S('error'); settle({text:"", chunks:[]}); }, 180000);
-  });
-}
-
-/* ---------- RTA REPLAY: show the raw text selection (highlighting) ----------
-   Every >=3-char selection opens the classify popup, captured as pop_open with a
-   loc. We paint that selected text during the popup-open window so the participant
-   sees themselves highlighting text even when they never classify it. */
-var __selHL = (typeof Highlight!=="undefined") ? new Highlight() : null;
-function ensureSelReg(){
-  try{
-    if(__selHL && window.CSS && CSS.highlights){ CSS.highlights.set("ot-selection", __selHL);
-      if(!document.getElementById("rp_sel_style")){ var s=document.createElement("style"); s.id="rp_sel_style";
-        s.textContent="::highlight(ot-selection){background-color:#bcd4ff;}"; document.head.appendChild(s); } }
-  }catch(e){}
-}
-/* Follow the participant's focus: gently scroll the field they just touched into
-   view within its panel, so edits below the fold aren't missed on replay. */
-function replayFollowActive(recon, tMs){
-  try{
-    var last=null;
-    for(var i=0;i<recon.deltas.length;i++){ var d=recon.deltas[i]; if(d.t>tMs) break; last=d; }
-    if(!last) return;
-    var sel=null;
-    switch(last.op){
-      case "impression": sel="#synthesis_impression"; break;
-      case "plan_field": sel = last.field==="goal"?"#ip_goal":last.field==="immediate"?"#ip_immediate":last.field==="prioritization"?"#ip_prioritization":null; break;
-      case "plan_barrier": sel='[data-bid="'+last.bid+'"][data-f="'+last.field+'"]'; break;
-      case "occ_add": case "occ_input": sel="#occ_input"; break;
-      case "occ_desc_input": sel="#occ_desc"; break;
-    }
-    if(sel){ var el=document.querySelector(sel); if(el && el.scrollIntoView){ el.scrollIntoView({block:"nearest", inline:"nearest"}); } }
-  }catch(e){}
-}
-
-/* ---------- RTA REPLAY: reconstruct the transient classify popup ----------
-   The classify popup (highlight -> Support/Barrier -> mechanism -> OTPF-4 aspect
-   -> occupation -> confirm) is captured as pop_* deltas during the task. Here we
-   fold them back into the popup's visible state at time t and render a NON-
-   interactive replica, so the participant re-sees (and can narrate) the actual
-   classification decision, not just its result. */
-function popupAt(recon, tMs){
-  let p = null;
-  for(const d of recon.deltas){
-    if(d.t > tMs) break;
-    switch(d.op){
-      case "pop_open":   p = { excerpt:d.excerpt, src:d.src, loc:d.loc, step:"choice",
-                               valence:null, mech:"", aspect:"", occId:"" }; break;
-      case "pop_choice": if(p){ p.valence=d.valence; p.step="mech"; } break;
-      case "pop_back":   if(p){ p.step="choice"; } break;
-      case "pop_mech":   if(p){ p.mech=d.value; } break;
-      case "pop_aspect": if(p){ p.aspect=d.value; } break;
-      case "pop_occ":    if(p){ p.occId=d.occId; } break;
-      case "pop_close":  p = null; break;
-      case "entry_add":  p = null; break;   // confirming a classification closes the popup
-    }
-  }
-  return p;
-}
-function renderReplayPopup(recon, tMs){
-  const p = popupAt(recon, tMs);
-  let el = document.getElementById("rp_pop");
-  if(!p){ if(el) el.remove(); try{ if(__selHL) __selHL.clear(); }catch(e){} return; }
-  if(!el){ el=document.createElement("div"); el.id="rp_pop"; el.className="pop"; document.body.appendChild(el); }
-  el.style.pointerEvents="none"; el.style.zIndex="10001";
-  const _esc = (typeof esc==="function") ? esc : (s)=>String(s==null?"":s);
-  if(p.step==="choice" && typeof choiceStep==="function"){
-    el.innerHTML = choiceStep(p.excerpt);
-  } else {
-    const isBar = p.valence==="barrier";
-    const mechQ = isBar ? "What is getting in the way of this occupation?" : "What capacity or resource enables this?";
-    const occQ  = isBar ? "A barrier to which occupation?" : "This supports which occupation?";
-    let occName = "";
-    try{ const o=(state.occupations||[]).find(x=>x.id===p.occId); occName = o?o.name:""; }catch(e){}
-    el.innerHTML =
-      '<div class="q">'+mechQ+'</div>'
-      + '<input type="text" value="'+_esc(p.mech||"")+'" disabled />'
-      + '<div class="q">'+occQ+'</div>'
-      + '<select disabled>'+(occName? '<option>'+_esc(occName)+'</option>' : '<option>— select occupation —</option>')+'</select>'
-      + '<button class="confirm" disabled>'+(isBar?'Add barrier':'Add support')+'</button>';
-  }
-  // Position at the source text's current rect (the source tab is active while the
-  // popup is open). Fall back to a fixed corner if the range can't be resolved.
-  try{
-    const r = (p.loc && typeof rangeFromOffsets==="function") ? rangeFromOffsets(p.loc) : null;
-    // paint the raw selection (highlighting) for the whole popup-open window
-    try{ if(__selHL){ __selHL.clear(); if(r) __selHL.add(r); ensureSelReg(); } }catch(e){}
-    const rect = r ? r.getBoundingClientRect() : null;
-    if(rect && (rect.width||rect.height)){
-      const w=el.offsetWidth||290, h=el.offsetHeight||170, pad=10;
-      let left=rect.left+rect.width/2-w/2, top=rect.bottom+8;
-      if(top+h>window.innerHeight-pad) top=rect.top-h-8;
-      left=Math.max(pad,Math.min(left,window.innerWidth-w-pad)); top=Math.max(pad,top);
-      el.style.left=left+"px"; el.style.top=top+"px";
-    } else { el.style.left="40px"; el.style.top="120px"; }
-  }catch(e){ el.style.left="40px"; el.style.top="120px"; }
-}
-
-/* ---------- RTA RECONSTRUCTION-REPLAY TRIAL ---------- */
-function makeReplayTrial(caseObj){
-  return {
-    type: jsPsychHtmlKeyboardResponse, choices: "NO_KEYS",
-    stimulus: '<div id="ot_mount"></div>',
-    data: { trial_tag:"rta_replay", case_id:caseObj.id, case_role:caseObj.role, case_name:caseObj.name },
-    on_load: function(){
-      const store = study.cases[caseObj.id] || (study.cases[caseObj.id] = {});
-      const rec = store.recon || { deltas:[], cursor:[] };
-      const offset = store.case_started_offset_ms != null ? store.case_started_offset_ms : null;
-
-      mountAppInto("ot_mount");
+      MOUNT = document.getElementById("ot_mount");
       CASE = caseObj; state = freshState(); seq = 0;
-      walk = null;   // no practice walkthrough during replay
-      const __cl = document.getElementById("cl"); if(__cl) __cl.remove();
-
-      // EMPTY-RECON GUARD: never show a silent blank replay. If no actions were
-      // recorded for this case, say so plainly and let the participant continue.
-      if(!rec || !rec.deltas || !rec.deltas.length){
-        cleanupOverlays();
-        const g=document.createElement("div"); g.id="rp_empty";
-        Object.assign(g.style,{position:'fixed',inset:'0',background:'#0f172a',color:'#fff',display:'flex',
-          alignItems:'center',justifyContent:'center',zIndex:10006,font:'16px system-ui',textAlign:'left',padding:'0 24px'});
-        g.innerHTML='<div style="max-width:560px;line-height:1.7">'
-          +'<h2 style="color:#ffd8a8;margin:0 0 12px">Nothing to replay for this case</h2>'
-          +'<p style="margin:0 0 20px">No actions were recorded for this case, so there is nothing to play back or narrate here. This is not your fault — you can continue to the next step.</p>'
-          +'<button id="rp_empty_go" style="background:#1e8e4e;color:#fff;border:0;border-radius:8px;padding:11px 22px;font:700 15px system-ui;cursor:pointer">Continue</button>'
-          +'</div>';
-        document.body.appendChild(g);
-        document.getElementById("rp_empty_go").onclick=function(){ cleanupOverlays(); jsPsych.finishTrial(); };
-        return;
-      }
-
-      // Reserve the bottom 64px (the playback bar's height) so the replayed
-      // interface sits ABOVE the bar and no field is hidden under it.
-      const __mnt = document.getElementById("ot_mount"); if(__mnt) __mnt.style.bottom = "64px";
-      window.__rtaReplaying = true;   // suppress capture (cursor/scroll) during replay
-
-      const cap = (window.Reanchor ? window.Reanchor.makeNarrationCapture() : null);
-      const audio = { stream:null, recorder:null, chunks:[], startWall:null, map:[], vadTimer:null, ac:null, analyser:null,
-                      vadObj:null, vadReady:false, lastEnergy:0, speechSegs:[], energyTrace:[], _et:0, _segOn:null };
-
-      function sampleClock(){ try{ audio.map.push({ wall:Date.now(), playT:Replay._state().playT }); }catch(e){} }
-      function playTAtWall(wall){
-        if(!audio.map.length) return 0;
-        let best = audio.map[0];
-        for(const m of audio.map){ if(Math.abs(m.wall-wall) < Math.abs(best.wall-wall)) best = m; }
-        return best.playT;
-      }
-      const clockTimer = setInterval(sampleClock, 100);
-
-      /* ===================================================================
-         AUTO-PAUSE + PAUSE INSTRUMENTATION (rta_autopause_spec, all in partC).
-         Uses ONLY the Replay engine's public API (pause/resume/_state/noteSpeech)
-         and re-binds the HUD toggle -- no changes to the read-only engine. The
-         engine's clock already freezes playT on pause and re-anchors on resume,
-         so a rescinded pause resumes from the exact frozen position (spec A8/A4).
-         =================================================================== */
-      function apSafeState(){ try{ return Replay._state(); }catch(e){ return { playT:0, playing:false }; } }
-      const ap = {
-        enabled: !!CONFIG.RTA_AUTOPAUSE_ENABLED,
-        buf: [],                 // ring buffer of {wall, playT} for onset back-dating (A2)
-        bufTimer: null,
-        state: 'none',           // none | provisional | confirmed
-        pending: null,           // the open pause record
-        confirmTimer: null,
-        speaking: false,         // current detector speaking edge-state
-        pauses: [],              // B1: one record per pause event
-        seg: { list: [], cur: null },   // B2: speech x playback-state segments
-        micDenied: false,
-        counter: 0,
-        started: false
-      };
-      // ---- A2: continuously sampled playback-position ring buffer ----
-      function apSampleBuf(){
-        try{ ap.buf.push({ wall: performance.now(), playT: apSafeState().playT });
-          if(ap.buf.length > 600) ap.buf.shift(); }catch(e){}
-      }
-      // Resolve a (back-dated) wall time to the playback position it corresponds to.
-      function apResolve(wall){
-        if(!ap.buf.length) return Math.round(apSafeState().playT||0);
-        let best = ap.buf[0];
-        for(let i=0;i<ap.buf.length;i++){ if(Math.abs(ap.buf[i].wall-wall) < Math.abs(best.wall-wall)) best = ap.buf[i]; }
-        return Math.round(best.playT);
-      }
-      // ---- B2: segment boundaries for speech x replay-running/paused ----
-      function apSegUpdate(isSpeaking){
-        const st = apSafeState();
-        const label = (isSpeaking?'speech':'silence') + '_' + (st.playing?'playing':'paused');
-        const cur = ap.seg.cur, now = performance.now();
-        if(!cur || cur.label !== label){
-          if(cur){ cur.end_wall = Math.round(now); cur.end_playT = Math.round(st.playT); ap.seg.list.push(cur); }
-          ap.seg.cur = { label:label, start_wall:Math.round(now), start_playT:Math.round(st.playT) };
-        }
-      }
-      function apSegClose(){ const cur=ap.seg.cur; if(cur){ const st=apSafeState(); cur.end_wall=Math.round(performance.now()); cur.end_playT=Math.round(st.playT); ap.seg.list.push(cur); ap.seg.cur=null; } }
-
-      // ---- Unified detector hook: called each VAD/energy frame with a boolean ----
-      function apOnSpeechFrame(isSpeaking){
-        if(isSpeaking){ try{ Replay.noteSpeech(apSafeState().playT); }catch(e){} }  // keep silence-net fed every speaking frame
-        apSegUpdate(isSpeaking);
-        if(isSpeaking && !ap.speaking){ ap.speaking = true; apRisingEdge(); }
-        else if(!isSpeaking && ap.speaking){ ap.speaking = false; apFallingEdge(); }
-      }
-      function apNewRecord(trigger, detector){
-        return { pause_id: caseObj.id + '_p' + (++ap.counter),
-                 participant_id: (study.sub_id_from_url || null),
-                 case_id: caseObj.id,
-                 trigger_type: trigger,               // manual | vad_auto | fullscreen_guard | other
-                 detector: detector,                  // silero | energy | null(manual)
-                 vad_fire_wall_ms: null, speech_onset_wall_ms: null,
-                 pause_effective_wall_ms: null, onset_to_pause_lag_ms: null,
-                 playback_position_ms: null,          // THE TASK-TIME COORDINATE (write once)
-                 status: null, resume_wall_ms: null, pause_duration_ms: null,
-                 speech_duration_in_pause_ms: 0, prompt_shown: false }; // NOTE: coordinate written once (spec B1)
-      }
-      // Speech onset while the replay is running -> FIRE FAST (provisional pause).
-      function apRisingEdge(){
-        if(!ap.enabled) return;
-        const st = apSafeState();
-        if(ap.state !== 'none') return;    // already paused/pending: speech is captured via B2 (spec A9)
-        if(!st.playing) return;            // speech before start / after end / while paused: not a new pause (A9)
-        const fireWall  = performance.now();
-        const onsetWall = fireWall - CONFIG.RTA_VAD_ONSET_BACKDATE_MS;
-        const rec = apNewRecord('vad_auto', (audio.vadReady ? 'silero' : 'energy'));
-        rec.vad_fire_wall_ms     = Math.round(fireWall);
-        rec.speech_onset_wall_ms = Math.round(onsetWall);
-        rec.playback_position_ms = apResolve(onsetWall);          // resolved at ONSET, not at pause-exec (A2)
-        try{ Replay.pause(); }catch(e){}
-        rec.pause_effective_wall_ms = Math.round(performance.now());
-        rec.onset_to_pause_lag_ms   = rec.pause_effective_wall_ms - rec.speech_onset_wall_ms;
-        rec.status = 'provisional';
-        ap.pending = rec; ap.state = 'provisional';
-        ap.confirmTimer = setTimeout(apConfirm, CONFIG.RTA_AUTOPAUSE_CONFIRM_MS);
-      }
-      // Speech stopped: if still provisional, the pause is a false trigger -> rescind.
-      function apFallingEdge(){
-        if(ap.state === 'provisional'){ if(ap.confirmTimer){ clearTimeout(ap.confirmTimer); ap.confirmTimer=null; } apRescind(); }
-      }
-      function apConfirm(){
-        if(ap.state !== 'provisional' || !ap.pending) return;
-        ap.confirmTimer = null; ap.state = 'confirmed';
-        ap.pending.status = 'confirmed'; ap.pending.prompt_shown = true;
-        ap.pauses.push(ap.pending);          // pushed by reference; resume fields filled on resume
-        apShowPrompt();
-        apUpdateToggleLabel();
-      }
-      function apRescind(){
-        const rec = ap.pending; ap.pending = null; ap.state = 'none';
-        if(rec){ rec.status = 'rescinded'; rec.resume_wall_ms = Math.round(performance.now());
-                 rec.pause_duration_ms = rec.resume_wall_ms - rec.pause_effective_wall_ms; ap.pauses.push(rec); }
-        try{ Replay.resume(); }catch(e){}    // resumes from the exact frozen position (A8)
-        apUpdateToggleLabel();
-      }
-      // ---- Manual pause parity: re-bind the HUD toggle so a manual pause shows the
-      //      same prompt and is logged the same way (trigger_type 'manual'). ----
-      function apManualPause(){
-        if(ap.state === 'provisional'){ if(ap.confirmTimer){ clearTimeout(ap.confirmTimer); ap.confirmTimer=null; }
-          // promote the in-flight provisional to a confirmed manual pause
-        }
-        if(ap.state === 'confirmed') return;
-        const st = apSafeState();
-        const rec = ap.pending || apNewRecord('manual', null);
-        if(!ap.pending){ rec.playback_position_ms = Math.round(st.playT); }
-        rec.trigger_type = (rec.trigger_type==='vad_auto' ? 'vad_auto' : 'manual');
-        try{ Replay.pause(); }catch(e){}
-        if(rec.pause_effective_wall_ms == null) rec.pause_effective_wall_ms = Math.round(performance.now());
-        rec.status = 'confirmed'; rec.prompt_shown = true;
-        if(ap.pauses.indexOf(rec) < 0) ap.pauses.push(rec);
-        ap.pending = rec; ap.state = 'confirmed';
-        apShowPrompt(); apUpdateToggleLabel();
-      }
-      function apResume(){
-        if(ap.state === 'provisional'){ if(ap.confirmTimer){ clearTimeout(ap.confirmTimer); ap.confirmTimer=null; } apRescind(); return; }
-        if(ap.state === 'confirmed' && ap.pending){
-          const rec = ap.pending; ap.pending = null; ap.state = 'none';
-          rec.resume_wall_ms = Math.round(performance.now());
-          rec.pause_duration_ms = rec.resume_wall_ms - (rec.pause_effective_wall_ms || rec.resume_wall_ms);
-          apHidePrompt(); try{ Replay.resume(); }catch(e){} apUpdateToggleLabel(); return;
-        }
-        try{ Replay.resume(); }catch(e){} apUpdateToggleLabel();
-      }
-      function apWireToggle(){
-        const btn = document.getElementById('rp_toggle'); if(!btn) return;
-        btn.onclick = function(){ if(apSafeState().playing) apManualPause(); else apResume(); };
-      }
-      function apUpdateToggleLabel(){
-        const btn = document.getElementById('rp_toggle'); if(btn) btn.textContent = apSafeState().playing ? 'Pause' : 'Resume';
-      }
-      // ---- Pause prompt overlay (persistent until resume) ----
-      function apShowPrompt(){
-        let p = document.getElementById('rp_pause_prompt');
-        if(!p){ p = document.createElement('div'); p.id = 'rp_pause_prompt'; document.body.appendChild(p);
-          Object.assign(p.style,{position:'fixed',left:'50%',bottom:'88px',transform:'translateX(-50%)',
-            maxWidth:'560px',background:'#0b3d2e',color:'#eafff4',font:'600 15px system-ui',padding:'12px 18px',
-            borderRadius:'10px',zIndex:10004,boxShadow:'0 6px 22px rgba(0,0,0,.3)',textAlign:'center',lineHeight:'1.5'}); }
-        p.textContent = CONFIG.RTA_PAUSE_PROMPT; p.style.display = '';
-      }
-      function apHidePrompt(){ const p = document.getElementById('rp_pause_prompt'); if(p) p.style.display = 'none'; }
-      // ---- B3: per-case aggregate, computed at collection time ----
-      function apMedian(arr){ if(!arr.length) return null; const a=arr.slice().sort((x,y)=>x-y); const m=Math.floor(a.length/2);
-        return a.length%2 ? a[m] : Math.round((a[m-1]+a[m])/2); }
-      function apAggregate(){
-        apSegClose();
-        const st = apSafeState();
-        const confirmed = ap.pauses.filter(p=>p.status==='confirmed');
-        const rescinded = ap.pauses.filter(p=>p.status==='rescinded');
-        const manual    = ap.pauses.filter(p=>p.trigger_type==='manual');
-        let speechPlay=0, speechPause=0;
-        ap.seg.list.forEach(s=>{ const dur=Math.max(0,(s.end_wall||s.start_wall)-s.start_wall);
-          if(s.label==='speech_playing') speechPlay+=dur; else if(s.label==='speech_paused') speechPause+=dur; });
-        const totalSpeech = speechPlay + speechPause;
-        const pauseDurs = confirmed.map(p=>p.pause_duration_ms).filter(x=>x!=null);
-        const lags = ap.pauses.filter(p=>p.trigger_type==='vad_auto' && p.onset_to_pause_lag_ms!=null).map(p=>p.onset_to_pause_lag_ms);
-        return {
-          n_pauses_total: ap.pauses.length,
-          n_pauses_manual: manual.length,
-          n_pauses_vad_confirmed: ap.pauses.filter(p=>p.trigger_type==='vad_auto'&&p.status==='confirmed').length,
-          n_pauses_vad_rescinded: rescinded.filter(p=>p.trigger_type==='vad_auto').length,
-          n_silence_prompts_fired: (function(){ try{ return apSafeState().fires ? apSafeState().fires.length : 0; }catch(e){ return 0; } })(),
-          total_replay_runtime_ms: Math.round(st.playT||0),
-          total_paused_ms: pauseDurs.reduce((a,b)=>a+b,0),
-          speech_ms_while_playing: Math.round(speechPlay),
-          speech_ms_while_paused: Math.round(speechPause),
-          proportion_speech_while_playing: totalSpeech>0 ? Math.round(1000*speechPlay/totalSpeech)/1000 : 0,
-          mean_pause_duration_ms: pauseDurs.length ? Math.round(pauseDurs.reduce((a,b)=>a+b,0)/pauseDurs.length) : null,
-          median_onset_to_pause_lag_ms: apMedian(lags),
-          clock_sample_cadence_ms: CONFIG.RTA_CLOCK_SAMPLE_MS,
-          confirm_window_ms: CONFIG.RTA_AUTOPAUSE_CONFIRM_MS,
-          autopause_enabled: ap.enabled,
-          mic_denied: ap.micDenied,
-          detector_primary: (audio.vadReady ? 'silero' : 'energy')
-        };
-      }
-      function apFinalizeOpen(){   // close any pause still open at end of replay
-        if(ap.confirmTimer){ clearTimeout(ap.confirmTimer); ap.confirmTimer=null; }
-        if(ap.state==='provisional' && ap.pending){ ap.pending.status='rescinded';
-          ap.pending.resume_wall_ms=Math.round(performance.now());
-          ap.pending.pause_duration_ms=ap.pending.resume_wall_ms-ap.pending.pause_effective_wall_ms;
-          ap.pauses.push(ap.pending); ap.pending=null; }
-        else if(ap.state==='confirmed' && ap.pending){ ap.pending.resume_wall_ms=Math.round(performance.now());
-          ap.pending.pause_duration_ms=ap.pending.resume_wall_ms-(ap.pending.pause_effective_wall_ms||ap.pending.resume_wall_ms); ap.pending=null; }
-        ap.state='none';
-      }
-      function apStart(){   // called right after Replay.start(): HUD exists, playback running
-        if(ap.started) return; ap.started = true;
-        apSampleBuf();
-        ap.bufTimer = setInterval(apSampleBuf, CONFIG.RTA_CLOCK_SAMPLE_MS);
-        apWireToggle();
-      }
-      function apStop(){ if(ap.bufTimer){ clearInterval(ap.bufTimer); ap.bufTimer=null; } apFinalizeOpen(); }
-
-      function startAudio(){
-        return navigator.mediaDevices.getUserMedia({ audio:true }).then(stream=>{
-          audio.stream = stream;
-          try{ audio.recorder = new MediaRecorder(stream); }catch(e){ audio.recorder = null; }
-          if(audio.recorder){
-            audio.recorder.ondataavailable = e=>{ if(e.data && e.data.size) audio.chunks.push(e.data); };
-            audio.startWall = Date.now(); audio.recorder.start(1000);
-          }
-          try{
-            const AC = window.AudioContext || window.webkitAudioContext;
-            audio.ac = new AC();
-            const node = audio.ac.createMediaStreamSource(stream);
-            audio.analyser = audio.ac.createAnalyser(); audio.analyser.fftSize = 1024; node.connect(audio.analyser);
-            const buf = new Uint8Array(audio.analyser.fftSize);
-            // ENERGY GATE: now the FALLBACK + a logged secondary signal. It drives the
-            // silence-net only while Silero isn't live (audio.vadReady false); it always
-            // logs a downsampled RMS trace so the detector can be validated post-hoc.
-            audio.vadTimer = setInterval(()=>{
-              audio.analyser.getByteTimeDomainData(buf);
-              let sum=0; for(let i=0;i<buf.length;i++){ const v=(buf[i]-128)/128; sum+=v*v; }
-              const rms = Math.sqrt(sum/buf.length); audio.lastEnergy = rms;
-              const nowMs = audio.ac ? audio.ac.currentTime*1000 : Date.now();
-              if(nowMs - audio._et > 500){ audio._et = nowMs; try{ audio.energyTrace.push({ playT:Replay._state().playT, rms:Math.round(rms*1000)/1000 }); }catch(e){} }
-              if(!audio.vadReady){ apOnSpeechFrame(rms > CONFIG.RTA_ENERGY_GATE); }   // energy = fallback detector for auto-pause
-            }, 150);
-            // SILERO VAD (primary, self-hosted via window.vad). Fire-and-forget so replay
-            // never blocks on model load; energy covers the gap until it's ready. If the
-            // library/model is absent or init throws, vadReady stays false and energy stays
-            // in charge -- the silence-net never breaks.
-            (function initSilero(){
-              try{
-                if(!(window.vad && window.vad.AudioNodeVAD)) return;   // library absent -> energy fallback
-                var opts = {
-                  baseAssetPath:    location.origin + '/js/vendor/vad/',
-                  onnxWASMBasePath: location.origin + '/js/vendor/vad/',
-                  positiveSpeechThreshold: 0.5, negativeSpeechThreshold: 0.35,
-                  onSpeechStart: function(){ audio.vadReady = true; try{ audio._segOn = Replay._state().playT; Replay.noteSpeech(audio._segOn); }catch(e){} },
-                  onSpeechEnd:   function(){ try{ if(audio._segOn!=null){ audio.speechSegs.push({ on:audio._segOn, off:Replay._state().playT }); audio._segOn=null; } }catch(e){} },
-                  onFrameProcessed: function(probs){ audio.vadReady = true;
-                    var s = probs && (probs.isSpeech!=null ? probs.isSpeech : (typeof probs==='number'?probs:0));
-                    apOnSpeechFrame(s > 0.5); }   // Silero frames drive the two-stage auto-pause
-                };
-                window.vad.AudioNodeVAD.new(audio.ac, opts).then(function(v){
-                  audio.vadObj = v;
-                  try{ node.connect(v.getNode ? v.getNode() : v.node); }catch(e){}
-                  try{ v.start(); }catch(e){}
-                }).catch(function(){ audio.vadReady = false; });
-              }catch(e){ audio.vadReady = false; }
-            })();
-          }catch(e){}
-        }).catch(e=>{ ap.micDenied = true; /* no mic -> auto-pause disabled, manual pause only; flagged in aggregate (A9) */ });
-      }
-      function stopAudio(){
-        if(audio.vadTimer) clearInterval(audio.vadTimer);
-        try{ if(audio._segOn!=null){ audio.speechSegs.push({ on:audio._segOn, off:Replay._state().playT }); audio._segOn=null; } }catch(e){}
-        try{ if(audio.vadObj){ if(audio.vadObj.pause) audio.vadObj.pause(); else if(audio.vadObj.destroy) audio.vadObj.destroy(); } }catch(e){}
-        try{ audio.ac && audio.ac.close(); }catch(e){}
-        return new Promise(res=>{
-          if(!audio.recorder || audio.recorder.state === "inactive"){ if(audio.stream) audio.stream.getTracks().forEach(t=>t.stop()); res(null); return; }
-          audio.recorder.onstop = ()=>{ if(audio.stream) audio.stream.getTracks().forEach(t=>t.stop()); res(new Blob(audio.chunks, { type: audio.recorder.mimeType || "audio/webm" })); };
-          try{ audio.recorder.stop(); }catch(e){ res(null); }
-        });
-      }
-
-      let finishing=false, ended=false;
-      function endOnce(arr){ if(ended) return; ended=true; storeAndEnd(arr||[]); }
-      function finishReplay(){
-        if(finishing) return; finishing=true;
-        clearInterval(clockTimer);
-        apStop(); apHidePrompt();
-        // PRACTICE: the practice narration is not analyzed, so there is nothing to
-        // transcribe. Release the mic and advance immediately -- no "processing"
-        // wait, and no dependency on the Whisper model being loaded.
-        if(caseObj.role === "Practice"){
-          const t=setTimeout(()=>endOnce([]), 4000);   // safety: never hang
-          stopAudio().catch(()=>{}).then(()=>{ clearTimeout(t); endOnce([]); });
-          return;
-        }
-        showBusy("Processing your narration. This can take up to a minute. Please don't close this tab.");
-        // Absolute backstop: the study advances even if transcription never returns.
-        const hardCap = setTimeout(()=>endOnce([]), 240000);
-        stopAudio().then(blob=>{
-          if(!blob || !cap){ clearTimeout(hardCap); endOnce([]); return; }
-          pcm16kFromBlob(blob).then(pcm=>transcribeAudio(pcm)).then(res=>{
-            const chunks = (res.chunks && res.chunks.length) ? res.chunks : (res.text ? [{text:res.text, timestamp:[0,0]}] : []);
-            chunks.forEach(ch=>{
-              const s = (ch.timestamp && ch.timestamp[0]!=null) ? ch.timestamp[0] : 0;
-              const wall = (audio.startWall || Date.now()) + s*1000;
-              cap.noteUtterance((ch.text||"").trim(), playTAtWall(wall), { paused:false, kind:'final' });
-            });
-            clearTimeout(hardCap); endOnce(window.Reanchor.reanchorAll(cap.getNarration(), offset));
-          }).catch(()=>{ clearTimeout(hardCap); endOnce([]); });
-        }).catch(()=>{ clearTimeout(hardCap); endOnce([]); });
-      }
-      function storeAndEnd(reanchored){
-        window.__rtaReplaying = false;
-        store.rta = { narration:reanchored, silence_prompts:(function(){ try{ return Replay._state().fires; }catch(e){ return []; } })(),
-                      vad: { primary_engine:(audio.vadReady?'silero':'energy'),
-                             speech_segments: audio.speechSegs.slice(),
-                             energy_rms_trace: audio.energyTrace.slice() },
-                      pauses: ap.pauses.slice(),                 // B1: per-pause-event records
-                      speech_state: ap.seg.list.slice(),         // B2: speech x playback-state segments
-                      pause_aggregate: apAggregate() };          // B3: per-case aggregate
-        cleanupOverlays();
-        jsPsych.finishTrial();
-      }
-
-      function showContinue(cb){
-        if(document.getElementById("rp_continue")) return;
-        const b=document.createElement("button"); b.id="rp_continue"; b.textContent="Finish narrating and continue";
-        b.style.cssText="position:fixed;right:16px;bottom:74px;z-index:10003;background:#1e8e4e;color:#fff;border:0;border-radius:8px;padding:10px 18px;font:700 14px system-ui;cursor:pointer";
-        b.onclick=cb; document.body.appendChild(b);
-      }
-      function showBusy(msg){
-        let d=document.getElementById("rp_busy");
-        if(!d){ d=document.createElement("div"); d.id="rp_busy"; document.body.appendChild(d);
-          Object.assign(d.style,{position:'fixed',inset:'0',background:'rgba(15,23,42,.94)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',zIndex:10005,font:'16px system-ui',textAlign:'center',padding:'0 24px'}); }
-        d.textContent=msg;
-      }
-      // ---- A6: uniform auto-pause announcement, shown before playback begins,
-      //      identical wording for every participant and active on the practice
-      //      case as well as the analyzed cases. Blocking, single button. ----
-      function apShowAnnouncement(cb){
-        const g=document.createElement("div"); g.id="rp_announce";
-        Object.assign(g.style,{position:'fixed',inset:'0',background:'rgba(15,23,42,.96)',color:'#fff',display:'flex',
-          alignItems:'center',justifyContent:'center',zIndex:10007,font:'16px system-ui',textAlign:'left',padding:'0 24px'});
-        g.innerHTML='<div style="max-width:600px;line-height:1.7">'
-          +'<h2 style="color:#ffd8a8;margin:0 0 14px">Talk through your thinking</h2>'
-          +'<p style="margin:0 0 22px;font-size:16px">'+CONFIG.RTA_AUTOPAUSE_ANNOUNCE+'</p>'
-          +'<button id="rp_announce_go" style="background:#1e8e4e;color:#fff;border:0;border-radius:8px;padding:12px 24px;font:700 15px system-ui;cursor:pointer">Start the replay</button>'
-          +'</div>';
-        document.body.appendChild(g);
-        document.getElementById("rp_announce_go").onclick=function(){ g.remove(); cb(); };
-      }
-
-      function beginReplay(){
-        Replay.start(rec, { silenceThresholdMs: CONFIG.RTA_SILENCE_MS, onDone: function(){ apFinalizeOpen(); showContinue(finishReplay); } });
-        apStart();
-      }
-      startAudio().then(()=>{
-        apShowAnnouncement(beginReplay);
-      });
+      renderCase();
+      attachCursorSampling();   // cursor capture for reconstruction (replay-only)
+      setupWalkthrough();          // no-op for real cases (isPractice() false)
+      addBannerSubmit();           // banner Submit for real cases
+      pendingAOIStart = snapshotAOIRects();
     },
     on_finish: function(data){
-      const store = study.cases[caseObj.id];
-      data.rta_narration = (store && store.rta && store.rta.narration) || [];
-      data.rta_silence_prompts = (store && store.rta && store.rta.silence_prompts) || [];
-      data.rta_vad = (store && store.rta && store.rta.vad) || null;
-      data.rta_pauses = (store && store.rta && store.rta.pauses) || [];
-      data.rta_speech_state = (store && store.rta && store.rta.speech_state) || [];
-      data.rta_pause_aggregate = (store && store.rta && store.rta.pause_aggregate) || null;
+      if(pendingCaseData){ Object.assign(data, pendingCaseData); pendingCaseData = null; }
+      data.aoi_rects_start = pendingAOIStart; pendingAOIStart = null;
+      data.gaze_tracked = !!withGaze;
+      /* record this case's start offset against the session recording clock (RTA sync) */
+      data.case_started_offset_ms = study.recording_started_at ? (Date.now() - study.recording_started_at) : null;
     }
   };
+  if(withGaze){
+    trial.extensions = [{ type: jsPsychExtensionWebgazer, params: { targets: AOI_SELECTORS } }];
+  }
+  return trial;
 }
 
-/* ---------- CHUNK 4: ONE-FILE EXPORT ---------- */
-function buildSessionExport(){
-  return {
-    schema:"ot_prof_reasoning_v1",
-    study_id: study.sub_id_from_url || null,
-    generated_at: new Date().toISOString(),
-    session:{
-      started_at:study.started_at, user_agent:study.user_agent,
-      session_started_at_ms:study.session_started_at_ms,
-      group:study.group, year_in_program:study.year_in_program, url_params:study.url_params,
-      task_viewport:study.task_viewport,
-      browser_check:study.browser_check, permissions:study.permissions,
-      rta_silence_threshold_ms: CONFIG.RTA_SILENCE_MS,
-      rta_autopause: { enabled: CONFIG.RTA_AUTOPAUSE_ENABLED, confirm_window_ms: CONFIG.RTA_AUTOPAUSE_CONFIRM_MS,
-                       clock_sample_ms: CONFIG.RTA_CLOCK_SAMPLE_MS, onset_backdate_ms: CONFIG.RTA_VAD_ONSET_BACKDATE_MS,
-                       energy_gate_rms: CONFIG.RTA_ENERGY_GATE }
-    },
-    cases: CASES_IN_ORDER.map(c=>{
-      const rec = study.cases[c.id] || {};
-      return {
-        case_id:c.id, case_role:c.role, case_name:c.name,
-        analyzed:(c.role!=="Practice"),
-        case_started_offset_ms: rec.case_started_offset_ms != null ? rec.case_started_offset_ms : null,
-        task: rec.task || null,                                   // Stream 1: event_log + descriptive state
-        rta: (rec.rta && rec.rta.narration) || [],                // Stream 2: re-anchored think-aloud
-        rta_silence_prompts: (rec.rta && rec.rta.silence_prompts) || [],
-        rta_vad: (rec.rta && rec.rta.vad) || null,
-        rta_pauses: (rec.rta && rec.rta.pauses) || [],            // B1: per-pause-event records
-        rta_speech_state: (rec.rta && rec.rta.speech_state) || [],// B2: speech x playback-state segments
-        rta_pause_aggregate: (rec.rta && rec.rta.pause_aggregate) || null  // B3: per-case aggregate
-      };
-    })
-    /* NOTE: state.recon (deltas + cursor) is intentionally NOT exported. */
-  };
-}
-function makeExportTrial(){
-  return {
-    type: jsPsychHtmlKeyboardResponse, choices:"NO_KEYS",
-    stimulus: '<div></div>',   // required by the plugin; on_load renders the real screen
-    data:{ trial_tag:"export" },
-    on_load: function(){
-      study.__fsActive = false;   // study over: stop guarding fullscreen
-      const __fsr=document.getElementById("fs_return"); if(__fsr) __fsr.remove();
-      cleanupOverlays();
-      const payload = buildSessionExport();
-      const fname = "ot_session_" + (study.sub_id_from_url || "anon") + "_" + Date.now() + ".json";
-      const blob = new Blob([JSON.stringify(payload)], { type:"application/json" });
-      const url = URL.createObjectURL(blob);
+/* Two conditional branches: with-gaze (extension attached) if study.gaze_enabled,
+   else without. Only one branch runs; extensions can't be set at runtime, so we
+   pre-build both and gate with conditional_function. */
+timeline.push({
+  conditional_function: function(){ return study.gaze_enabled; },
+  timeline: CASES_IN_ORDER.map(c=>makeCaseTrial(c, true))
+});
+timeline.push({
+  conditional_function: function(){ return !study.gaze_enabled; },
+  timeline: CASES_IN_ORDER.map(c=>makeCaseTrial(c, false))
+});
 
-      // Qualtrics return URL (append sub_id if we have one, so the survey can match the file).
-      const qBase = CONFIG.QUALTRICS_UPLOAD_URL;
-      const qConfigured = qBase && qBase.indexOf("REPLACE") < 0;
-      let qUrl = qBase;
-      if (qConfigured && study.sub_id_from_url) {
-        qUrl = qBase + (qBase.indexOf("?") >= 0 ? "&" : "?") + "sub_id=" + encodeURIComponent(study.sub_id_from_url);
-      }
 
-      document.body.innerHTML =
-        '<div style="max-width:660px;margin:5% auto;font-family:system-ui;color:#17232e;text-align:left;padding:0 22px;line-height:1.6">'
-        + '<h2 style="color:#1565c0;margin:0 0 6px">You have finished both cases. Thank you.</h2>'
-        + '<p style="font-size:16px;margin:0 0 20px">Two quick steps complete your participation. Please do them in order, and do not close this tab until you have finished Step 2.</p>'
 
-        + '<div style="background:#eef4fb;border:1px solid #cfe0f2;border-radius:10px;padding:16px 18px;margin:0 0 16px">'
-        +   '<p style="margin:0 0 6px;font-weight:700;color:#12507f">Step 1 - Download your session file</p>'
-        +   '<p style="margin:0 0 12px;font-size:15px">Click the green button. A file named <strong>' + fname + '</strong> will be saved to your computer (usually your Downloads folder). Remember where it goes - you will upload it in Step 2.</p>'
-        +   '<a id="dl" href="' + url + '" download="' + fname + '" style="display:inline-block;background:#1e8e4e;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:15px">Download my session file</a>'
-        +   '<p id="dl_done" style="display:none;margin:10px 0 0;color:#16692f;font-weight:700">Downloaded. Now continue to Step 2.</p>'
-        + '</div>'
 
-        + '<div style="background:#f6f8fa;border:1px solid #dfe6ec;border-radius:10px;padding:16px 18px;margin:0 0 20px">'
-        +   '<p style="margin:0 0 6px;font-weight:700;color:#12507f">Step 2 - Return to the survey and upload the file</p>'
-        +   '<p style="margin:0 0 12px;font-size:15px">Click the button below to go back to the survey. There you will be asked to upload the file you just downloaded (<strong>' + fname + '</strong>).</p>'
-        +   (qConfigured
-              ? '<button id="go_q" disabled style="background:#1565c0;color:#fff;border:0;border-radius:8px;padding:12px 24px;font-weight:700;font-size:15px;cursor:pointer;opacity:.5">Return to the survey to upload</button>'
-                + '<p id="go_hint" style="margin:10px 0 0;font-size:13px;color:#7a8894">Download your file first (Step 1), then this button turns on.</p>'
-              : '<p style="margin:0;color:#c0392b;font-weight:600">[Survey return URL not set yet - configure CONFIG.QUALTRICS_UPLOAD_URL. Your downloaded file is still saved.]</p>')
-        + '</div>'
-
-        + '<p style="font-size:13px;color:#7a8894">If the download did not start, click the green button again. If you cannot find the file, check your Downloads folder for <strong>' + fname + '</strong>.</p>'
-        + '</div>';
-
-      const dl = document.getElementById("dl");
-      const dlDone = document.getElementById("dl_done");
-      const goQ = document.getElementById("go_q");
-      if (dl) dl.addEventListener("click", function(){
-        if (dlDone) dlDone.style.display = "block";
-        if (goQ) { goQ.disabled = false; goQ.style.opacity = "1"; }
-        const hint = document.getElementById("go_hint"); if (hint) hint.style.display = "none";
-      });
-      if (goQ) goQ.addEventListener("click", function(){ if (qConfigured) window.location.href = qUrl; });
-    }
-  };
-}
-
-/* ---------- TIMELINE: task + replay per case, then export ---------- */
-CASES_IN_ORDER.forEach(c=>{ timeline.push(makeCaseTrial(c)); timeline.push(makeReplayTrial(c)); });
-timeline.push(makeExportTrial());
 
 jsPsych.run(timeline);
-
 </script>
 </body>
 </html>
