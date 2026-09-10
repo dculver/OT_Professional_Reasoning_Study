@@ -574,6 +574,127 @@ partB = _rm(partB,
 
 print("partB: replay fixes (cursor time, dev input removed, HUD playing-cue, highlight repaint, popup capture, impression live-typing)")
 
+# =====================================================================
+# ---- CASE ENRICHMENT (approved by Dennis 2026-09-10) ----
+#      Additive data-src blocks that AFFORD (not force) pragmatic/narrative/
+#      interactive reasoning; new blocks carry data-src so AOI highlighting and
+#      replay work unchanged. Rationale + guardrails: claude/case-enrichment-draft.md.
+# =====================================================================
+# F1 -- Florence: expand the discharge block with payer/coverage + who-executes reality
+partB = _rm(partB,
+  '''    <div class="sect">Discharge Plan</div>
+    <div class="clin" data-src="fl_ch_dc"><p>Home exercise program at the conclusion of 10 weeks.</p></div>`,''',
+  '''    <div class="sect">Discharge Plan &amp; Coverage</div>
+    <div class="clin" data-src="fl_ch_dc"><p>Home exercise program at the conclusion of the 10-week authorization. Florence currently requires maximal assistance for upper- and lower-body dressing and for donning and doffing the immobilizer; the home health aide performs bathing, dressing assistance, meals, and shopping. Medicare Part B is the primary payer with Medicaid secondary; continued authorization beyond the current plan of care requires documentation of medical necessity.</p></div>`,''')
+# F2 -- Florence: first-person voice (fl_prof_6)
+partB = _rm(partB,
+  '''    <div class="clin" data-src="fl_prof_5"><p>Asked what she most needs, Florence said she wants to remain in her own home and receive services there. She reported being very afraid of being placed in a nursing home.</p></div>`,''',
+  '''    <div class="clin" data-src="fl_prof_5"><p>Asked what she most needs, Florence said she wants to remain in her own home and receive services there. She reported being very afraid of being placed in a nursing home.</p></div>
+    <div class="clin" data-src="fl_prof_6"><p><b>In Florence's words.</b> "I've kept my own place since I was a girl — my figurines, my books, the cat, Mary down the hall for our lunches. Denise comes mornings; she's good to me, but I don't love being washed like a child. I'd like to do a few small things for myself again. And I haven't truly slept in weeks — some nights I take the sling off just to get a few hours."</p></div>`,''')
+# Y1 -- Yvonne: employment / return-to-work status (yv_ch_work), before Discharge
+partB = _rm(partB,
+  '''    <div class="sect">Discharge Plan</div>
+    <div class="clin" data-src="yv_ch_dc"><p>Home program at completion of outpatient services.</p></div>`,''',
+  '''    <div class="sect">Employment &amp; Duty Status</div>
+    <div class="clin" data-src="yv_ch_work"><p>Yvonne has 21 years of service and is within a few years of pension eligibility. Her department requires a fitness-for-duty determination through its own medical review before return to full duty; light or modified duty is available at the supervisor's discretion. She has not yet discussed a timeline with her department.</p></div>
+
+    <div class="sect">Discharge Plan</div>
+    <div class="clin" data-src="yv_ch_dc"><p>Home program at completion of outpatient services.</p></div>`,''')
+# Y2 -- Yvonne: first-person voice (yv_prof_6)
+partB = _rm(partB,
+  '''    <div class="clin" data-src="yv_prof_5"><p>Asked what she most needs, Yvonne said she wants to get her arm moving well and to prepare for retirement from her job.</p></div>`,''',
+  '''    <div class="clin" data-src="yv_prof_5"><p>Asked what she most needs, Yvonne said she wants to get her arm moving well and to prepare for retirement from her job.</p></div>
+    <div class="clin" data-src="yv_prof_6"><p><b>In Yvonne's words.</b> "I've been the strong one my whole life — on the job, in the dojang, on the bike. Tiffany's carried everything at home since the surgery and I hate that. I catch myself in the mirror and I lose it. I want my arm back so I can be myself again, not so I can baby it."</p></div>`,''')
+# P1 -- Patricia (practice): work-injury / income reality (pa_ch_work), lightest touch, no voice block
+partB = _rm(partB,
+  '''    <div class="kv"><span class="k">Medications</span><span class="v">Amcill. No known allergies.</span></div></div>
+
+    <div class="sect">Social &amp; Lifestyle</div>''',
+  '''    <div class="kv"><span class="k">Medications</span><span class="v">Amcill. No known allergies.</span></div></div>
+
+    <div class="sect">Work Status</div>
+    <div class="clin" data-src="pa_ch_work"><p>The injury occurred at work with a box cutter; the claim is being handled through workers' compensation. Patricia is eight months into her first position with health benefits and is anxious about how long she can be off before her income and coverage are affected.</p></div>
+
+    <div class="sect">Social &amp; Lifestyle</div>''')
+for _need in ['data-src="fl_prof_6"','data-src="fl_ch_dc"><p>Home exercise program at the conclusion of the 10-week','data-src="yv_ch_work"','data-src="yv_prof_6"','data-src="pa_ch_work"']:
+    assert _need in partB, "enrichment missing: "+_need
+print("partB: case enrichment wired (fl_prof_6, fl_ch_dc expanded, yv_ch_work, yv_prof_6, pa_ch_work)")
+
+# =====================================================================
+# ---- PLAN FREE-TEXT REVISION TRAJECTORY (approved 2026-09-10) ----
+#      Symmetry with impression_revisions: capture the SETTLED text of each plan
+#      field (per-barrier + plan-level) on debounce/blur, only when changed, so
+#      plan reasoning carries the same edit history as the clinical impression.
+# =====================================================================
+partB = _rm(partB,
+  '    plan:{ selectedBarrierIds:[], prioritization:"", perBarrier:{}, goal:"", immediate:"" },',
+  '    plan:{ selectedBarrierIds:[], prioritization:"", perBarrier:{}, goal:"", immediate:"", revisions:[] },')
+partB = _rm(partB,
+  '''  const planDebounce = {};
+  const logPlanEdit = (key, detail)=>{ clearTimeout(planDebounce[key]); planDebounce[key]=setTimeout(()=>logEvent("plan_edit",detail),700); };
+  body.querySelectorAll('[data-bid]').forEach(el=>{
+    const handler=()=>{ const {bid,f}=el.dataset; state.plan.perBarrier[bid]=state.plan.perBarrier[bid]||{}; state.plan.perBarrier[bid][f]=el.value; updateWalkthrough();
+      logPlanEdit("bar:"+bid+":"+f, {scope:"barrier", barrier_id:bid, field:f, len:el.value.length});
+      recordDelta("plan_barrier",{bid, field:f, value:el.value}); };
+    el.addEventListener("input", handler); el.addEventListener("change", handler);
+  });
+  const bind=(id,key)=>{ const el=document.getElementById(id); if(el) el.addEventListener("input",()=>{ state.plan[key]=el.value; updateWalkthrough(); logPlanEdit("plan:"+key,{scope:"plan", field:key, len:el.value.length}); recordDelta("plan_field",{field:key, value:el.value}); }); };''',
+  '''  const planDebounce = {};
+  const logPlanEdit = (key, detail)=>{ clearTimeout(planDebounce[key]); planDebounce[key]=setTimeout(()=>logEvent("plan_edit",detail),700); };
+  /* Plan free-text revision trajectory -- symmetric with impression_revisions:
+     the settled text of each plan field (per-barrier + plan-level) is snapshotted
+     on debounce/blur, only when it changed, so plan reasoning carries the same
+     edit history as the impression (not just final text + a length count). */
+  const planRevTimers = {};
+  const planSnapshot = (scope, field, bid, text)=>{
+    const revs=(state.plan.revisions=state.plan.revisions||[]);
+    let last=null; for(let i=revs.length-1;i>=0;i--){ const r=revs[i]; if(r.field===field && (r.barrier_id||null)===(bid||null)){ last=r; break; } }
+    if(last && last.text===text) return;
+    const ts=Date.now(); revs.push({version:revs.length+1, scope:scope, field:field, barrier_id:(bid||null), text:text, ts:ts});
+    logEvent("plan_revision",{scope:scope, field:field, barrier_id:(bid||null), version:revs.length, len:text.length});
+  };
+  const planRevSettle=(key, scope, field, bid, getText)=>{ clearTimeout(planRevTimers[key]); planRevTimers[key]=setTimeout(()=>planSnapshot(scope,field,bid,getText()),800); };
+  body.querySelectorAll('[data-bid]').forEach(el=>{
+    const handler=()=>{ const {bid,f}=el.dataset; state.plan.perBarrier[bid]=state.plan.perBarrier[bid]||{}; state.plan.perBarrier[bid][f]=el.value; updateWalkthrough();
+      logPlanEdit("bar:"+bid+":"+f, {scope:"barrier", barrier_id:bid, field:f, len:el.value.length});
+      planRevSettle("bar:"+bid+":"+f, "barrier", f, bid, ()=>el.value);
+      recordDelta("plan_barrier",{bid, field:f, value:el.value}); };
+    el.addEventListener("input", handler); el.addEventListener("change", handler);
+    el.addEventListener("blur", ()=>{ const {bid,f}=el.dataset; clearTimeout(planRevTimers["bar:"+bid+":"+f]); planSnapshot("barrier", f, bid, el.value); });
+  });
+  const bind=(id,key)=>{ const el=document.getElementById(id); if(el){ el.addEventListener("input",()=>{ state.plan[key]=el.value; updateWalkthrough(); logPlanEdit("plan:"+key,{scope:"plan", field:key, len:el.value.length}); planRevSettle("plan:"+key, "plan", key, null, ()=>el.value); recordDelta("plan_field",{field:key, value:el.value}); });
+    el.addEventListener("blur", ()=>{ clearTimeout(planRevTimers["plan:"+key]); planSnapshot("plan", key, null, el.value); }); } };''')
+print("partB: plan free-text revision trajectory added (symmetry with impression_revisions)")
+
+# =====================================================================
+# ---- DELETE DEAD LIBRARY CARD DATA (approved 2026-09-10) ----
+#      The Library tab/pane were already removed; libCards + SHARED_LIBRARY +
+#      per-case `library:[]` are now unreferenced. Remove the builder FIRST so
+#      removing the data can't throw on [...undefined].
+# =====================================================================
+partB = _rm(partB,
+  '''  const libCards = [...CASE.library, ...SHARED_LIBRARY].map(c=>`
+    <div class="libcard ${c.ref?'ref':''}" id="lib_${c.id}"><h4>${c.title}</h4>${c.html}${c.cite?`<div class="cite">${c.cite}</div>`:''}</div>`).join("");
+
+''', "")
+# SHARED_LIBRARY const (+ its comment line)
+_sh0 = partB.index("/* Shared reference cards")
+_sh1 = partB.index("\n];", _sh0) + len("\n];")
+partB = partB[:_sh0] + partB[_sh1:]
+# per-case library:[...] arrays (each closes with "\n  ]\n};", preceded by chartHTML's `,)
+_removed = 0
+while "\n  library:[" in partB:
+    _lib = partB.index("\n  library:[")
+    _kpos = partB.rindex("`,", 0, _lib)              # end of chartHTML template (backtick,comma)
+    _close = partB.index("\n  ]\n};", _lib)           # library-array close, right before the case close
+    partB = partB[:_kpos+1] + partB[_close+len("\n  ]"):]   # keep the backtick, drop comma..]
+    _removed += 1
+    assert _removed <= 5, "library strip runaway"
+assert _removed == 3, "expected 3 case library arrays, removed %d" % _removed
+for _bad in ["CASE.library","SHARED_LIBRARY","libCards"]:
+    assert _bad not in partB, "library remnant in partB: "+_bad
+print("partB: dead Library card data removed (3 case arrays + SHARED_LIBRARY + libCards)")
+
 # ---------- duplicate top-level identifier check A vs B ----------
 def top_names(js):
     names=set()

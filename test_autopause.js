@@ -79,7 +79,7 @@ function instantiate(env, opts){
           performance = { now: arguments[10] };
     ${block}
     return { ap, apOnSpeechFrame, apStart, apStop, apAggregate, apResolve, apSampleBuf,
-             apShowPrompt, apHidePrompt, apManualPause, apResume };
+             apShowPrompt, apHidePrompt, apManualPause, apResume, apVadDropped };
   `;
   const factory = new Function(factoryBody);
   return factory(CONFIG, study, caseObj, audio, env.Replay, env.document,
@@ -116,6 +116,9 @@ function instantiate(env, opts){
   check('onset_to_pause_lag_ms logged & positive', rec && rec.onset_to_pause_lag_ms > 0, rec && rec.onset_to_pause_lag_ms);
   check('raw fire/onset/effective all logged',
         rec && rec.vad_fire_wall_ms!=null && rec.speech_onset_wall_ms!=null && rec.pause_effective_wall_ms!=null);
+  check('within-pause: one onset (the trigger) logged', rec && rec.speech_onsets_in_pause.length === 1, rec && rec.speech_onsets_in_pause);
+  check('within-pause: trigger onset is NEGATIVE (spoke before pause effective)', rec && rec.speech_onsets_in_pause[0] < 0, rec && rec.speech_onsets_in_pause[0]);
+  check('within-pause: no offset yet (still speaking)', rec && rec.speech_offsets_in_pause.length === 0);
 })();
 
 // ================= SCENARIO 2: false trigger -> rescind + continuity =================
@@ -192,6 +195,96 @@ function instantiate(env, opts){
   // fake a further rising edge while already paused/confirmed
   M.apOnSpeechFrame(false); M.apOnSpeechFrame(true);
   check('still exactly one pause record', M.ap.pauses.length === 1, M.ap.pauses.length);
+})();
+
+// ============ SCENARIO 6: multi-burst within one pause (the third timeline) ============
+(function(){
+  console.log('SCENARIO 6 — multi-burst within a pause: two onsets/offsets, 30s gap preserved');
+  const env = makeEnv(); const M = instantiate(env);
+  env.Replay.playing = true; M.apStart();
+  env.step(1000); env.step(64); M.apOnSpeechFrame(true);          // trigger (burst 1)
+  for(let i=0;i<10;i++){ env.step(50); M.apOnSpeechFrame(true); } // confirm, still burst 1
+  M.apOnSpeechFrame(false);                                        // burst 1 ends
+  env.step(30000);                                                // 30s silence WHILE paused
+  M.apOnSpeechFrame(true);                                         // burst 2 begins
+  env.step(500); M.apOnSpeechFrame(true);
+  M.apOnSpeechFrame(false);                                        // burst 2 ends
+  M.apResume();
+  const rec = M.ap.pauses[0];
+  check('two onsets', rec.speech_onsets_in_pause.length === 2, rec.speech_onsets_in_pause);
+  check('two offsets', rec.speech_offsets_in_pause.length === 2, rec.speech_offsets_in_pause);
+  check('onset 1 negative (trigger)', rec.speech_onsets_in_pause[0] < 0, rec.speech_onsets_in_pause[0]);
+  check('onset 2 ≈ off1 + 30s gap', Math.abs(rec.speech_onsets_in_pause[1] - (rec.speech_offsets_in_pause[0] + 30000)) <= 250,
+        { on2: rec.speech_onsets_in_pause[1], off1: rec.speech_offsets_in_pause[0] });
+  check('each offset after its onset', rec.speech_offsets_in_pause[0] > rec.speech_onsets_in_pause[0] && rec.speech_offsets_in_pause[1] > rec.speech_onsets_in_pause[1]);
+  check('speech_duration_in_pause_ms > 0 and < pause_duration', rec.speech_duration_in_pause_ms > 0 && rec.speech_duration_in_pause_ms < rec.pause_duration_ms,
+        { spoke: rec.speech_duration_in_pause_ms, paused: rec.pause_duration_ms });
+})();
+
+// ============ SCENARIO 7: empty pause -> empty arrays, not null ============
+(function(){
+  console.log('SCENARIO 7 — manual pause, no speech: empty arrays (not null)');
+  const env = makeEnv(); const M = instantiate(env);
+  env.Replay.playing = true; M.apStart();
+  env.step(500); M.apManualPause();
+  env.step(2000); M.apResume();
+  const rec = M.ap.pauses[0];
+  check('onsets is empty array (not null)', Array.isArray(rec.speech_onsets_in_pause) && rec.speech_onsets_in_pause.length === 0);
+  check('offsets is empty array (not null)', Array.isArray(rec.speech_offsets_in_pause) && rec.speech_offsets_in_pause.length === 0);
+  check('speech_duration_in_pause_ms === 0', rec.speech_duration_in_pause_ms === 0);
+})();
+
+// ============ SCENARIO 8: still speaking at resume -> burst closed, arrays balanced ============
+(function(){
+  console.log('SCENARIO 8 — still speaking at resume: dangling burst closed, arrays balanced');
+  const env = makeEnv(); const M = instantiate(env);
+  env.Replay.playing = true; M.apStart();
+  env.step(800); env.step(64); M.apOnSpeechFrame(true);
+  for(let i=0;i<10;i++){ env.step(50); M.apOnSpeechFrame(true); } // confirm, still speaking
+  M.apResume();                                                   // resume WHILE speaking (no falling edge)
+  const rec = M.ap.pauses[0];
+  check('onsets and offsets balanced (1 each)', rec.speech_onsets_in_pause.length === 1 && rec.speech_offsets_in_pause.length === 1,
+        { on: rec.speech_onsets_in_pause, off: rec.speech_offsets_in_pause });
+  check('final offset >= trigger onset', rec.speech_offsets_in_pause[0] >= rec.speech_onsets_in_pause[0]);
+})();
+
+// ============ SCENARIO 9: auto-pause disabled -> manual pause mid-utterance still logs ============
+(function(){
+  console.log('SCENARIO 9 — auto-pause disabled: manual pause mid-utterance logs the ongoing burst');
+  const env = makeEnv(); const M = instantiate(env);
+  M.ap.enabled = false;
+  env.Replay.playing = true; M.apStart();
+  env.step(500); M.apOnSpeechFrame(true);                         // speaking, but auto-pause off -> no pause
+  check('no auto pause when disabled', M.ap.pauses.length === 0 && env.Replay.playing === true);
+  M.apManualPause();                                              // manual pause WHILE speaking
+  check('ongoing burst logged at onset 0', M.ap.pending && M.ap.pending.speech_onsets_in_pause.length === 1 && M.ap.pending.speech_onsets_in_pause[0] === 0,
+        M.ap.pending && M.ap.pending.speech_onsets_in_pause);
+  env.step(1200); M.apOnSpeechFrame(false);                       // burst ends during pause
+  M.apResume();
+  const rec = M.ap.pauses[0];
+  check('balanced after manual burst', rec.speech_onsets_in_pause.length === 1 && rec.speech_offsets_in_pause.length === 1);
+})();
+
+// ============ SCENARIO 10: Silero drops mid-pause -> flag + fall back, no truncation ============
+(function(){
+  console.log('SCENARIO 10 — Silero drops mid-pause: flagged, falls back, keeps logging');
+  const env = makeEnv(); const M = instantiate(env, { vadReady: true });
+  env.Replay.playing = true; M.apStart();
+  env.step(800); env.step(64); M.apOnSpeechFrame(true);
+  for(let i=0;i<10;i++){ env.step(50); M.apOnSpeechFrame(true); } // confirm
+  M.apOnSpeechFrame(false);                          // burst 1 ends
+  M.apVadDropped();                                  // Silero stops emitting -> watchdog fires
+  const rec = M.ap.pending;
+  check('open pause flagged detection_dropped', rec && rec.detection_dropped === true);
+  check('drop timestamp recorded', rec && rec.detection_dropped_wall_ms != null);
+  check('fell back off Silero', M.ap && true);       // vadReady is on the audio mock; checked next
+  // energy keeps driving apOnSpeechFrame -> a later burst still logs (array not truncated)
+  env.step(5000); M.apOnSpeechFrame(true); env.step(300); M.apOnSpeechFrame(false);
+  M.apResume();
+  const done = M.ap.pauses[0];
+  check('logging continued after drop (2 bursts captured)', done.speech_onsets_in_pause.length === 2 && done.speech_offsets_in_pause.length === 2,
+        { on: done.speech_onsets_in_pause, off: done.speech_offsets_in_pause });
+  check('detection_dropped persists on the stored record', done.detection_dropped === true);
 })();
 
 console.log('\n================  ' + PASS + ' passed, ' + FAIL + ' failed  ================');

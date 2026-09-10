@@ -23,6 +23,9 @@ CONFIG.RTA_VAD_ONSET_BACKDATE_MS= 64;      /* onset estimate = detector-fire wal
                                               frame ~32ms + pre-speech pad). Logged raw so latency is
                                               characterizable (spec A2/C1); not a data-defining choice. */
 CONFIG.RTA_ENERGY_GATE          = 0.04;    /* RMS threshold for the ENERGY fallback detector (no Silero). */
+CONFIG.RTA_VAD_WATCHDOG_MS      = 1500;    /* if Silero was live but stops emitting frames for this long,
+                                              treat it as a mid-stream drop: flag any open pause and fall
+                                              back to the energy detector (rta_speech_onset_logging §3 edge). */
 /* <<SIGN-OFF>> The prompt shown when the replay pauses (manual OR confirmed auto-pause).
    NOTE / DISCREPANCY: the current build shows NO prompt on a manual pause -- it only
    freezes the replay. The spec ("the same prompt a manual pause produces") assumes a
@@ -339,8 +342,8 @@ function makeReplayTrial(caseObj){
       window.__rtaReplaying = true;   // suppress capture (cursor/scroll) during replay
 
       const cap = (window.Reanchor ? window.Reanchor.makeNarrationCapture() : null);
-      const audio = { stream:null, recorder:null, chunks:[], startWall:null, map:[], vadTimer:null, ac:null, analyser:null,
-                      vadObj:null, vadReady:false, lastEnergy:0, speechSegs:[], energyTrace:[], _et:0, _segOn:null };
+      const audio = { stream:null, recorder:null, chunks:[], startWall:null, startPerf:null, map:[], vadTimer:null, ac:null, analyser:null,
+                      vadObj:null, vadReady:false, lastEnergy:0, speechSegs:[], energyTrace:[], _et:0, _segOn:null, lastVadFrameAt:null };
 
       function sampleClock(){ try{ audio.map.push({ wall:Date.now(), playT:Replay._state().playT }); }catch(e){} }
       function playTAtWall(wall){
@@ -414,14 +417,42 @@ function makeReplayTrial(caseObj){
                  pause_effective_wall_ms: null, onset_to_pause_lag_ms: null,
                  playback_position_ms: null,          // THE TASK-TIME COORDINATE (write once)
                  status: null, resume_wall_ms: null, pause_duration_ms: null,
-                 speech_duration_in_pause_ms: 0, prompt_shown: false }; // NOTE: coordinate written once (spec B1)
+                 speech_duration_in_pause_ms: 0, prompt_shown: false, // NOTE: coordinate written once (spec B1)
+                 // ---- WITHIN-PAUSE THIRD TIMELINE (rta_speech_onset_logging spec) ----
+                 // int ms offsets from pause_effective_wall_ms (same monotonic clock),
+                 // one onset + one offset per speech burst inside this pause. Empty (not
+                 // null) when no speech. The triggering burst's onset is negative (speech
+                 // began before the pause took effect). Raw timestamps only -- no derived
+                 // "sequence/epsilon" value (that stays an analysis-time decision).
+                 speech_onsets_in_pause: [], speech_offsets_in_pause: [],
+                 detection_dropped: false, detection_dropped_wall_ms: null };
       }
+      // Watchdog action: Silero went silent mid-stream. Flag the open pause and hand
+      // detection back to the always-running energy gate so logging continues (not truncated).
+      function apVadDropped(){
+        if(!audio.vadReady) return;                 // already fell back
+        audio.vadReady = false;
+        if(ap.pending){ ap.pending.detection_dropped = true; ap.pending.detection_dropped_wall_ms = Math.round(performance.now()); }
+        try{ if(window.console) console.warn('[rta] Silero VAD stopped emitting frames; fell back to energy detector'); }catch(e){}
+      }
+      // ---- Within-pause burst logging helpers (single monotonic clock: performance.now) ----
+      function apBurstOffset(rec){ return (rec && rec.pause_effective_wall_ms!=null) ? Math.round(performance.now() - rec.pause_effective_wall_ms) : 0; }
+      function apRecordBurstOnset(){ if(ap.pending) ap.pending.speech_onsets_in_pause.push(apBurstOffset(ap.pending)); }
+      function apRecordBurstOffset(){ if(ap.pending && ap.pending.speech_onsets_in_pause.length > ap.pending.speech_offsets_in_pause.length) ap.pending.speech_offsets_in_pause.push(apBurstOffset(ap.pending)); }
+      function apCloseDanglingBurst(rec){ if(rec && rec.speech_onsets_in_pause.length > rec.speech_offsets_in_pause.length) rec.speech_offsets_in_pause.push(apBurstOffset(rec)); }
+      // Close a pause's within-pause bursts and derive its total speech-time inside the pause.
+      function apCloseRecord(rec){ if(!rec) return; apCloseDanglingBurst(rec);
+        var on=rec.speech_onsets_in_pause, off=rec.speech_offsets_in_pause, sum=0;
+        for(var i=0;i<Math.min(on.length,off.length);i++){ var d=off[i]-on[i]; if(d>0) sum+=d; }
+        rec.speech_duration_in_pause_ms = sum; }
       // Speech onset while the replay is running -> FIRE FAST (provisional pause).
       function apRisingEdge(){
-        if(!ap.enabled) return;
+        if(ap.state !== 'none'){           // a pause is already open: within-pause speech onset (A9 + §1.1)
+          apRecordBurstOnset(); return;    // (logs even if auto-pause is disabled, e.g. during a manual pause)
+        }
+        if(!ap.enabled) return;            // auto-pause disabled: don't OPEN a new pause
         const st = apSafeState();
-        if(ap.state !== 'none') return;    // already paused/pending: speech is captured via B2 (spec A9)
-        if(!st.playing) return;            // speech before start / after end / while paused: not a new pause (A9)
+        if(!st.playing) return;            // speech before start / after end: not a new pause (A9)
         const fireWall  = performance.now();
         const onsetWall = fireWall - CONFIG.RTA_VAD_ONSET_BACKDATE_MS;
         const rec = apNewRecord('vad_auto', (audio.vadReady ? 'silero' : 'energy'));
@@ -431,12 +462,16 @@ function makeReplayTrial(caseObj){
         try{ Replay.pause(); }catch(e){}
         rec.pause_effective_wall_ms = Math.round(performance.now());
         rec.onset_to_pause_lag_ms   = rec.pause_effective_wall_ms - rec.speech_onset_wall_ms;
+        // §1.1 + edge case: the triggering burst began BEFORE the pause took effect,
+        // so its within-pause onset offset is negative (real information, not clamped).
+        rec.speech_onsets_in_pause.push(Math.round(rec.speech_onset_wall_ms - rec.pause_effective_wall_ms));
         rec.status = 'provisional';
         ap.pending = rec; ap.state = 'provisional';
         ap.confirmTimer = setTimeout(apConfirm, CONFIG.RTA_AUTOPAUSE_CONFIRM_MS);
       }
-      // Speech stopped: if still provisional, the pause is a false trigger -> rescind.
+      // Speech stopped: close the burst within the open pause; if still provisional, rescind.
       function apFallingEdge(){
+        apRecordBurstOffset();             // §1.2: close the current speech burst (onset/offset stay balanced)
         if(ap.state === 'provisional'){ if(ap.confirmTimer){ clearTimeout(ap.confirmTimer); ap.confirmTimer=null; } apRescind(); }
       }
       function apConfirm(){
@@ -449,7 +484,7 @@ function makeReplayTrial(caseObj){
       }
       function apRescind(){
         const rec = ap.pending; ap.pending = null; ap.state = 'none';
-        if(rec){ rec.status = 'rescinded'; rec.resume_wall_ms = Math.round(performance.now());
+        if(rec){ apCloseRecord(rec); rec.status = 'rescinded'; rec.resume_wall_ms = Math.round(performance.now());
                  rec.pause_duration_ms = rec.resume_wall_ms - rec.pause_effective_wall_ms; ap.pauses.push(rec); }
         try{ Replay.resume(); }catch(e){}    // resumes from the exact frozen position (A8)
         apUpdateToggleLabel();
@@ -467,6 +502,9 @@ function makeReplayTrial(caseObj){
         rec.trigger_type = (rec.trigger_type==='vad_auto' ? 'vad_auto' : 'manual');
         try{ Replay.pause(); }catch(e){}
         if(rec.pause_effective_wall_ms == null) rec.pause_effective_wall_ms = Math.round(performance.now());
+        // §3: if the participant was already mid-utterance when they manually paused,
+        // record that ongoing burst's onset at offset 0 (it has no rising edge inside the pause).
+        if(ap.speaking && rec.speech_onsets_in_pause.length === rec.speech_offsets_in_pause.length){ rec.speech_onsets_in_pause.push(0); }
         rec.status = 'confirmed'; rec.prompt_shown = true;
         if(ap.pauses.indexOf(rec) < 0) ap.pauses.push(rec);
         ap.pending = rec; ap.state = 'confirmed';
@@ -475,7 +513,7 @@ function makeReplayTrial(caseObj){
       function apResume(){
         if(ap.state === 'provisional'){ if(ap.confirmTimer){ clearTimeout(ap.confirmTimer); ap.confirmTimer=null; } apRescind(); return; }
         if(ap.state === 'confirmed' && ap.pending){
-          const rec = ap.pending; ap.pending = null; ap.state = 'none';
+          const rec = ap.pending; apCloseRecord(rec); ap.pending = null; ap.state = 'none';
           rec.resume_wall_ms = Math.round(performance.now());
           rec.pause_duration_ms = rec.resume_wall_ms - (rec.pause_effective_wall_ms || rec.resume_wall_ms);
           apHidePrompt(); try{ Replay.resume(); }catch(e){} apUpdateToggleLabel(); return;
@@ -536,11 +574,11 @@ function makeReplayTrial(caseObj){
       }
       function apFinalizeOpen(){   // close any pause still open at end of replay
         if(ap.confirmTimer){ clearTimeout(ap.confirmTimer); ap.confirmTimer=null; }
-        if(ap.state==='provisional' && ap.pending){ ap.pending.status='rescinded';
+        if(ap.state==='provisional' && ap.pending){ apCloseRecord(ap.pending); ap.pending.status='rescinded';
           ap.pending.resume_wall_ms=Math.round(performance.now());
           ap.pending.pause_duration_ms=ap.pending.resume_wall_ms-ap.pending.pause_effective_wall_ms;
           ap.pauses.push(ap.pending); ap.pending=null; }
-        else if(ap.state==='confirmed' && ap.pending){ ap.pending.resume_wall_ms=Math.round(performance.now());
+        else if(ap.state==='confirmed' && ap.pending){ apCloseRecord(ap.pending); ap.pending.resume_wall_ms=Math.round(performance.now());
           ap.pending.pause_duration_ms=ap.pending.resume_wall_ms-(ap.pending.pause_effective_wall_ms||ap.pending.resume_wall_ms); ap.pending=null; }
         ap.state='none';
       }
@@ -558,7 +596,10 @@ function makeReplayTrial(caseObj){
           try{ audio.recorder = new MediaRecorder(stream); }catch(e){ audio.recorder = null; }
           if(audio.recorder){
             audio.recorder.ondataavailable = e=>{ if(e.data && e.data.size) audio.chunks.push(e.data); };
-            audio.startWall = Date.now(); audio.recorder.start(1000);
+            audio.startWall = Date.now(); audio.startPerf = performance.now(); audio.recorder.start(1000);
+            // startWall (epoch) anchors the transcript-segment mapping; startPerf (monotonic)
+            // is the SAME clock as every pause/onset timestamp, so transcript segments resolve
+            // against within-pause offsets by subtraction (rta_speech_onset_logging §1.4).
           }
           try{
             const AC = window.AudioContext || window.webkitAudioContext;
@@ -575,6 +616,8 @@ function makeReplayTrial(caseObj){
               const rms = Math.sqrt(sum/buf.length); audio.lastEnergy = rms;
               const nowMs = audio.ac ? audio.ac.currentTime*1000 : Date.now();
               if(nowMs - audio._et > 500){ audio._et = nowMs; try{ audio.energyTrace.push({ playT:Replay._state().playT, rms:Math.round(rms*1000)/1000 }); }catch(e){} }
+              // WATCHDOG: Silero was live but has stopped emitting frames -> fall back to energy (§3)
+              if(audio.vadReady && audio.lastVadFrameAt!=null && (performance.now()-audio.lastVadFrameAt > CONFIG.RTA_VAD_WATCHDOG_MS)){ apVadDropped(); }
               if(!audio.vadReady){ apOnSpeechFrame(rms > CONFIG.RTA_ENERGY_GATE); }   // energy = fallback detector for auto-pause
             }, 150);
             // SILERO VAD (primary, self-hosted via window.vad). Fire-and-forget so replay
@@ -590,7 +633,7 @@ function makeReplayTrial(caseObj){
                   positiveSpeechThreshold: 0.5, negativeSpeechThreshold: 0.35,
                   onSpeechStart: function(){ audio.vadReady = true; try{ audio._segOn = Replay._state().playT; Replay.noteSpeech(audio._segOn); }catch(e){} },
                   onSpeechEnd:   function(){ try{ if(audio._segOn!=null){ audio.speechSegs.push({ on:audio._segOn, off:Replay._state().playT }); audio._segOn=null; } }catch(e){} },
-                  onFrameProcessed: function(probs){ audio.vadReady = true;
+                  onFrameProcessed: function(probs){ audio.vadReady = true; audio.lastVadFrameAt = performance.now();  // liveness ping for the watchdog
                     var s = probs && (probs.isSpeech!=null ? probs.isSpeech : (typeof probs==='number'?probs:0));
                     apOnSpeechFrame(s > 0.5); }   // Silero frames drive the two-stage auto-pause
                 };
@@ -651,7 +694,9 @@ function makeReplayTrial(caseObj){
         store.rta = { narration:reanchored, silence_prompts:(function(){ try{ return Replay._state().fires; }catch(e){ return []; } })(),
                       vad: { primary_engine:(audio.vadReady?'silero':'energy'),
                              speech_segments: audio.speechSegs.slice(),
-                             energy_rms_trace: audio.energyTrace.slice() },
+                             energy_rms_trace: audio.energyTrace.slice(),
+                             audio_start_perf_ms:(audio.startPerf!=null?Math.round(audio.startPerf):null),  // monotonic clock (== pause/onset clock)
+                             audio_start_wall_ms:(audio.startWall!=null?audio.startWall:null) },            // epoch clock (transcript mapping)
                       pauses: ap.pauses.slice(),                 // B1: per-pause-event records
                       speech_state: ap.seg.list.slice(),         // B2: speech x playback-state segments
                       pause_aggregate: apAggregate() };          // B3: per-case aggregate
