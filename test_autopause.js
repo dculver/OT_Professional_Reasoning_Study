@@ -79,7 +79,7 @@ function instantiate(env, opts){
           performance = { now: arguments[10] };
     ${block}
     return { ap, apOnSpeechFrame, apStart, apStop, apAggregate, apResolve, apSampleBuf,
-             apShowPrompt, apHidePrompt, apManualPause, apResume, apVadDropped };
+             apShowPrompt, apHidePrompt, apManualPause, apResume, apVadDropped, apRtaClock, apRta };
   `;
   const factory = new Function(factoryBody);
   return factory(CONFIG, study, caseObj, audio, env.Replay, env.document,
@@ -285,6 +285,50 @@ function instantiate(env, opts){
   check('logging continued after drop (2 bursts captured)', done.speech_onsets_in_pause.length === 2 && done.speech_offsets_in_pause.length === 2,
         { on: done.speech_onsets_in_pause, off: done.speech_offsets_in_pause });
   check('detection_dropped persists on the stored record', done.detection_dropped === true);
+})();
+
+// ============ SCENARIO 11: continuous RTA clock — monotonic across pauses, derivable ============
+(function(){
+  console.log('SCENARIO 11 — continuous RTA clock: monotonic across pauses, boundaries align, derivable');
+  const env = makeEnv(); const M = instantiate(env);
+  env.Replay.playing = true; M.apStart();
+  // Pause 1: trigger burst A1, then a SECOND within-pause burst A2 (exact-derivability target)
+  env.step(1000); env.step(64); M.apOnSpeechFrame(true);          // A1 (trigger)
+  for(let i=0;i<10;i++){ env.step(50); M.apOnSpeechFrame(true); } // confirm pause 1
+  M.apOnSpeechFrame(false);                                        // A1 ends
+  env.step(2000); M.apOnSpeechFrame(true);                         // A2 begins (within pause 1)
+  env.step(400); M.apOnSpeechFrame(false);                         // A2 ends
+  M.apResume();
+  const p1 = M.ap.pauses[0];
+  // Pause 2, much later:
+  env.step(5000); env.step(64); M.apOnSpeechFrame(true);          // B (trigger pause 2)
+  for(let i=0;i<10;i++){ env.step(50); M.apOnSpeechFrame(true); }
+  M.apOnSpeechFrame(false); M.apResume();
+  M.apStop();
+  const clk = M.apRtaClock();
+  const on = clk.speech_onsets_rta_ms, off = clk.speech_offsets_rta_ms;
+  check('all three bursts on ONE continuous timeline', on.length === 3, on);
+  check('onsets strictly increasing — never reset at pauses', on[0] < on[1] && on[1] < on[2], on);
+  check('pause-2 burst is seconds later on the same clock', on[2] - on[1] > 4000, on[2]-on[1]);
+  check('offsets balanced with onsets', off.length === 3 && off[0] > on[0] && off[1] > on[1] && off[2] > on[2]);
+  check('pause-1 boundaries bracket its within-pause burst A2', on[1] >= p1.pause_start_rta_ms && off[1] <= p1.pause_end_rta_ms, { a2on: on[1], p1s: p1.pause_start_rta_ms, a2off: off[1], p1e: p1.pause_end_rta_ms });
+  check('DERIVABLE (exact): A2 rta_onset − pause1_start == within-pause onset', (on[1] - p1.pause_start_rta_ms) === p1.speech_onsets_in_pause[1], { derived: on[1]-p1.pause_start_rta_ms, inPause: p1.speech_onsets_in_pause[1] });
+  check('pause_boundaries_rta mirrors the per-pause records', clk.pause_boundaries_rta.length === 2 && clk.pause_boundaries_rta[0].start_rta_ms === p1.pause_start_rta_ms && clk.pause_boundaries_rta[0].end_rta_ms === p1.pause_end_rta_ms);
+  check('rta_clock exposes anchor + arrays', clk.phase_start_perf_ms != null && Array.isArray(clk.speech_onsets_rta_ms) && Array.isArray(clk.speech_offsets_rta_ms));
+})();
+
+// ============ SCENARIO 12: pause with no speech — boundary stamps still record ============
+(function(){
+  console.log('SCENARIO 12 — silent manual pause: boundary stamps present, no speech entries');
+  const env = makeEnv(); const M = instantiate(env);
+  env.Replay.playing = true; M.apStart();
+  env.step(600); M.apManualPause();
+  env.step(1500); M.apResume();
+  M.apStop();
+  const clk = M.apRtaClock();
+  check('no continuous speech entries', clk.speech_onsets_rta_ms.length === 0 && clk.speech_offsets_rta_ms.length === 0);
+  const p = M.ap.pauses[0];
+  check('pause boundary stamps still recorded', p.pause_start_rta_ms != null && p.pause_end_rta_ms != null && p.pause_end_rta_ms > p.pause_start_rta_ms, { s: p.pause_start_rta_ms, e: p.pause_end_rta_ms });
 })();
 
 console.log('\n================  ' + PASS + ' passed, ' + FAIL + ' failed  ================');

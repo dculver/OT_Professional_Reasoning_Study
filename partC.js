@@ -381,8 +381,20 @@ function makeReplayTrial(caseObj){
         seg: { list: [], cur: null },   // B2: speech x playback-state segments
         micDenied: false,
         counter: 0,
-        started: false
+        started: false,
+        // ---- CONTINUOUS RTA CLOCK (rta_continuous_speech_clock spec) ----
+        // One monotonic clock for the whole retrospective phase of THIS case, never
+        // reset at pause boundaries; anchored at audio-recorder start so rta_clock_ms
+        // coincides with audio-file time (clean transcript round-trip).
+        rtaT0: null,                     // anchor (performance.now baseline)
+        speechOnsetsRta: [],             // ms-from-phase-start of every speech burst onset (whole phase)
+        speechOffsetsRta: [],            // matching offsets (burst ends), same clock
+        detectionDroppedRta: null,       // case-level: rta_ms of the first mid-phase detector drop
+        interruptions: [],               // {type, rta_ms} for blur / tab-hidden during the phase
+        _visH: null, _blurH: null
       };
+      // rta_clock_ms for "now": ms since the retrospective phase began (monotonic, never paused).
+      function apRta(){ return (ap.rtaT0 != null) ? Math.round(performance.now() - ap.rtaT0) : 0; }
       // ---- A2: continuously sampled playback-position ring buffer ----
       function apSampleBuf(){
         try{ ap.buf.push({ wall: performance.now(), playT: apSafeState().playT });
@@ -411,8 +423,12 @@ function makeReplayTrial(caseObj){
       function apOnSpeechFrame(isSpeaking){
         if(isSpeaking){ try{ Replay.noteSpeech(apSafeState().playT); }catch(e){} }  // keep silence-net fed every speaking frame
         apSegUpdate(isSpeaking);
-        if(isSpeaking && !ap.speaking){ ap.speaking = true; apRisingEdge(); }
-        else if(!isSpeaking && ap.speaking){ ap.speaking = false; apFallingEdge(); }
+        if(isSpeaking && !ap.speaking){ ap.speaking = true;
+          ap.speechOnsetsRta.push(apRta());      // continuous timeline: every burst onset, whole phase
+          apRisingEdge(); }
+        else if(!isSpeaking && ap.speaking){ ap.speaking = false;
+          if(ap.speechOnsetsRta.length > ap.speechOffsetsRta.length) ap.speechOffsetsRta.push(apRta());  // matching offset
+          apFallingEdge(); }
       }
       function apNewRecord(trigger, detector){
         return { pause_id: caseObj.id + '_p' + (++ap.counter),
@@ -432,6 +448,8 @@ function makeReplayTrial(caseObj){
                  // began before the pause took effect). Raw timestamps only -- no derived
                  // "sequence/epsilon" value (that stays an analysis-time decision).
                  speech_onsets_in_pause: [], speech_offsets_in_pause: [],
+                 // ---- CONTINUOUS RTA CLOCK: this pause's boundaries on the per-case clock ----
+                 pause_start_rta_ms: null, pause_end_rta_ms: null,
                  detection_dropped: false, detection_dropped_wall_ms: null };
       }
       // Watchdog action: Silero went silent mid-stream. Flag the open pause and hand
@@ -439,6 +457,7 @@ function makeReplayTrial(caseObj){
       function apVadDropped(){
         if(!audio.vadReady) return;                 // already fell back
         audio.vadReady = false;
+        if(ap.detectionDroppedRta == null) ap.detectionDroppedRta = apRta();   // case-level stamp (§4)
         if(ap.pending){ ap.pending.detection_dropped = true; ap.pending.detection_dropped_wall_ms = Math.round(performance.now()); }
         try{ if(window.console) console.warn('[rta] Silero VAD stopped emitting frames; fell back to energy detector'); }catch(e){}
       }
@@ -468,6 +487,7 @@ function makeReplayTrial(caseObj){
         rec.playback_position_ms = apResolve(onsetWall);          // resolved at ONSET, not at pause-exec (A2)
         try{ Replay.pause(); }catch(e){}
         rec.pause_effective_wall_ms = Math.round(performance.now());
+        rec.pause_start_rta_ms      = apRta();     // pause boundary on the continuous clock (§1.3)
         rec.onset_to_pause_lag_ms   = rec.pause_effective_wall_ms - rec.speech_onset_wall_ms;
         // §1.1 + edge case: the triggering burst began BEFORE the pause took effect,
         // so its within-pause onset offset is negative (real information, not clamped).
@@ -491,7 +511,7 @@ function makeReplayTrial(caseObj){
       }
       function apRescind(){
         const rec = ap.pending; ap.pending = null; ap.state = 'none';
-        if(rec){ apCloseRecord(rec); rec.status = 'rescinded'; rec.resume_wall_ms = Math.round(performance.now());
+        if(rec){ apCloseRecord(rec); rec.status = 'rescinded'; rec.resume_wall_ms = Math.round(performance.now()); rec.pause_end_rta_ms = apRta();
                  rec.pause_duration_ms = rec.resume_wall_ms - rec.pause_effective_wall_ms; ap.pauses.push(rec); }
         try{ Replay.resume(); }catch(e){}    // resumes from the exact frozen position (A8)
         apUpdateToggleLabel();
@@ -509,6 +529,7 @@ function makeReplayTrial(caseObj){
         rec.trigger_type = (rec.trigger_type==='vad_auto' ? 'vad_auto' : 'manual');
         try{ Replay.pause(); }catch(e){}
         if(rec.pause_effective_wall_ms == null) rec.pause_effective_wall_ms = Math.round(performance.now());
+        if(rec.pause_start_rta_ms == null) rec.pause_start_rta_ms = apRta();     // pause boundary on the continuous clock
         // §3: if the participant was already mid-utterance when they manually paused,
         // record that ongoing burst's onset at offset 0 (it has no rising edge inside the pause).
         if(ap.speaking && rec.speech_onsets_in_pause.length === rec.speech_offsets_in_pause.length){ rec.speech_onsets_in_pause.push(0); }
@@ -521,7 +542,7 @@ function makeReplayTrial(caseObj){
         if(ap.state === 'provisional'){ if(ap.confirmTimer){ clearTimeout(ap.confirmTimer); ap.confirmTimer=null; } apRescind(); return; }
         if(ap.state === 'confirmed' && ap.pending){
           const rec = ap.pending; apCloseRecord(rec); ap.pending = null; ap.state = 'none';
-          rec.resume_wall_ms = Math.round(performance.now());
+          rec.resume_wall_ms = Math.round(performance.now()); rec.pause_end_rta_ms = apRta();
           rec.pause_duration_ms = rec.resume_wall_ms - (rec.pause_effective_wall_ms || rec.resume_wall_ms);
           apHidePrompt(); try{ Replay.resume(); }catch(e){} apUpdateToggleLabel(); return;
         }
@@ -579,23 +600,50 @@ function makeReplayTrial(caseObj){
           detector_primary: (audio.vadReady ? 'silero' : 'energy')
         };
       }
+      // ---- Continuous RTA-clock record for the whole retrospective phase (this case) ----
+      function apRtaClock(){
+        return {
+          phase_start_perf_ms: (ap.rtaT0 != null ? Math.round(ap.rtaT0) : null),   // anchor (== audio.startPerf when mic granted)
+          audio_start_perf_ms: (audio.startPerf != null ? Math.round(audio.startPerf) : null),
+          speech_onsets_rta_ms: ap.speechOnsetsRta.slice(),      // every burst onset, whole phase, one clock
+          speech_offsets_rta_ms: ap.speechOffsetsRta.slice(),    // matching offsets
+          pause_boundaries_rta: ap.pauses.map(function(p){ return {
+            pause_id: p.pause_id, trigger_type: p.trigger_type, status: p.status,
+            start_rta_ms: p.pause_start_rta_ms, end_rta_ms: p.pause_end_rta_ms }; }),
+          interruptions: ap.interruptions.slice(),               // §4: blur / tab-hidden, same clock
+          detection_dropped: (ap.detectionDroppedRta != null),
+          detection_dropped_rta_ms: ap.detectionDroppedRta
+        };
+      }
       function apFinalizeOpen(){   // close any pause still open at end of replay
         if(ap.confirmTimer){ clearTimeout(ap.confirmTimer); ap.confirmTimer=null; }
         if(ap.state==='provisional' && ap.pending){ apCloseRecord(ap.pending); ap.pending.status='rescinded';
-          ap.pending.resume_wall_ms=Math.round(performance.now());
+          ap.pending.resume_wall_ms=Math.round(performance.now()); ap.pending.pause_end_rta_ms=apRta();
           ap.pending.pause_duration_ms=ap.pending.resume_wall_ms-ap.pending.pause_effective_wall_ms;
           ap.pauses.push(ap.pending); ap.pending=null; }
-        else if(ap.state==='confirmed' && ap.pending){ apCloseRecord(ap.pending); ap.pending.resume_wall_ms=Math.round(performance.now());
+        else if(ap.state==='confirmed' && ap.pending){ apCloseRecord(ap.pending); ap.pending.resume_wall_ms=Math.round(performance.now()); ap.pending.pause_end_rta_ms=apRta();
           ap.pending.pause_duration_ms=ap.pending.resume_wall_ms-(ap.pending.pause_effective_wall_ms||ap.pending.resume_wall_ms); ap.pending=null; }
         ap.state='none';
       }
       function apStart(){   // called right after Replay.start(): HUD exists, playback running
         if(ap.started) return; ap.started = true;
+        // Anchor the continuous RTA clock at the audio-recorder start (so rta_clock_ms
+        // coincides with audio-file time); fall back to now if the mic was denied.
+        ap.rtaT0 = (audio.startPerf != null) ? audio.startPerf : performance.now();
         apSampleBuf();
         ap.bufTimer = setInterval(apSampleBuf, CONFIG.RTA_CLOCK_SAMPLE_MS);
+        // §4: the RTA clock never stops; log interruptions separately, on the same clock.
+        ap._visH = function(){ try{ if(document.hidden) ap.interruptions.push({ type:'hidden', rta_ms:apRta() }); }catch(e){} };
+        ap._blurH = function(){ try{ ap.interruptions.push({ type:'blur', rta_ms:apRta() }); }catch(e){} };
+        try{ document.addEventListener('visibilitychange', ap._visH); window.addEventListener('blur', ap._blurH); }catch(e){}
         apWireToggle();
       }
-      function apStop(){ if(ap.bufTimer){ clearInterval(ap.bufTimer); ap.bufTimer=null; } apFinalizeOpen(); }
+      function apStop(){
+        if(ap.bufTimer){ clearInterval(ap.bufTimer); ap.bufTimer=null; }
+        try{ document.removeEventListener('visibilitychange', ap._visH); window.removeEventListener('blur', ap._blurH); }catch(e){}
+        if(ap.speaking && ap.speechOnsetsRta.length > ap.speechOffsetsRta.length) ap.speechOffsetsRta.push(apRta());  // close dangling continuous burst
+        apFinalizeOpen();
+      }
 
       function startAudio(){
         return navigator.mediaDevices.getUserMedia({ audio:true }).then(stream=>{
@@ -706,7 +754,8 @@ function makeReplayTrial(caseObj){
                              audio_start_wall_ms:(audio.startWall!=null?audio.startWall:null) },            // epoch clock (transcript mapping)
                       pauses: ap.pauses.slice(),                 // B1: per-pause-event records
                       speech_state: ap.seg.list.slice(),         // B2: speech x playback-state segments
-                      pause_aggregate: apAggregate() };          // B3: per-case aggregate
+                      pause_aggregate: apAggregate(),            // B3: per-case aggregate
+                      rta_clock: apRtaClock() };                 // continuous per-case speech/pause timeline
         cleanupOverlays();
         jsPsych.finishTrial();
       }
@@ -762,6 +811,7 @@ function makeReplayTrial(caseObj){
       data.rta_pauses = (store && store.rta && store.rta.pauses) || [];
       data.rta_speech_state = (store && store.rta && store.rta.speech_state) || [];
       data.rta_pause_aggregate = (store && store.rta && store.rta.pause_aggregate) || null;
+      data.rta_clock = (store && store.rta && store.rta.rta_clock) || null;
     }
   };
 }
@@ -795,7 +845,8 @@ function buildSessionExport(){
         rta_vad: (rec.rta && rec.rta.vad) || null,
         rta_pauses: (rec.rta && rec.rta.pauses) || [],            // B1: per-pause-event records
         rta_speech_state: (rec.rta && rec.rta.speech_state) || [],// B2: speech x playback-state segments
-        rta_pause_aggregate: (rec.rta && rec.rta.pause_aggregate) || null  // B3: per-case aggregate
+        rta_pause_aggregate: (rec.rta && rec.rta.pause_aggregate) || null, // B3: per-case aggregate
+        rta_clock: (rec.rta && rec.rta.rta_clock) || null          // continuous per-case speech/pause timeline
       };
     })
     /* NOTE: state.recon (deltas + cursor) is intentionally NOT exported. */
