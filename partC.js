@@ -37,9 +37,15 @@ CONFIG.RTA_PAUSE_PROMPT         = "Go ahead — explain what you were thinking h
 /* <<SIGN-OFF>> The uniform announcement shown before the RTA replay begins (spec A6). Draft. */
 CONFIG.RTA_AUTOPAUSE_ANNOUNCE   = "As your session plays back, the replay will stop on its own whenever you start talking, so you can explain your thinking. You can also stop it yourself at any time with the Pause button. When you're done speaking, press Resume to continue.";
 /* <<SIGN-OFF>> Reasoning reminder shown before EVERY think-aloud (practice + real cases). HTML allowed. Draft. */
-CONFIG.RTA_REASONING_REMINDER   = "As you talk, focus on explaining <b>what you were thinking</b> — the reasoning behind what you did — rather than narrating your actions on the screen or justifying them after the fact. There are no right or wrong responses; we are interested in how you think, not in a correct answer.";
+CONFIG.RTA_REASONING_REMINDER   = "As you talk, focus on explaining <b>what you were thinking</b> — the reasoning behind what you did — rather than narrating your actions on the screen or justifying them after the fact. There are no right or wrong responses; I am interested in how you think, not in a correct answer.";
 /* <<SIGN-OFF>> Prepended to the reminder ONLY on the practice think-aloud. */
 CONFIG.RTA_PRACTICE_PREFIX      = "<b>This is only for practice.</b> ";
+/* Qualtrics upload survey the participant is returned to at the end; their sub_id (study_id)
+   is auto-appended as ?sub_id=... Overrides the chunk2 placeholder. */
+CONFIG.QUALTRICS_UPLOAD_URL     = "https://drake.qualtrics.com/jfe/form/SV_eFCf1kuYCcGTFS6";
+/* End screen: seconds to count down before auto-redirecting the participant back to the
+   Qualtrics upload survey, AFTER they click Download. Only fires if QUALTRICS_UPLOAD_URL is set. */
+CONFIG.QUALTRICS_RETURN_DELAY_S = 5;
 
 const CASES_IN_ORDER = [PATRICIA, FLORENCE, YVONNE];
 
@@ -386,7 +392,8 @@ function makeReplayTrial(caseObj){
         // One monotonic clock for the whole retrospective phase of THIS case, never
         // reset at pause boundaries; anchored at audio-recorder start so rta_clock_ms
         // coincides with audio-file time (clean transcript round-trip).
-        rtaT0: null,                     // anchor (performance.now baseline)
+        rtaT0: null,                     // anchor (performance.now baseline) = recorder start
+        playbackStartRta: null,          // rta_ms at which replay playback began (announcement ends)
         speechOnsetsRta: [],             // ms-from-phase-start of every speech burst onset (whole phase)
         speechOffsetsRta: [],            // matching offsets (burst ends), same clock
         detectionDroppedRta: null,       // case-level: rta_ms of the first mid-phase detector drop
@@ -605,6 +612,7 @@ function makeReplayTrial(caseObj){
         return {
           phase_start_perf_ms: (ap.rtaT0 != null ? Math.round(ap.rtaT0) : null),   // anchor (== audio.startPerf when mic granted)
           audio_start_perf_ms: (audio.startPerf != null ? Math.round(audio.startPerf) : null),
+          playback_start_rta_ms: ap.playbackStartRta,   // rta_ms when playback began (0..this = announcement)
           speech_onsets_rta_ms: ap.speechOnsetsRta.slice(),      // every burst onset, whole phase, one clock
           speech_offsets_rta_ms: ap.speechOffsetsRta.slice(),    // matching offsets
           pause_boundaries_rta: ap.pauses.map(function(p){ return {
@@ -627,9 +635,10 @@ function makeReplayTrial(caseObj){
       }
       function apStart(){   // called right after Replay.start(): HUD exists, playback running
         if(ap.started) return; ap.started = true;
-        // Anchor the continuous RTA clock at the audio-recorder start (so rta_clock_ms
-        // coincides with audio-file time); fall back to now if the mic was denied.
-        ap.rtaT0 = (audio.startPerf != null) ? audio.startPerf : performance.now();
+        // Clock is normally anchored at recorder start (in startAudio). Fall back to now
+        // only if the mic was denied so startPerf was never set.
+        if(ap.rtaT0 == null) ap.rtaT0 = (audio.startPerf != null) ? audio.startPerf : performance.now();
+        ap.playbackStartRta = apRta();   // mark where the announcement ended and playback began
         apSampleBuf();
         ap.bufTimer = setInterval(apSampleBuf, CONFIG.RTA_CLOCK_SAMPLE_MS);
         // §4: the RTA clock never stops; log interruptions separately, on the same clock.
@@ -652,9 +661,12 @@ function makeReplayTrial(caseObj){
           if(audio.recorder){
             audio.recorder.ondataavailable = e=>{ if(e.data && e.data.size) audio.chunks.push(e.data); };
             audio.startWall = Date.now(); audio.startPerf = performance.now(); audio.recorder.start(1000);
+            ap.rtaT0 = audio.startPerf;   // anchor the continuous RTA clock at recorder start, so it is
+                                          // valid for the WHOLE phase (incl. the announcement) -- speech
+                                          // before playback gets a true positive stamp, not 0.
             // startWall (epoch) anchors the transcript-segment mapping; startPerf (monotonic)
             // is the SAME clock as every pause/onset timestamp, so transcript segments resolve
-            // against within-pause offsets by subtraction (rta_speech_onset_logging §1.4).
+            // against within-pause offsets by subtraction, and == rta_clock_ms (clean round-trip).
           }
           try{
             const AC = window.AudioContext || window.webkitAudioContext;
@@ -877,21 +889,20 @@ function makeExportTrial(){
       document.body.innerHTML =
         '<div style="max-width:660px;margin:5% auto;font-family:system-ui;color:#17232e;text-align:left;padding:0 22px;line-height:1.6">'
         + '<h2 style="color:#1565c0;margin:0 0 6px">You have finished both cases. Thank you.</h2>'
-        + '<p style="font-size:16px;margin:0 0 20px">Two quick steps complete your participation. Please do them in order, and do not close this tab until you have finished Step 2.</p>'
+        + '<p style="font-size:16px;margin:0 0 20px">One step completes your participation: download your session file below.'
+        + (qConfigured ? ' You will then be returned to the survey automatically to upload it.' : '')
+        + ' Please do not close this tab until you have uploaded your file.</p>'
 
         + '<div style="background:#eef4fb;border:1px solid #cfe0f2;border-radius:10px;padding:16px 18px;margin:0 0 16px">'
-        +   '<p style="margin:0 0 6px;font-weight:700;color:#12507f">Step 1 - Download your session file</p>'
-        +   '<p style="margin:0 0 12px;font-size:15px">Click the green button. A file named <strong>' + fname + '</strong> will be saved to your computer (usually your Downloads folder). Remember where it goes - you will upload it in Step 2.</p>'
+        +   '<p style="margin:0 0 6px;font-weight:700;color:#12507f">Download your session file</p>'
+        +   '<p style="margin:0 0 12px;font-size:15px">Click the green button. A file named <strong>' + fname + '</strong> will be saved to your computer (usually your Downloads folder). Remember where it goes - you will upload it to the survey.</p>'
         +   '<a id="dl" href="' + url + '" download="' + fname + '" style="display:inline-block;background:#1e8e4e;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:15px">Download my session file</a>'
-        +   '<p id="dl_done" style="display:none;margin:10px 0 0;color:#16692f;font-weight:700">Downloaded. Now continue to Step 2.</p>'
+        +   '<p id="dl_done" style="display:none;margin:10px 0 0;color:#16692f;font-weight:700">Downloaded.</p>'
         + '</div>'
 
         + '<div style="background:#f6f8fa;border:1px solid #dfe6ec;border-radius:10px;padding:16px 18px;margin:0 0 20px">'
-        +   '<p style="margin:0 0 6px;font-weight:700;color:#12507f">Step 2 - Return to the survey and upload the file</p>'
-        +   '<p style="margin:0 0 12px;font-size:15px">Click the button below to go back to the survey. There you will be asked to upload the file you just downloaded (<strong>' + fname + '</strong>).</p>'
         +   (qConfigured
-              ? '<button id="go_q" disabled style="background:#1565c0;color:#fff;border:0;border-radius:8px;padding:12px 24px;font-weight:700;font-size:15px;cursor:pointer;opacity:.5">Return to the survey to upload</button>'
-                + '<p id="go_hint" style="margin:10px 0 0;font-size:13px;color:#7a8894">Download your file first (Step 1), then this button turns on.</p>'
+              ? '<p id="return_msg" style="margin:0;font-size:15px;color:#12507f">After you download the file, you will be returned to the survey automatically, where you will be asked to upload it (<strong>' + fname + '</strong>).</p>'
               : '<p style="margin:0;color:#c0392b;font-weight:600">[Survey return URL not set yet - configure CONFIG.QUALTRICS_UPLOAD_URL. Your downloaded file is still saved.]</p>')
         + '</div>'
 
@@ -900,13 +911,23 @@ function makeExportTrial(){
 
       const dl = document.getElementById("dl");
       const dlDone = document.getElementById("dl_done");
-      const goQ = document.getElementById("go_q");
+      // After the participant clicks Download, count down and auto-return to the survey.
+      // The download link stays on screen as the fallback (re-clickable); no manual return button.
+      let returning = false;
+      function startReturnCountdown(){
+        if (returning || !qConfigured) return; returning = true;
+        const msg = document.getElementById("return_msg");
+        let n = Math.max(1, Math.round(CONFIG.QUALTRICS_RETURN_DELAY_S || 5));
+        (function tick(){
+          if (n <= 0) { window.location.href = qUrl; return; }
+          if (msg) msg.innerHTML = 'Returning you to the survey in <strong>' + n + '</strong> second' + (n === 1 ? '' : 's') + ' to upload your file. If the download did not start, click the green button again.';
+          n -= 1; setTimeout(tick, 1000);
+        })();
+      }
       if (dl) dl.addEventListener("click", function(){
         if (dlDone) dlDone.style.display = "block";
-        if (goQ) { goQ.disabled = false; goQ.style.opacity = "1"; }
-        const hint = document.getElementById("go_hint"); if (hint) hint.style.display = "none";
+        startReturnCountdown();
       });
-      if (goQ) goQ.addEventListener("click", function(){ if (qConfigured) window.location.href = qUrl; });
     }
   };
 }
