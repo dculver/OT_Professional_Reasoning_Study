@@ -695,6 +695,21 @@ for _bad in ["CASE.library","SHARED_LIBRARY","libCards"]:
     assert _bad not in partB, "library remnant in partB: "+_bad
 print("partB: dead Library card data removed (3 case arrays + SHARED_LIBRARY + libCards)")
 
+# =====================================================================
+# ---- PRACTICE-FLOW UI (approved by Dennis 2026-09-10) ----
+#      (1) Practice checklist starts EXPANDED (listOpen:true) so participants see
+#          the tasks immediately. Practice-only (walk is null for real cases).
+#      (2) The practice Continue button now says "Proceed to Think-Aloud" rather
+#          than "Continue to Case 1" -- the next step is the practice think-aloud.
+# =====================================================================
+partB = _rm(partB,
+  'walk = state._walk || (state._walk = { tabsSeen:{}, tourStep:0, tourOpen:true, listOpen:false });',
+  'walk = state._walk || (state._walk = { tabsSeen:{}, tourStep:0, tourOpen:true, listOpen:true });')
+partB = _rm(partB,
+  "${done===REQUIRED.length?'Continue to Case 1 →':'Complete all tasks to continue'}",
+  "${done===REQUIRED.length?'Proceed to Think-Aloud →':'Complete all tasks to continue'}")
+print("partB: practice checklist opens by default + Continue relabeled 'Proceed to Think-Aloud'")
+
 # ---------- duplicate top-level identifier check A vs B ----------
 def top_names(js):
     names=set()

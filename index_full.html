@@ -1280,7 +1280,7 @@ function checklistState(){
 function setupWalkthrough(){
   removeCoach(); const old=document.getElementById("cl"); if(old) old.remove();
   if(!isPractice()){ walk=null; return; }
-  walk = state._walk || (state._walk = { tabsSeen:{}, tourStep:0, tourOpen:true, listOpen:false });
+  walk = state._walk || (state._walk = { tabsSeen:{}, tourStep:0, tourOpen:true, listOpen:true });
   buildChecklist();
   if(walk.tourOpen) showCoach(walk.tourStep);
 }
@@ -1304,7 +1304,7 @@ function buildChecklist(){
         ${REQUIRED.map(([k,label])=>`<div class="cl-item ${st[k]?'done':''}"><span class="box">${st[k]?'✓':''}</span>${label}</div>`).join("")}
       </div>
       <button class="cl-continue" id="cl_continue" ${done===REQUIRED.length?'':'disabled'}>
-        ${done===REQUIRED.length?'Continue to Case 1 →':'Complete all tasks to continue'}</button>
+        ${done===REQUIRED.length?'Proceed to Think-Aloud →':'Complete all tasks to continue'}</button>
     </div>`;
   document.getElementById("cl_bar").onclick=(e)=>{ if(e.target.id==="cl_guide") return; walk.listOpen=!walk.listOpen; buildChecklist(); };
   document.getElementById("cl_guide").onclick=(e)=>{ e.stopPropagation(); walk.tourOpen=true; showCoach(firstIncompleteStep()); };
@@ -1652,7 +1652,10 @@ const Replay = (function(){
    RTA. No WebGazer, no calibration, no gaze capture. Uses window.Reanchor.
    ===================================================================== */
 
-CONFIG.RTA_SILENCE_MS = 15000;   /* OPEN a-priori parameter (placeholder). */
+CONFIG.RTA_SILENCE_MS = 10000;   /* <<SIGN-OFF>> silence-net: after this much no-sound, a short prompt reminds
+                                    the participant to keep talking. Set to 10s per Dennis 2026-09-10 (was an
+                                    open 15s placeholder). The think-aloud announcement states this value,
+                                    derived from here, so message and behavior can never drift. */
 
 /* =====================================================================
    RTA SPEECH-TRIGGERED AUTO-PAUSE + PAUSE INSTRUMENTATION  (rta_autopause_spec)
@@ -1679,6 +1682,10 @@ CONFIG.RTA_VAD_WATCHDOG_MS      = 1500;    /* if Silero was live but stops emitt
 CONFIG.RTA_PAUSE_PROMPT         = "Go ahead — explain what you were thinking here. Press Resume when you're ready to continue.";
 /* <<SIGN-OFF>> The uniform announcement shown before the RTA replay begins (spec A6). Draft. */
 CONFIG.RTA_AUTOPAUSE_ANNOUNCE   = "As your session plays back, the replay will stop on its own whenever you start talking, so you can explain your thinking. You can also stop it yourself at any time with the Pause button. When you're done speaking, press Resume to continue.";
+/* <<SIGN-OFF>> Reasoning reminder shown before EVERY think-aloud (practice + real cases). HTML allowed. Draft. */
+CONFIG.RTA_REASONING_REMINDER   = "As you talk, focus on explaining <b>what you were thinking</b> — the reasoning behind what you did — rather than narrating your actions on the screen or justifying them after the fact. There are no right or wrong responses; we are interested in how you think, not in a correct answer.";
+/* <<SIGN-OFF>> Prepended to the reminder ONLY on the practice think-aloud. */
+CONFIG.RTA_PRACTICE_PREFIX      = "<b>This is only for practice.</b> ";
 
 const CASES_IN_ORDER = [PATRICIA, FLORENCE, YVONNE];
 
@@ -2366,13 +2373,20 @@ function makeReplayTrial(caseObj){
       //      identical wording for every participant and active on the practice
       //      case as well as the analyzed cases. Blocking, single button. ----
       function apShowAnnouncement(cb){
+        const isPrac = (caseObj.role === "Practice");
+        const secs = Math.round((CONFIG.RTA_SILENCE_MS||10000)/1000);   // silence-net threshold, in seconds
+        // Mechanics paragraph (all cases) + the silence-reminder sentence derived from RTA_SILENCE_MS.
+        const mech = CONFIG.RTA_AUTOPAUSE_ANNOUNCE + ' If about ' + secs + ' seconds pass without any sound, a short prompt will remind you to keep talking.';
+        // Reasoning reminder (all cases); the practice-only prefix leads it on the practice run.
+        const reminder = (isPrac ? CONFIG.RTA_PRACTICE_PREFIX : '') + CONFIG.RTA_REASONING_REMINDER;
         const g=document.createElement("div"); g.id="rp_announce";
         Object.assign(g.style,{position:'fixed',inset:'0',background:'rgba(15,23,42,.96)',color:'#fff',display:'flex',
           alignItems:'center',justifyContent:'center',zIndex:10007,font:'16px system-ui',textAlign:'left',padding:'0 24px'});
-        g.innerHTML='<div style="max-width:600px;line-height:1.7">'
+        g.innerHTML='<div style="max-width:620px;line-height:1.7">'
           +'<h2 style="color:#ffd8a8;margin:0 0 14px">Talk through your thinking</h2>'
-          +'<p style="margin:0 0 22px;font-size:16px">'+CONFIG.RTA_AUTOPAUSE_ANNOUNCE+'</p>'
-          +'<button id="rp_announce_go" style="background:#1e8e4e;color:#fff;border:0;border-radius:8px;padding:12px 24px;font:700 15px system-ui;cursor:pointer">Start the replay</button>'
+          +'<p style="margin:0 0 18px;font-size:16px">'+mech+'</p>'
+          +'<div style="background:rgba(255,216,168,.12);border:1px solid #ffd8a8;border-radius:10px;padding:14px 18px;margin:0 0 22px;font-size:15px">'+reminder+'</div>'
+          +'<button id="rp_announce_go" style="background:#1e8e4e;color:#fff;border:0;border-radius:8px;padding:12px 24px;font:700 15px system-ui;cursor:pointer">'+(isPrac?'Start the practice replay':'Start the replay')+'</button>'
           +'</div>';
         document.body.appendChild(g);
         document.getElementById("rp_announce_go").onclick=function(){ g.remove(); cb(); };
