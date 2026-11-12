@@ -28,7 +28,14 @@ CONFIG.TA_INCLUDE = {                      /* approved: extra action kinds that 
 };
 CONFIG.TA_SILENCE_RMS            = 0.02;   /* <<SIGN-OFF>> mic level below this counts as silence for the reminder timer */
 CONFIG.TA_MIC_DEAD_RMS           = 0.005;  /* <<SIGN-OFF>> if a whole recording never exceeds this, treat the mic as not working */
-CONFIG.TA_EXPORT_AUDIO           = false;  /* <<SIGN-OFF / IRB>> include each recording's audio (base64) in the session file */
+CONFIG.TA_EXPORT_AUDIO           = false;  /* <<SIGN-OFF / IRB>> include each analyzed recording's audio (base64) in the session file.
+                                              Also turned on for one link by adding &export_audio=1 (e.g. the colleague retest);
+                                              the file records it in session.think_aloud.audio_exported and url_params. When on,
+                                              audio stays in browser storage until the participant finishes (not just until
+                                              transcribed), then is erased with everything else. */
+CONFIG.TA_AUDIO_BPS              = 32000;  /* recording bitrate (bits/s). Speech-grade Opus; keeps exported audio small. The
+                                              browser may round it; the achieved rate is logged per recording (actual_bps). */
+CONFIG.UPLOAD_WARN_BYTES         = 45000000; /* Qualtrics file-upload limit is 50 MB; above this the download screens warn */
 CONFIG.TA_PERSIST_PENDING_AUDIO  = true;   /* <<SIGN-OFF / IRB>> keep a recording in browser storage ONLY until it is
                                               transcribed, so a closed tab cannot lose untranscribed speech */
 CONFIG.TA_TRANSCRIBE_TIMEOUT_MIN_MS = 180000;  /* per-recording timeout floor ... */
@@ -98,11 +105,14 @@ CONFIG.TA_TEXT = {
     "upload page below and upload this file.",
   checkpoint_upload_link: "Open the upload page (only if you have to stop now)",
   resume_title: "Welcome back",
-  resume_body: "Your progress was saved. You will continue where you left off. The next screens will ask for full screen and your microphone again."
+  resume_body: "Your progress was saved. You will continue where you left off. The next screens will ask for full screen and your microphone again.",
+  file_too_large: "Your file is larger than the survey normally accepts. Please download it and keep it. " +
+    "If the survey will not accept it, contact the research team and they will collect it another way."
 };
 
 const CASES_IN_ORDER = [PATRICIA, FLORENCE, YVONNE];
 const DEV = !!(study.url_params && study.url_params.dev === "1");   /* ?dev=1: diagnostics panel + partial download */
+if(study.url_params && study.url_params.export_audio === "1") CONFIG.TA_EXPORT_AUDIO = true;   /* per-link audio export (see CONFIG.TA_EXPORT_AUDIO) */
 
 /* Per-case captured records assembled for the export. Keyed by case id. */
 study.cases = {};
@@ -382,8 +392,9 @@ const Persist = (function(){
     });
   };
   api.markCompleted = function(){ if(timer) clearInterval(timer); return api.clear(key); };
-  /* Not-yet-transcribed audio (only while CONFIG.TA_PERSIST_PENDING_AUDIO). */
-  api.putAudio = function(recId, blob){ if(!api.enabled || !CONFIG.TA_PERSIST_PENDING_AUDIO) return Promise.resolve(null);
+  /* Not-yet-transcribed audio (CONFIG.TA_PERSIST_PENDING_AUDIO), or all analyzed audio until the end when
+     CONFIG.TA_EXPORT_AUDIO is on (it is read back only to build the session file). */
+  api.putAudio = function(recId, blob){ if(!api.enabled || !(CONFIG.TA_PERSIST_PENDING_AUDIO || CONFIG.TA_EXPORT_AUDIO)) return Promise.resolve(null);
     return op(AUDIO, "readwrite", function(s){ return s.put(blob, key + "|" + recId); }); };
   api.getAudio = function(recId){ return op(AUDIO, "readonly", function(s){ return s.get(key + "|" + recId); }); };
   api.delAudio = function(recId){ return op(AUDIO, "readwrite", function(s){ return s.delete(key + "|" + recId); }); };
@@ -480,7 +491,7 @@ const TQ = (function(){
         t.rtf = rec.duration_ms ? Math.round(1000 * t.processing_ms / rec.duration_ms) / 1000 : null; stats.lastRtf = t.rtf;
       }
       // speech is no longer needed in browser storage once the attempt is finished
-      if(t.status === "done" || t.status === "empty") Persist.delAudio(rec.rec_id);
+      if((t.status === "done" || t.status === "empty") && !CONFIG.TA_EXPORT_AUDIO) Persist.delAudio(rec.rec_id);
     });
   }
   function pump(){
@@ -521,6 +532,31 @@ const TQ = (function(){
     }
   };
 })();
+
+/* Audio kept for the session file (only when CONFIG.TA_EXPORT_AUDIO). Held in memory
+   and in browser storage; it is NOT part of the saved study state, so autosaves never
+   copy it. collectExportAudio() reads it back (memory first, then storage, which covers
+   a reload) and returns { map: rec_id -> data URL, stats }. Practice and silent
+   recordings are never included. */
+const AudioKeep = (function(){ var m = {}; return { set: function(id, b){ m[id] = b; }, get: function(id){ return m[id] || null; } }; })();
+function collectExportAudio(){
+  if(!CONFIG.TA_EXPORT_AUDIO) return Promise.resolve(null);
+  var recs = [];
+  CASES_IN_ORDER.forEach(function(c){
+    if(c.role === "Practice") return;
+    var rec = study.cases[c.id] || {}, ta = rec.ta || (typeof liveOf === "function" ? (liveOf("ta", c.id) || {}).ta : null);
+    ((ta && ta.items) || []).forEach(function(it){ (it.recordings || []).forEach(function(r){ if(!r.silent) recs.push(r); }); });
+  });
+  var stats = { n_recordings: recs.length, n_included: 0, n_missing: 0, audio_bytes: 0, missing: [] }, map = {};
+  function toDataUrl(b){ return new Promise(function(res){ try{ var fr = new FileReader(); fr.onload = function(){ res(String(fr.result || "")); }; fr.onerror = function(){ res(null); }; fr.readAsDataURL(b); }catch(e){ res(null); } }); }
+  return Promise.all(recs.map(function(r){
+    var b = AudioKeep.get(r.rec_id);
+    return (b ? Promise.resolve(b) : Persist.getAudio(r.rec_id)).then(function(blob){
+      if(!blob){ stats.n_missing++; stats.missing.push(r.rec_id); return; }
+      return toDataUrl(blob).then(function(u){ if(u){ map[r.rec_id] = u; stats.n_included++; stats.audio_bytes += blob.size; } else { stats.n_missing++; stats.missing.push(r.rec_id); } });
+    }, function(){ stats.n_missing++; stats.missing.push(r.rec_id); });
+  })).then(function(){ return { map: map, stats: stats }; });
+}
 
 /* After a resume: any recording whose transcription had not finished is
    re-queued from browser storage, or marked lost (and its item reopened so the
@@ -1107,7 +1143,8 @@ function runThinkAloud(caseObj){
     ensureMic().then(function(ok){
       if(!ok){ showNote("Your microphone is not available, so please choose Nothing to add for each item.", 6000, "warn"); return; }
       try{ if(mic.ac && mic.ac.state === "suspended") mic.ac.resume(); }catch(e){}
-      var mr; try{ mr = new MediaRecorder(mic.stream); }catch(e){ ev("recorder_error", { error: String(e) }); showNote("Recording is not available in this browser.", 6000, "warn"); return; }
+      var mr; try{ mr = new MediaRecorder(mic.stream, { audioBitsPerSecond: CONFIG.TA_AUDIO_BPS }); }
+      catch(e0){ try{ mr = new MediaRecorder(mic.stream); }catch(e){ ev("recorder_error", { error: String(e) }); showNote("Recording is not available in this browser.", 6000, "warn"); return; } }
       TA.rec_seq = (TA.rec_seq || 0) + 1;
       var r = { rec_id: String(caseObj.id) + "_" + it.item_id + "_r" + TA.rec_seq, item_id: it.item_id, started_wall_ms: Date.now(),
                 started_phase_ms: Date.now() - TA.phase_started_wall_ms, ended_wall_ms: null, duration_ms: null, mime: mr.mimeType || null,
@@ -1144,7 +1181,9 @@ function runThinkAloud(caseObj){
       r.ended_wall_ms = Date.now(); r.duration_ms = r.ended_wall_ms - r.started_wall_ms;
       r.peak_rms = Math.round(r.peak_rms * 1000) / 1000;
       var blob = new Blob(cur.chunks, { type: r.mime || "audio/webm" });
-      r.bytes = blob.size;
+      r.bytes = blob.size; r.requested_bps = CONFIG.TA_AUDIO_BPS;
+      r.actual_bps = r.duration_ms ? Math.round(blob.size * 8000 / r.duration_ms) : null;
+      if(CONFIG.TA_EXPORT_AUDIO && analyzed) AudioKeep.set(r.rec_id, blob);   /* in memory for the file; also in browser storage */
       it.recordings.push(r);
       ev("record_stop", { rec_id: r.rec_id, duration_ms: r.duration_ms, peak_rms: r.peak_rms });
       if(r.peak_rms < CONFIG.TA_MIC_DEAD_RMS){
@@ -1155,7 +1194,6 @@ function runThinkAloud(caseObj){
       }
       it.response = "recorded"; it.responded_wall_ms = Date.now();
       if(analyzed){ Persist.putAudio(r.rec_id, blob); TQ.enqueue(r, blob, { caseId: caseObj.id, itemId: it.item_id }); }
-      if(CONFIG.TA_EXPORT_AUDIO){ var fr = new FileReader(); fr.onload = function(){ r.audio_b64 = String(fr.result || ""); }; fr.readAsDataURL(blob); }
       Persist.saveNow();
       mode = "ready"; advance();
     };
@@ -1363,14 +1401,15 @@ function transcriptionSummary(ta){
   if(rtfs.length){ rtfs.sort(function(a, b){ return a - b; }); var m = Math.floor(rtfs.length / 2); s.median_rtf = rtfs.length % 2 ? rtfs[m] : (rtfs[m - 1] + rtfs[m]) / 2; }
   return s;
 }
-function exportItems(ta){
+function exportItems(ta, audio){
   return (ta && ta.items || []).map(function(it){
-    var c = JSON.parse(JSON.stringify(it, function(k, v){ return (k === "audio_b64" && !CONFIG.TA_EXPORT_AUDIO) ? undefined : v; }));
+    var c = JSON.parse(JSON.stringify(it, function(k, v){ return (k === "audio_b64") ? undefined : v; }));
+    if(audio && audio.map) (c.recordings || []).forEach(function(r){ if(audio.map[r.rec_id]) r.audio_b64 = audio.map[r.rec_id]; });
     c.anchor_t = taAnchor(it); return c;
   });
 }
 function liveOf(kind, caseId){ try{ var l = Flow.live ? Flow.live() : null; return (l && l.kind === kind && String(l.case_id) === String(caseId)) ? l : null; }catch(e){ return null; } }
-function caseExport(c){
+function caseExport(c, audio){
   var rec = study.cases[c.id] || {};
   var ta = rec.ta || (liveOf("ta", c.id) || {}).ta || null;
   var task = rec.task || null;
@@ -1382,7 +1421,7 @@ function caseExport(c){
     case_started_offset_ms: off, case_ended_t: rec.case_ended_t != null ? rec.case_ended_t : null, task_viewport: rec.viewport || null,
     task: task,                                                    // Stream 1: event_log + descriptive state
     rta: ta ? flattenNarration(ta, off) : [],                      // Stream 2: think-aloud narration, anchored per item
-    rta_items: ta ? exportItems(ta) : [],
+    rta_items: ta ? exportItems(ta, audio) : [],
     rta_events: ta ? ta.events : [],
     rta_phase: ta ? { format: ta.format, started_wall_ms: ta.phase_started_wall_ms, ended_wall_ms: ta.phase_ended_wall_ms,
                       duration_ms: (ta.phase_ended_wall_ms && ta.phase_started_wall_ms) ? ta.phase_ended_wall_ms - ta.phase_started_wall_ms : null,
@@ -1391,7 +1430,8 @@ function caseExport(c){
     rta_transcription_summary: ta ? transcriptionSummary(ta) : null
   };
 }
-function buildSessionExport(kind){
+/* audio: result of collectExportAudio() (omit for no audio) */
+function buildSessionExport(kind, audio){
   return {
     schema: "ot_prof_reasoning_v2",
     export_kind: kind || "final",
@@ -1402,16 +1442,17 @@ function buildSessionExport(kind){
       session_started_at_ms: study.session_started_at_ms,
       group: study.group, year_in_program: study.year_in_program, url_params: study.url_params,
       task_viewport: study.task_viewport, browser_check: study.browser_check, permissions: study.permissions,
-      resumes: study.resumes || [], checkpoint_downloaded_wall_ms: study.checkpoint_downloaded_wall_ms || null,
+      resumes: study.resumes || [], checkpoint_downloaded_wall_ms: study.checkpoint_downloaded_wall_ms || null, checkpoint_bytes: study.checkpoint_bytes || null,
       steps_done: Flow.done.slice(),
+      audio_export: audio ? audio.stats : null,
       autosave: { enabled: Persist.enabled, saves: Persist.saveStats.n, max_blocking_ms: Persist.saveStats.maxSyncMs, failures: Persist.saveStats.failures },
       think_aloud: { format: "segmented_cued_retrospective_v1", pause_threshold_ms: CONFIG.TA_PAUSE_MS, final_min_ms: CONFIG.TA_FINAL_MIN_MS,
                      include: CONFIG.TA_INCLUDE, preroll_ms: Clip.PREROLL_MS, silence_reminder_ms: CONFIG.RTA_SILENCE_MS,
-                     silence_rms: CONFIG.TA_SILENCE_RMS, mic_dead_rms: CONFIG.TA_MIC_DEAD_RMS, audio_exported: !!CONFIG.TA_EXPORT_AUDIO,
+                     silence_rms: CONFIG.TA_SILENCE_RMS, mic_dead_rms: CONFIG.TA_MIC_DEAD_RMS, audio_exported: !!CONFIG.TA_EXPORT_AUDIO, audio_bps: CONFIG.TA_AUDIO_BPS,
                      pending_audio_persisted: !!CONFIG.TA_PERSIST_PENDING_AUDIO, transcription_model: TQ.model(),
                      transcribe_timeout_min_ms: CONFIG.TA_TRANSCRIBE_TIMEOUT_MIN_MS, transcribe_timeout_x: CONFIG.TA_TRANSCRIBE_TIMEOUT_X }
     },
-    cases: CASES_IN_ORDER.map(caseExport)
+    cases: CASES_IN_ORDER.map(function(c){ return caseExport(c, audio); })
     /* NOTE: state.recon (deltas + cursor) is intentionally NOT exported. */
   };
 }
@@ -1433,14 +1474,21 @@ function makeCheckpointTrial(){
       el.innerHTML = '<div style="max-width:660px;margin:6% auto;font-family:system-ui;color:#17232e;text-align:left;padding:0 22px;line-height:1.6">'
         + '<h2 style="color:#1565c0;margin:0 0 10px">' + X.checkpoint_title + '</h2>'
         + '<p style="font-size:16px;margin:0 0 18px">' + X.checkpoint_body + '</p>'
-        + '<button id="cp_dl" style="background:#1e8e4e;color:#fff;border:0;padding:12px 24px;border-radius:8px;font-weight:700;font-size:15px;cursor:pointer">Download my progress file</button>'
+        + '<button id="cp_dl" disabled style="opacity:.6;background:#1e8e4e;color:#fff;border:0;padding:12px 24px;border-radius:8px;font-weight:700;font-size:15px;cursor:pointer">Download my progress file</button>'
         + '<p id="cp_done" style="display:none;margin:10px 0 0;color:#16692f;font-weight:700">Downloaded.</p>'
+        + '<p id="cp_big" style="display:none;margin:12px 0 0;color:#9a3412;font-weight:600">' + X.file_too_large + '</p>'
         + (q ? '<p style="margin:22px 0 0;font-size:14px"><a href="' + q + '" target="_blank" rel="noopener">' + X.checkpoint_upload_link + '</a></p>' : '')
         + '<div style="margin-top:26px"><button id="cp_go" disabled style="background:#1565c0;color:#fff;border:0;padding:12px 24px;border-radius:8px;font-weight:700;font-size:15px;opacity:.45;cursor:not-allowed">Continue to Case 2</button></div>'
         + '</div>';
       var go = document.getElementById("cp_go");
-      document.getElementById("cp_dl").onclick = function(){
-        downloadJSON(buildSessionExport("checkpoint"), fname);
+      var cpAudio = null, cpBtn = document.getElementById("cp_dl");
+      collectExportAudio().then(function(a){ cpAudio = a; }, function(){ cpAudio = null; }).then(function(){ cpBtn.disabled = false; cpBtn.style.opacity = "1"; });
+      cpBtn.onclick = function(){
+        if(cpBtn.disabled) return;
+        var cpPayload = buildSessionExport("checkpoint", cpAudio), cpBytes = new Blob([JSON.stringify(cpPayload)]).size;
+        study.checkpoint_bytes = cpBytes;
+        if(cpBytes > CONFIG.UPLOAD_WARN_BYTES) document.getElementById("cp_big").style.display = "block";
+        downloadJSON(cpPayload, fname);
         study.checkpoint_downloaded_wall_ms = Date.now();
         document.getElementById("cp_done").style.display = "block";
         go.disabled = false; go.style.opacity = "1"; go.style.cursor = "pointer";
@@ -1469,12 +1517,15 @@ function makeExportTrial(){
         var w = document.getElementById("ex_wait");
         if(w) w.innerHTML = left ? ("Preparing your session file: still processing <b>" + left + "</b> of your recordings. This can take a few minutes. Please keep this tab open.")
                                  : "Preparing your session file...";
-      }).then(function(allDone){ study.final_wait_ms = Date.now() - start; study.final_wait_complete = allDone; showDownload(); });
+      }).then(function(allDone){ study.final_wait_ms = Date.now() - start; study.final_wait_complete = allDone;
+        return collectExportAudio().then(null, function(){ return null; }); }).then(function(a){ showDownload(a); });
 
-      function showDownload(){
-        var payload = buildSessionExport("final");
+      function showDownload(audio){
+        var payload = buildSessionExport("final", audio);
         var fname = "ot_session_" + (study.sub_id_from_url || "anon") + "_" + Date.now() + ".json";
-        var url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type: "application/json" }));
+        var fileBlob = new Blob([JSON.stringify(payload)], { type: "application/json" }), tooBig = fileBlob.size > CONFIG.UPLOAD_WARN_BYTES;
+        study.final_bytes = fileBlob.size; if(DEV) console.log("[export] final file bytes", fileBlob.size);
+        var url = URL.createObjectURL(fileBlob);
         var qUrl = qualtricsUrl(), qConfigured = !!qUrl;
         el.innerHTML = wrap
           + '<h2 style="color:#1565c0;margin:0 0 6px">You have finished both cases. Thank you.</h2>'
@@ -1486,6 +1537,7 @@ function makeExportTrial(){
           +   '<p style="margin:0 0 12px;font-size:15px">Click the green button. A file named <strong>' + fname + '</strong> will be saved to your computer (usually your Downloads folder). Remember where it goes - you will upload it to the survey.</p>'
           +   '<a id="dl" href="' + url + '" download="' + fname + '" style="display:inline-block;background:#1e8e4e;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:15px">Download my session file</a>'
           +   '<p id="dl_done" style="display:none;margin:10px 0 0;color:#16692f;font-weight:700">Downloaded.</p>'
+          +   (tooBig ? '<p id="dl_big" style="margin:12px 0 0;color:#9a3412;font-weight:600">' + CONFIG.TA_TEXT.file_too_large + '</p>' : '')
           + '</div>'
           + '<div style="background:#f6f8fa;border:1px solid #dfe6ec;border-radius:10px;padding:16px 18px;margin:0 0 20px">'
           +   (qConfigured
