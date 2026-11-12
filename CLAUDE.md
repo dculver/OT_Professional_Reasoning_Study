@@ -3,6 +3,12 @@
 > Quick operational map for this repo. Long-form context lives in the handoff docs
 > (Section 11). If this file and those docs disagree, the handoff docs win and this
 > file should be corrected.
+> UPDATE 2026-11-11: the continuous RTA replay + speech-triggered auto-pause is
+> REPLACED by a segmented cued retrospective think-aloud (per-action list after each
+> case; per-recording background transcription; Silero removed); entries link to
+> one or more occupations; autosave/resume; export schema ot_prof_reasoning_v2.
+> Field-level detail: project doc claude/data-dictionary.md; decisions:
+> claude/analysis-pipeline-decisions.md. Sections below are updated where marked.
 > Last reconciled: 2026-08-31. EYE TRACKING REMOVED 2026-08-31 (Dennis's decision):
 > no WebGazer / webcam / chinrest / calibration / gaze capture. The study is now
 > TWO-STREAM (action+content + RTA). RQA was gaze-only and is dropped; any gaze-
@@ -22,7 +28,11 @@ Advisor: Dr. Robyn Cooper.
 
 ## 2. Two data streams (analyzed)
 - Action + content-of-action: click/selection/text events WITH content. ONA/TMA Stream 1 (coded).
-- RTA (retrospective think-aloud): Whisper transcription of replay narration. ONA/TMA Stream 2 (coded).
+- RTA (retrospective think-aloud): since 2026-11-11, SEGMENTED and cued. After each case
+  the participant works through a list of their own actions plus long pauses (>= 20 s of
+  no input); each item replays that stretch of the session, then they record a short
+  think-aloud or choose "Nothing to add" (every item needs one). Each recording is
+  transcribed by Whisper in a background queue and anchored to its item. ONA/TMA Stream 2 (coded).
 Both feed the network model with a SINGLE SHARED CODEBOOK (required for multimodality).
 NO gaze stream - eye tracking removed 2026-08-31. See decision log A-B.
 
@@ -36,13 +46,16 @@ Two-record architecture (do NOT conflate):
 - state.log   = analyzed events (Option B: each carries t, t_clock, kind, enriched
                 labels + stable ids). Feeds coding / ONA / TMA.
 - state.recon = {deltas, cursor}. REPLAY-ONLY. Never analyzed, never exported.
-                deltas = 12 op types; cursor = ~8 Hz {x,y,aoi,t} (mouse cursor, for
-                the RTA reconstruction only - NOT eye gaze).
+                deltas = engine ops + assemble-patched ops (occ_input, occ_desc_input,
+                scroll, pop_open/choice/back/mech/occ/close); cursor = ~8 Hz {x,y,aoi,t}
+                (mouse cursor, for the think-aloud clips only - NOT eye gaze).
+                Entries carry occIds[] (one or more occupations) since 2026-11-11.
 
 Time model: case-relative clock (first event ~0 ms). case_started_offset_ms captured
-at case start (session clock = study.session_started_at_ms, set at fullscreen).
-offset_into_session = case_started_offset_ms + t. RTA utterances are re-anchored onto
-the shared task-time axis at the replay-moment shown (decision log C).
+at case start (FIXED 2026-11-11: it was being recorded at case end) (session clock =
+study.session_started_at_ms, set at fullscreen, kept on resume).
+offset_into_session = case_started_offset_ms + t. Think-aloud narration is anchored at
+its item: an action's time, or the start of a pause (decision log C, revised 2026-11-11).
 
 ## 4. Cases
 - Florence = Case 1 (post L total shoulder arthroplasty; RA). ANALYZED.
@@ -52,6 +65,8 @@ Cases adapted from an AOTA Press textbook (Hutchinson, first author, 2022).
 Case order in code: PATRICIA -> FLORENCE -> YVONNE (CASES_IN_ORDER).
 
 ## 5. Reasoning task (what a participant does per case)
+[2026-11-11: OTPF-4 dropdowns were removed 2026-09-02; approach is free text; a
+classification links to ONE OR MORE occupations; occupations carry a description.]
 Name occupations -> highlight case text and classify each selection as a Support or
 Barrier (name the mechanism, optional OTPF-4 aspect tag, link to an occupation) ->
 Synthesis (clinical impression with captured revision trajectory; desired outcomes,
@@ -61,6 +76,12 @@ grading; one measurable occupation-based long-term goal; immediate-attention not
 NOTE: OTPF-4 tags are data-capture affordances, NOT the analytic codebook (see 8).
 
 ## 6. Build status
+- [2026-11-11] Flow now: fullscreen -> browser check -> mic -> Whisper warmup ->
+  Practice -> practice think-aloud -> Case 1 -> think-aloud -> CHECKPOINT file ->
+  Case 2 -> think-aloud -> final file + return to Qualtrics. Autosave/resume via
+  IndexedDB keyed by sub_id. Verified headlessly end to end (fake mic, stubbed Whisper):
+  35 unit + 42 end-to-end assertions. Real Whisper/mic still need live verification.
+  QUALTRICS_UPLOAD_URL is set (SV_eFCf1kuYCcGTFS6).
 - index_full.html = THE instrument (single file). Flow: capability gate -> browser
   check -> microphone permission -> FULLSCREEN (interface fit; sets session clock +
   task_viewport) -> Whisper warmup -> Practice(Patricia) -> Case 1(Florence) ->
@@ -113,8 +134,8 @@ classifier + IRR. (crqa/RQA was gaze-only -> dropped.)
 - SVD vs means rotation: FLAGGED for Dr. Cooper (affects relational cross-stream RQs).
 
 ## 9. Open a-priori decisions (must be justified, not defaulted)
-- Silence-net threshold (CONFIG.RTA_SILENCE_MS, 15000 ms placeholder; van Gog used
-  5 s; TA convention ~15 s). Needs a paradigm-transfer justification.
+- Silence-net threshold: SET to 10 s (Dennis, 2026-09-10); now a keep-talking reminder
+  during a think-aloud recording. Pause-item threshold SET to 20 s (2026-11-11).
 - Density gate value; SVD vs means (Cooper); RQA/gaze-RQ rework (see 8 flag).
 - (AOI adequacy / gaze quality: REMOVED with eye tracking 2026-08-31.)
 Citation hygiene: confirm Strohmaier 2020 byline/pages; resolve which Jennett paper
@@ -135,9 +156,10 @@ is Sinnott ref [29]; add verified sources to Zotero Methods only on approval.
   transform onto shared task-time axis). Node-testable.
 - OT_Reasoning_Prototype_v2.html = ENGINE SOURCE OF TRUTH (edit here, re-extract;
   do NOT hand-edit an embedded engine). [not currently in this repo]
-Constants: WHISPER_MODEL = Xenova/whisper-small.en; RTA_SILENCE_MS = 15000 (open a-priori);
-QUALTRICS_UPLOAD_URL = placeholder. Head loads only: jspsych, html-keyboard-response,
-initialize-microphone, browser-check (+ js/reanchor.js). permissionGate is mic-only.
+Constants: WHISPER_MODEL = Xenova/whisper-small.en (pinned revision); RTA_SILENCE_MS = 10000;
+TA_PAUSE_MS = 20000; QUALTRICS_UPLOAD_URL set. Head loads only: jspsych, html-keyboard-response,
+initialize-microphone, browser-check (+ js/reanchor.js, now unused). No Silero. permissionGate is mic-only.
+Tests: node test_thinkaloud.js. Diagnostics: add &dev=1 to the URL (never for participants).
 
 ## 11. Handoff docs (long-form source of truth)
 In the connected "files for cowork" folder / OT_Study_Cowork_Handoff.zip:

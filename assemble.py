@@ -710,6 +710,210 @@ partB = _rm(partB,
   "${done===REQUIRED.length?'Proceed to Think-Aloud →':'Complete all tasks to continue'}")
 print("partB: practice checklist opens by default + Continue relabeled 'Proceed to Think-Aloud'")
 
+# =====================================================================
+# ---- MECHANISM FIELD: single-line input -> multi-line textarea ----
+#      `mechanism` is THE coded text for every classify event (Stream 1),
+#      so a 140-char single-line box structurally capped the study's
+#      primary data. Approved by Dennis 2026-11-11.
+# =====================================================================
+
+MECH_MAXLEN = 1000   # <<SIGN-OFF>> mechanism character cap; change here and rebuild.
+
+# (1) the control itself
+partB = _rm(partB,
+  '    <input type="text" id="pk_mech" maxlength="140" placeholder="${mechPH}" />',
+  '    <textarea id="pk_mech" rows="4" maxlength="MECHCAP" placeholder="${mechPH}"></textarea>'.replace("MECHCAP", str(MECH_MAXLEN)))
+
+# (2) CSS. The popup rules key off `input[type=text]`, so a bare textarea would
+#     inherit nothing. Append a self-contained rule rather than editing theirs.
+head = head + ('  <style>\n'
+  '  .pop textarea{display:block;width:100%;border:1px solid var(--line);border-radius:7px;'
+  'padding:8px 10px;font-family:inherit;font-size:13px;line-height:1.45;margin-bottom:2px;'
+  'min-height:76px;max-height:190px;overflow-y:auto;resize:vertical;'
+  'overscroll-behavior:contain}\n'
+  '  .pop textarea:focus{outline:none;border-color:var(--accent)}\n'
+  # Without containment, wheeling PAST the end of a scrollable child chains the
+  # scroll to the page: the scroll target becomes the document, the guard above
+  # correctly dismisses, and the popup dies anyway. Verified in Chromium.
+  '  .pop{overscroll-behavior:contain}\n'
+  '  .pop .exc{overscroll-behavior:contain}\n'
+  '  </style>\n')
+
+# (3) REQUIRED DEPENDENCY. The capture-phase scroll listener dismissed the popup
+#     on ANY scroll event, including the popup's own inner scrolling -- this is
+#     the "text box disappears once the text exceeds the box" defect the pilot OT
+#     reported, and a scrollable textarea would trigger it on nearly every entry.
+#     Only a scroll OUTSIDE the popup should dismiss it (the popup is
+#     position:fixed and would otherwise detach from the highlighted text).
+partB = _rm(partB,
+  'window.addEventListener("scroll", removePop, true);',
+  'window.addEventListener("scroll", e=>{\n'
+  '  const t=e.target;\n'
+  '  if(popEl && t && t.nodeType===1 && popEl.contains(t)) return;  /* inner scroll inside the popup */\n'
+  '  removePop();\n'
+  '}, true);')
+
+# (4) Collapse internal whitespace so a multi-line mechanism stays ONE coded line
+#     and cannot inject a newline into the nCoder CSV. No words are lost.
+partB = _rm(partB,
+  'mechanism:mech.value.trim(), aspect:null, occId:occSel.value',
+  'mechanism:mech.value.trim().replace(/\\s+/g," "), aspect:null, occId:occSel.value')
+
+print("partB: pk_mech is a textarea (cap %d); popup survives its own inner scroll" % MECH_MAXLEN)
+
+# =====================================================================
+# ---- SEGMENTED THINK-ALOUD SUPPORT (approved by Dennis 2026-11-11) ----
+#      The continuous replay + speech-triggered auto-pause is replaced by a
+#      per-action think-aloud after each case (partC). Consequences here:
+#      (1) Silero VAD is no longer used (no auto-pause) -> stop loading it.
+#      (2) Transcription now runs per recording in a background queue, so the
+#          worker must echo each job's id (results are matched by id, never by
+#          arrival order).
+#      (3) The session clock must survive a resume (autosave).
+# =====================================================================
+for _s in ['  <script src="js/vendor/vad/ort.min.js"></script>\n',
+           '  <script src="js/vendor/vad/bundle.min.js"></script>\n']:
+    assert _s in head, "VAD tag missing: " + _s
+    head = head.replace(_s, "", 1)
+_WK_OLD = ("            const out = await transcriber(e.data.audioData, { chunk_length_s: 30, stride_length_s: 5, return_timestamps: true });\n"
+           "            self.postMessage({ type:'result', text: out && out.text ? out.text : '', chunks: out && out.chunks ? out.chunks : [] });\n"
+           "          } catch (err) { self.postMessage({ type:'error', message: String(err) }); }")
+_WK_NEW = ("            const out = await transcriber(e.data.audioData, { chunk_length_s: 30, stride_length_s: 5, return_timestamps: true });\n"
+           "            self.postMessage({ type:'result', id: e.data.id, text: out && out.text ? out.text : '', chunks: out && out.chunks ? out.chunks : [] });\n"
+           "          } catch (err) { self.postMessage({ type:'error', id: e.data.id, message: String(err) }); }")
+head = _rm(head, _WK_OLD, _WK_NEW)
+partA = _rm(partA,
+  'btn.disabled = true; study.session_started_at_ms = Date.now();',
+  'btn.disabled = true; if(!study.session_started_at_ms) study.session_started_at_ms = Date.now();   /* kept on resume */')
+print("head/partA: Silero tags removed; worker echoes job id; session clock resume-safe")
+
+# =====================================================================
+# ---- MULTI-OCCUPATION LINKING (approved by Dennis 2026-11-11) ----
+#      A support/barrier links to ONE OR MORE occupations: entry.occIds[].
+#      Every reader of the old single occId is converted here. The classify
+#      event also gains entry_id (stable linkage to removals/selections) and
+#      the entry keeps its text locator (needed to restore highlights on resume).
+# =====================================================================
+partB = _rm(partB,
+  'function occName(id){ const o=state.occupations.find(x=>x.id===id); return o?o.name:null; }',
+  'function occName(id){ const o=state.occupations.find(x=>x.id===id); return o?o.name:null; }\n'
+  'function occNames(ids){ return (ids||[]).map(occName).filter(Boolean).join(", ") || "?"; }')
+partB = _rm(partB,
+  '  if(d.occId != null && d.occupation === undefined) d.occupation = occName(d.occId);',
+  '  if(d.occId != null && d.occupation === undefined) d.occupation = occName(d.occId);\n'
+  '  if(Array.isArray(d.occIds) && d.occupations === undefined){ d.occupations = d.occIds.map(occName); if(d.occupation === undefined) d.occupation = d.occupations.filter(Boolean).join("; "); }')
+partB = _rm(partB,
+  'if(kind==="barrier_select" || kind==="entry_remove"){ const v=entryExcerpt(d.id); if(v!=null) d.entry=v; }',
+  'if(kind==="barrier_select" || kind==="entry_remove"){ const v=entryExcerpt(d.id); if(v!=null) d.entry=v;\n'
+  '      const en=state.entries.find(x=>x.id===d.id); if(en){ if(d.entry_type===undefined) d.entry_type=en.type; if(d.mechanism===undefined) d.mechanism=en.mechanism; } }')
+# classify popup: occupation <select> -> checkbox group
+partB = _rm(partB,
+  '  const occQ = isBar ? "A barrier to which occupation?" : "This supports which occupation?";',
+  '  const occQ = isBar ? "A barrier to which occupation(s)? Select all that apply." : "This supports which occupation(s)? Select all that apply.";')
+partB = _rm(partB,
+  r'''    <select id="pk_occ"><option value="">— select occupation —</option>${state.occupations.map(o=>`<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select>''',
+  r'''    <div class="pk-occs" id="pk_occ" role="group">${state.occupations.map(o=>`<label class="pk-occ"><input type="checkbox" value="${o.id}"/><span>${esc(o.name)}</span></label>`).join("")}</div>''')
+partB = _rm(partB,
+  r'''  const mech=document.getElementById("pk_mech"), occSel=document.getElementById("pk_occ"), go=document.getElementById("pk_go");
+  const check=()=> go.disabled=!(mech.value.trim() && occSel.value);
+  mech.oninput=()=>{ recordDelta("pop_mech",{value:mech.value}); check(); }; occSel.onchange=()=>{ recordDelta("pop_occ",{occId:occSel.value}); check(); }; mech.focus();
+  go.onclick=()=>{ commitEntry({ type, excerpt:text, src, mechanism:mech.value.trim().replace(/\s+/g," "), aspect:null, occId:occSel.value }); removePop(); };''',
+  r'''  const mech=document.getElementById("pk_mech"), occBox=document.getElementById("pk_occ"), go=document.getElementById("pk_go");
+  const pickedOccs=()=>Array.from(occBox.querySelectorAll("input[type=checkbox]:checked")).map(cb=>cb.value);
+  const check=()=> go.disabled=!(mech.value.trim() && pickedOccs().length);
+  mech.oninput=()=>{ recordDelta("pop_mech",{value:mech.value}); check(); }; occBox.addEventListener("change",()=>{ recordDelta("pop_occ",{occIds:pickedOccs()}); check(); }); mech.focus();
+  go.onclick=()=>{ commitEntry({ type, excerpt:text, src, mechanism:mech.value.trim().replace(/\s+/g," "), aspect:null, occIds:pickedOccs() }); removePop(); };''')
+partB = _rm(partB,
+  '''  e.id=uid("ent_"); e.ts=Date.now(); e.range=pendingRange||null;
+  state.entries.push(e);
+  logEvent("classify",{type:e.type,excerpt:e.excerpt,occId:e.occId,mechanism:e.mechanism,aspect:e.aspect,src:e.src});
+  recordDelta("entry_add",{id:e.id, type:e.type, excerpt:e.excerpt, src:e.src, mechanism:e.mechanism, aspect:e.aspect, occId:e.occId, loc: serializeRange(e.range, e.src)});''',
+  '''  e.id=uid("ent_"); e.ts=Date.now(); e.range=pendingRange||null;
+  e.occIds=(e.occIds||[]).slice(); e.loc=serializeRange(e.range, e.src);   /* loc kept for highlight restore on resume */
+  state.entries.push(e);
+  logEvent("classify",{type:e.type,excerpt:e.excerpt,entry_id:e.id,occIds:e.occIds.slice(),mechanism:e.mechanism,aspect:e.aspect,src:e.src});
+  recordDelta("entry_add",{id:e.id, type:e.type, excerpt:e.excerpt, src:e.src, mechanism:e.mechanism, aspect:e.aspect, occIds:e.occIds.slice(), loc:e.loc});''')
+# renderOccupations
+partB = _rm(partB,
+  '    const n=state.entries.filter(e=>e.occId===o.id).length;',
+  '    const n=state.entries.filter(e=>(e.occIds||[]).includes(o.id)).length;')
+partB = _rm(partB,
+  '''    state.entries.forEach(e=>{ if(e.occId===id) e.occId=null; });
+    state.plan.selectedBarrierIds=state.plan.selectedBarrierIds.filter(bid=>{ const en=state.entries.find(x=>x.id===bid); return en&&en.occId!==null; });''',
+  '''    state.entries.forEach(e=>{ e.occIds=(e.occIds||[]).filter(x=>x!==id); });
+    state.plan.selectedBarrierIds=state.plan.selectedBarrierIds.filter(bid=>{ const en=state.entries.find(x=>x.id===bid); return en&&(en.occIds||[]).length>0; });''')
+# renderPerformance: an entry appears under EACH occupation it links to
+partB = _rm(partB,
+  '    const es=state.entries.filter(e=>e.occId===o.id); if(!es.length) return;',
+  '    const es=state.entries.filter(e=>(e.occIds||[]).includes(o.id)); if(!es.length) return;')
+partB = _rm(partB,
+  '  const orphans=state.entries.filter(e=>!e.occId);',
+  '  const orphans=state.entries.filter(e=>!(e.occIds||[]).length);')
+# renderPlan
+partB = _rm(partB,
+  '  const barriers=state.entries.filter(e=>e.type==="barrier" && e.occId);',
+  '  const barriers=state.entries.filter(e=>e.type==="barrier" && (e.occIds||[]).length);')
+partB = _rm(partB,
+  '    ? barriers.map(b=>{ const occ=state.occupations.find(o=>o.id===b.occId); const on=state.plan.selectedBarrierIds.includes(b.id);',
+  '    ? barriers.map(b=>{ const occ={name:occNames(b.occIds)}; const on=state.plan.selectedBarrierIds.includes(b.id);')
+partB = _rm(partB,
+  '    const occ=state.occupations.find(o=>o.id===b.occId);\n    const pb=state.plan.perBarrier[bid]||{};',
+  '    const occ={name:occNames(b.occIds)};\n    const pb=state.plan.perBarrier[bid]||{};')
+# replay fold (reconstructStateAt/applyDelta). occ_remove now ALSO drops barrier
+# selections left with no occupation, mirroring the live task (previous fold kept
+# them selected, so a replay could show a plan the participant no longer had).
+partB = _rm(partB,
+  '''    case "occ_remove":     S.occupations = S.occupations.filter(o=>o.id!==d.id);
+                           S.entries.forEach(e=>{ if(e.occId===d.id) e.occId=null; }); break;''',
+  '''    case "occ_remove":     S.occupations = S.occupations.filter(o=>o.id!==d.id);
+                           S.entries.forEach(e=>{ e.occIds=(e.occIds||[]).filter(x=>x!==d.id); });
+                           S.plan.selectedBarrierIds = S.plan.selectedBarrierIds.filter(bid=>{ const en=S.entries.find(x=>x.id===bid); return en&&en.occIds.length>0; }); break;''')
+partB = _rm(partB,
+  '                             mechanism:d.mechanism, aspect:d.aspect, occId:d.occId, loc:d.loc }); break;',
+  '                             mechanism:d.mechanism, aspect:d.aspect, occIds:(d.occIds||(d.occId?[d.occId]:[])).slice(), loc:d.loc }); break;')
+partB = _rm(partB,
+  'const ent = {id:e.id,type:e.type,excerpt:e.excerpt,src:e.src,mechanism:e.mechanism,aspect:e.aspect,occId:e.occId,loc:e.loc};',
+  'const ent = {id:e.id,type:e.type,excerpt:e.excerpt,src:e.src,mechanism:e.mechanism,aspect:e.aspect,occIds:(e.occIds||[]).slice(),loc:e.loc};')
+partB = _rm(partB,
+  '    entries:[],       // {id, type, excerpt, src, mechanism, aspect|null, occId, ts, range}',
+  '    entries:[],       // {id, type, excerpt, src, mechanism, aspect|null, occIds[], loc, ts, range}')
+# Only two single-id reads may remain, both deliberate backward-compat paths:
+# enrich() labelling a legacy occId, and applyDelta() accepting a legacy entry_add.
+_legacy = [ln.strip() for ln in partB.split("\n") if re.search(r"occId(?!s)", ln)]
+assert len(_legacy) == 2 and "d.occupation = occName(d.occId)" in _legacy[0] and "d.occId?[d.occId]:[]" in _legacy[1], \
+    "single-occupation remnant in partB: " + repr(_legacy)
+assert "occSel" not in partB, "occSel remnant in partB"
+head = head + ('  <style>\n'
+  '  .pop .pk-occs{display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto;'
+  'overscroll-behavior:contain;border:1px solid var(--line);border-radius:7px;padding:6px 8px;margin-bottom:2px}\n'
+  '  .pop .pk-occ{display:flex;align-items:flex-start;gap:7px;font-size:13px;cursor:pointer;line-height:1.35}\n'
+  '  .pop .pk-occ input{margin-top:2px;flex:0 0 auto}\n'
+  '  </style>\n')
+print("partB: multi-occupation linking (occIds[]) wired through popup, log, recon, fold, and render")
+
+# =====================================================================
+# ---- CLASSIFY POPUP ALWAYS FULLY ON SCREEN (defect, found 2026-11-12) ----
+#      The popup was positioned once, for its small first step (Support/Barrier),
+#      and never re-positioned when it grew into the mechanism + occupation step.
+#      For text highlighted in the lower part of the screen, the occupation boxes
+#      and the Add button ended up below the window edge; the page cannot scroll,
+#      so the classification could not be completed. Now the popup re-positions
+#      whenever its content changes, and is clamped inside the window both ways.
+# =====================================================================
+partB = _rm(partB,
+  '  left=Math.max(pad,Math.min(left,window.innerWidth-w-pad)); top=Math.max(pad,top);\n  popEl.style.left=left+"px"; popEl.style.top=top+"px";',
+  '  left=Math.max(pad,Math.min(left,window.innerWidth-w-pad)); top=Math.max(pad,Math.min(top,window.innerHeight-h-pad));\n  popEl.style.left=left+"px"; popEl.style.top=top+"px";')
+partB = _rm(partB,
+  'document.body.appendChild(popEl); positionPop(rect); wireChoiceStep(text, src);',
+  'document.body.appendChild(popEl); window.__popRect=rect; positionPop(rect); wireChoiceStep(text, src);')
+partB = _rm(partB,
+  "    <button class=\"confirm\" id=\"pk_go\" disabled>${isBar?'Add barrier':'Add support'}</button>`;",
+  "    <button class=\"confirm\" id=\"pk_go\" disabled>${isBar?'Add barrier':'Add support'}</button>`;\n  if(window.__popRect) positionPop(window.__popRect);")
+partB = _rm(partB,
+  'recordDelta("pop_back",{}); popEl.innerHTML=choiceStep(text); wireChoiceStep(text,src); };',
+  'recordDelta("pop_back",{}); popEl.innerHTML=choiceStep(text); wireChoiceStep(text,src); if(window.__popRect) positionPop(window.__popRect); };')
+print("partB: classify popup re-positions on every step and stays inside the window")
+
 # ---------- duplicate top-level identifier check A vs B ----------
 def top_names(js):
     names=set()

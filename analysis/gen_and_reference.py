@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generates synthetic OT-study session exports (schema ot_prof_reasoning_v1) that
+Generates synthetic OT-study session exports (schemas ot_prof_reasoning_v1 and v2) that
 exercise every event kind, and computes the EXPECTED long-format output using the
 exact parse the R script implements. Used to validate the R algorithm.
 """
@@ -134,10 +134,90 @@ def make_session(sub_id, group, year, empty_rta_yvonne=False):
                  yvonne_case(offset=180000, empty_rta=empty_rta_yvonne)]
     }
 
-# =================== REFERENCE PARSE (mirror of R) ===================
-NO_TEXT = {"occupation_remove","entry_remove","barrier_select","desired_outcome_remove","desired_outcome_tag","tab_switch"}
 
-def parse_session(doc, source_file):
+# ---------------- a v2 session (segmented think-aloud) ----------------
+def florence_case_v2(offset):
+    """Exercises the v2 rules: a mid-typing fragment inside an editing run, a pause
+    item splitting the impression into two runs, multi-occupation classify, plan
+    revisions, a two-chunk recording, and one failed transcription."""
+    imp_revs = [
+        {"version":1, "text":"Florence has reduced", "ts":1},                                   # mid-typing snapshot
+        {"version":2, "text":"Florence has reduced shoulder range.", "ts":2},
+        {"version":3, "text":"Florence has reduced shoulder range. She fears a nursing home.", "ts":3},
+    ]
+    occs = [{"id":"occ_1","name":"Dressing","description":"She wants to dress without the aide."},
+            {"id":"occ_2","name":"Bathing","description":"She wants to shower safely."}]
+    entries = [{"id":"ent_1","type":"barrier","excerpt":"pain with overhead reach","provenance_src":"fl_ch_pain",
+                "mechanism":"limited shoulder flexion","otpf4_aspect":None,"occupation_ids":["occ_1","occ_2"],"ts":1}]
+    plan = {"selectedBarrierIds":["ent_1"], "perBarrier":{"ent_1":{"approach":"Restore reach.","method":"Pulleys. Shelf reach.","grading":"Raise height."}},
+            "prioritization":"Reach gates dressing.", "goal":"Dress in 3 weeks.", "immediate":"Sleep.",
+            "revisions":[{"version":1,"scope":"barrier","field":"method","barrier_id":"ent_1","text":"Pulleys.","ts":1},
+                         {"version":2,"scope":"barrier","field":"method","barrier_id":"ent_1","text":"Pulleys. Shelf reach.","ts":2}]}
+    E = [
+        ev(500,  "tab_switch", {"tab":"chart"}),                                                              # 0
+        ev(1000, "occupation_add", {"name":"Dressing","description":"She wants to dress without the aide."}),  # 1
+        ev(1400, "occupation_add", {"name":"Bathing","description":"She wants to shower safely."}),            # 2
+        ev(3000, "classify", {"type":"barrier","excerpt":"pain with overhead reach","entry_id":"ent_1","occIds":["occ_1","occ_2"],
+                              "occupations":["Dressing","Bathing"],"occupation":"Dressing; Bathing","mechanism":"limited shoulder flexion",
+                              "aspect":None,"src":"fl_ch_pain","source":"Initial Evaluation - Sensory/pain"}),               # 3
+        ev(5000, "synthesis_revision", {"version":1,"len":20}),                                               # 4
+        ev(6000, "synthesis_revision", {"version":2,"len":36}),                                               # 5
+        ev(40000,"synthesis_revision", {"version":3,"len":62}),                                               # 6 (after a pause item)
+        ev(41000,"barrier_select", {"id":"ent_1","on":True,"entry":"pain with overhead reach","entry_type":"barrier","mechanism":"limited shoulder flexion"}),  # 7
+        ev(42000,"plan_revision", {"scope":"barrier","field":"method","barrier_id":"ent_1","version":1,"len":8}),  # 8
+        ev(42500,"plan_edit", {"scope":"barrier","barrier_id":"ent_1","field":"method","len":8}),             # 9
+        ev(43000,"plan_revision", {"scope":"barrier","field":"method","barrier_id":"ent_1","version":2,"len":20}), # 10
+        ev(43500,"plan_edit", {"scope":"barrier","barrier_id":"ent_1","field":"method","len":20}),            # 11
+        ev(44000,"session_resumed", {"gap_wall_ms":90000,"resumed_at_t":43800}),                             # 12
+    ]
+    items = [
+        {"item_id":"it1","index":0,"kind":"action","action":{"kind":"occupation_add","event_indices":[1]},"clip_start_t":0,"clip_end_t":1000,"anchor_t":1000},
+        {"item_id":"it2","index":1,"kind":"action","action":{"kind":"occupation_add","event_indices":[2]},"clip_start_t":1000,"clip_end_t":1400,"anchor_t":1400},
+        {"item_id":"it3","index":2,"kind":"action","action":{"kind":"classify","event_indices":[3]},"clip_start_t":1400,"clip_end_t":3000,"anchor_t":3000},
+        {"item_id":"it4","index":3,"kind":"action","action":{"kind":"synthesis_revision","event_indices":[4,5]},"clip_start_t":3000,"clip_end_t":6000,"anchor_t":6000},
+        {"item_id":"it5","index":4,"kind":"pause","clip_start_t":6000,"clip_end_t":38000,"still_start_t":7000,"still_ms":31000,"anchor_t":7000},
+        {"item_id":"it6","index":5,"kind":"action","action":{"kind":"synthesis_revision","event_indices":[6]},"clip_start_t":38000,"clip_end_t":40000,"anchor_t":40000},
+        {"item_id":"it7","index":6,"kind":"action","action":{"kind":"barrier_select","event_indices":[7]},"clip_start_t":40000,"clip_end_t":41000,"anchor_t":41000},
+        {"item_id":"it8","index":7,"kind":"action","action":{"kind":"plan_revision","event_indices":[8,10]},"clip_start_t":41000,"clip_end_t":43000,"anchor_t":43000},
+    ]
+    def u(text, t, item, kind, rec, ci, akind):
+        return {"text":text,"case_relative_t":t,"session_offset_t":offset+t,"paused":None,"kind":"final","item_id":item,"item_kind":kind,
+                "action_kind":akind,"rec_id":rec,"chunk_index":ci}
+    rta = [
+        u("I wanted the medical picture first.", 3000, "it3", "action", "1_it3_r1", 0, "classify"),
+        u("The reach problem touches both dressing and bathing.", 3000, "it3", "action", "1_it3_r1", 1, "classify"),
+        u("I was weighing whether she could stay home.", 7000, "it5", "pause", "1_it5_r2", 0, None),
+        u("I chose reach because dressing depends on it.", 43000, "it8", "action", "1_it8_r3", 0, "plan_revision"),
+    ]
+    return {"case_id":1,"case_role":"Case 1","case_name":"Florence","analyzed":True,"case_started_offset_ms":offset,
+            "task":make_task(1,"Case 1","Florence",imp_revs,[],occs,entries,plan,E),
+            "rta":rta, "rta_items":items,
+            "rta_transcription_summary":{"n_recordings":4,"n_silent":0,"audio_ms":40000,"by_status":{"done":3,"error":1},"median_rtf":1.9}}
+
+def make_session_v2(sub_id, group, year):
+    return {"schema":"ot_prof_reasoning_v2","export_kind":"final","study_id":sub_id,"generated_at":"2026-11-11T00:00:00Z",
+            "session":{"group":group,"year_in_program":year,"session_started_at_ms":1000},
+            "cases":[{"case_id":"practice","case_role":"Practice","case_name":"Patricia","analyzed":False,"task":None,"rta":[]},
+                     florence_case_v2(offset=60000)]}
+
+# =================== REFERENCE PARSE (mirror of R) ===================
+from collections import Counter
+
+COLS=["participant_id","group","year_in_program","case_id","case_name","line_index","time_ms",
+      "session_offset_ms","stream","kind","has_text","segment_index",
+      "text","occupation","source","excerpt","aspect","otpf_type","barrier_on","paused",
+      "event_index","item_id","item_kind","rec_id","chunk_index","run_events","removed_sentences"]
+QA_EXTRA = {}
+
+def sentence_delta(curr, prev):
+    """Sentences in curr not in prev (multiset difference, order kept)."""
+    cnt = Counter(split_sentences(prev)); out = []
+    for s in split_sentences(curr):
+        if cnt[s] > 0: cnt[s] -= 1
+        else: out.append(s)
+    return out
+
+def parse_session(doc, source_file, line_mode="sentence", plan_mode="final"):
     pid = doc.get("study_id") or os.path.splitext(os.path.basename(source_file))[0]
     sess = doc.get("session",{}) or {}
     group = sess.get("group"); year = sess.get("year_in_program")
@@ -147,117 +227,163 @@ def parse_session(doc, source_file):
         cid=case.get("case_id"); cname=case.get("case_name")
         offset=case.get("case_started_offset_ms") or 0
         task=case.get("task") or {}
-        imp_rev={r.get("version"):r.get("text") for r in (task.get("synthesis",{}).get("impression_revisions") or [])}
-        plan=task.get("intervention_plan",{}) or {}
         events=task.get("event_log",[]) or []
-        # last plan_edit index per (scope,barrier_id,field)
+        plan=task.get("intervention_plan",{}) or {}
+        items=case.get("rta_items") or []
+        n_ev=len(events)
+        has_plan_rev=any(e.get("kind")=="plan_revision" for e in events)
+        pmode="delta" if (plan_mode=="delta" and has_plan_rev) else "final"   # v1 logs fall back to final
+        # think-aloud item covering each event (event_indices are 0-based)
+        ev_item=[None]*n_ev
+        for it in items:
+            for j in ((it.get("action") or {}).get("event_indices") or []):
+                if j is not None and j < n_ev: ev_item[j]=it.get("item_id")
+        ts=case.get("rta_transcription_summary")
+        if ts is not None:
+            bs=ts.get("by_status") or {}
+            ok={"done","empty","not_transcribed_practice","not_transcribed_silent"}
+            QA_EXTRA[(pid,cid)]={"n_rec":ts.get("n_recordings") or 0,"lost":sum(v for k,v in bs.items() if k not in ok)}
+        imp_rev={str(r.get("version")):r.get("text") for r in ((task.get("synthesis") or {}).get("impression_revisions") or [])}
+        plan_rev={str(r.get("version")):r.get("text") for r in (plan.get("revisions") or [])}
+        # editing runs
+        run_key=[None]*n_ev; run_last={}; run_n={}; cur_key=None; seq_n=0
+        for i,e in enumerate(events):
+            k=e.get("kind"); d=e.get("detail") or {}
+            if k=="tab_switch": continue
+            fld=None
+            if k=="synthesis_revision": fld="imp"
+            elif k=="plan_revision" and pmode=="delta":
+                fld="|".join(["plan", d.get("scope") or "", d.get("field") or "", d.get("barrier_id") or ""])
+            if fld is None: cur_key=None; continue
+            base=(fld+"#item:"+ev_item[i]) if ev_item[i] is not None else None
+            if base is None:
+                if cur_key is None or not cur_key.startswith(fld+"#"): seq_n+=1; base=fld+"#run"+str(seq_n)
+                else: base=cur_key
+            run_key[i]=base; cur_key=base; run_last[base]=i; run_n[base]=run_n.get(base,0)+1
         plan_last={}
         for i,e in enumerate(events):
             if e.get("kind")=="plan_edit":
                 d=e.get("detail") or {}
-                key=(d.get("scope"), d.get("barrier_id") or "", d.get("field"))
-                plan_last[key]=i
+                plan_last["|".join([d.get("scope") or "", d.get("barrier_id") or "", d.get("field") or ""])]=i
         case_rows=[]
+        def mk(t, k, txt, seg, meta, i, itm, ikind, rec=None, ci=None, run_events=None, removed=None, stream="action", paused=None):
+            has=bool(txt is not None and str(txt).strip())
+            r={"participant_id":pid,"group":group,"year_in_program":year,"case_id":cid,"case_name":cname,
+               "time_ms":t,"session_offset_ms":(offset+t) if t is not None else None,
+               "stream":stream,"kind":k,"segment_index":seg,"text":(str(txt) if has else ""),"has_text":has,
+               "event_index":i,"item_id":itm,"item_kind":ikind,"rec_id":rec,"chunk_index":ci,
+               "run_events":run_events,"removed_sentences":removed,"paused":paused}
+            r.update(meta); return r
+        def emit(i, t, k, txt, segmentable, meta, run_events=None, removed=None, segments=None):
+            itm=ev_item[i]; ikind=None if itm is None else "action"; ei=i+1   # 1-based like R
+            if segments is not None and line_mode=="sentence" and len(segments):
+                for si,s in enumerate(segments): case_rows.append((t,0,ei,mk(t,k,s,si+1,meta,ei,itm,ikind,run_events=run_events,removed=removed)))
+            elif segmentable and line_mode=="sentence" and txt is not None and str(txt).strip():
+                for si,s in enumerate(split_sentences(txt)): case_rows.append((t,0,ei,mk(t,k,s,si+1,meta,ei,itm,ikind,run_events=run_events,removed=removed)))
+            else:
+                case_rows.append((t,0,ei,mk(t,k,txt,1,meta,ei,itm,ikind,run_events=run_events,removed=removed)))
+        prev_text={}
         for i,e in enumerate(events):
             k=e.get("kind"); d=e.get("detail") or {}; t=e.get("t")
-            text=None; segmentable=False
-            meta={"occupation":(d.get("occupation") or (d.get("name") if k=="occupation_add" else None)),
-                  "source":d.get("source"),"excerpt":d.get("excerpt"),
+            meta={"occupation":d.get("occupation"),"source":d.get("source"),"excerpt":d.get("excerpt"),
                   "aspect":d.get("aspect"),"otpf_type":d.get("type"),
                   "barrier_on":(d.get("on") if k=="barrier_select" else None)}
-            # Occupation is a CODED reasoning line now: the description is the coded
-            # text (sentence-split), the short name rides along in the occupation column.
-            if k=="occupation_add": text=d.get("description") or d.get("name"); segmentable=True
-            elif k=="classify": text=d.get("mechanism")
-            elif k=="desired_outcome_add": text=d.get("text")
-            elif k=="synthesis_revision": text=imp_rev.get(d.get("version")); segmentable=True
+            if k=="occupation_add":
+                meta["occupation"]=d.get("name") or meta["occupation"]
+                emit(i,t,k,d.get("description") or d.get("name"),True,meta)
+            elif k=="classify": emit(i,t,k,d.get("mechanism"),False,meta)
+            elif k=="desired_outcome_add": emit(i,t,k,d.get("text"),False,meta)
+            elif k in ("synthesis_revision","plan_revision") and run_key[i] is not None:
+                key=run_key[i]
+                if run_last[key]!=i: continue
+                fld=key.split("#")[0]
+                curr=(imp_rev if k=="synthesis_revision" else plan_rev).get(str(d.get("version"))) or ""
+                prev=prev_text.get(fld,"")
+                delta=sentence_delta(curr,prev); removed=len(sentence_delta(prev,curr)); prev_text[fld]=curr
+                emit(i,t,k,(" ".join(delta) if delta else None),True,meta,run_n[key],removed,segments=delta)
+            elif k=="plan_revision": continue
             elif k=="plan_edit":
-                key=(d.get("scope"), d.get("barrier_id") or "", d.get("field"))
-                if plan_last.get(key)!=i:
-                    continue   # skip intermediate edits; only final text per field
+                if pmode=="delta": continue
+                key="|".join([d.get("scope") or "", d.get("barrier_id") or "", d.get("field") or ""])
+                if plan_last.get(key)!=i: continue
                 if d.get("scope")=="barrier" or d.get("barrier_id"):
-                    text=(plan.get("perBarrier",{}).get(d.get("barrier_id"),{}) or {}).get(d.get("field"))
-                else:
-                    text=plan.get(d.get("field"))
-                segmentable=True
-            # else: no-text kinds -> text stays None
-            def base(txt, seg):
-                r={"participant_id":pid,"group":group,"year_in_program":year,"case_id":cid,"case_name":cname,
-                   "time_ms":t,"session_offset_ms":(offset+t) if t is not None else None,
-                   "stream":"action","kind":k,"segment_index":seg,
-                   "text":(txt or ""),"has_text":bool(txt and str(txt).strip())}
-                r.update(meta); r["paused"]=None
-                return r
-            if segmentable and text:
-                for si,sent in enumerate(split_sentences(text)):
-                    case_rows.append((t,0,i,base(sent,si+1)))
-            else:
-                case_rows.append((t,0,i,base(text,1)))
-        # RTA
-        for j,u in enumerate(case.get("rta") or []):
-            t=u.get("case_relative_t")
-            r={"participant_id":pid,"group":group,"year_in_program":year,"case_id":cid,"case_name":cname,
-               "time_ms":t,"session_offset_ms":u.get("session_offset_t"),
-               "stream":"rta","kind":"rta_utterance","segment_index":1,
-               "text":(u.get("text") or ""),"has_text":bool((u.get("text") or "").strip()),
-               "occupation":None,"source":None,"excerpt":None,"aspect":None,"otpf_type":None,
-               "barrier_on":None,"paused":u.get("paused")}
-            case_rows.append((t,1,10000+j,r))
-        # sort by time, then action-before-rta, then original order; assign line_index
+                    txt=((plan.get("perBarrier") or {}).get(d.get("barrier_id")) or {}).get(d.get("field"))
+                else: txt=plan.get(d.get("field"))
+                emit(i,t,k,txt,True,meta)
+            else: emit(i,t,k,None,False,meta)
+        rta=case.get("rta") or []
+        blank={"occupation":None,"source":None,"excerpt":None,"aspect":None,"otpf_type":None,"barrier_on":None}
+        if line_mode=="event" and rta and rta[0].get("rec_id") is not None:
+            recs=[]
+            for x in rta:
+                rid=x.get("rec_id") or ""
+                if rid not in recs: recs.append(rid)
+            for rj,rid in enumerate(recs,1):
+                us=[x for x in rta if (x.get("rec_id") or "")==rid]; u1=us[0]; t=u1.get("case_relative_t")
+                txt=" ".join((x.get("text") or "").strip() for x in us)
+                r=mk(t,"rta_utterance",txt,1,blank,None,u1.get("item_id"),u1.get("item_kind"),rec=rid,stream="rta",paused=u1.get("paused"))
+                r["session_offset_ms"]=u1.get("session_offset_t"); case_rows.append((t,1,10000+rj,r))
+        else:
+            for j,x in enumerate(rta,1):
+                t=x.get("case_relative_t")
+                r=mk(t,"rta_utterance",x.get("text"),1,blank,None,x.get("item_id"),x.get("item_kind"),rec=x.get("rec_id"),ci=x.get("chunk_index"),stream="rta",paused=x.get("paused"))
+                r["session_offset_ms"]=x.get("session_offset_t"); case_rows.append((t,1,10000+j,r))
         case_rows.sort(key=lambda x:(x[0] if x[0] is not None else 0, x[1], x[2]))
         for idx,(_,_,_,r) in enumerate(case_rows,1):
-            r["line_index"]=idx
-            rows.append(r)
+            r["line_index"]=idx; rows.append(r)
     return rows
 
-COLS=["participant_id","group","year_in_program","case_id","case_name","line_index",
-      "time_ms","session_offset_ms","stream","kind","has_text","segment_index",
-      "text","occupation","source","excerpt","aspect","otpf_type","barrier_on","paused"]
+def _cell(v):
+    if v is None: return ""
+    if isinstance(v,bool): return "True" if v else "False"
+    return v
 
 def write_csv(rows, path):
     import csv
     with open(path,"w",newline="",encoding="utf-8") as f:
         w=csv.DictWriter(f, fieldnames=COLS, extrasaction="ignore"); w.writeheader()
-        for r in rows: w.writerow({c:("" if r.get(c) is None else r.get(c)) for c in COLS})
+        for r in rows: w.writerow({c:_cell(r.get(c)) for c in COLS})
 
+QA_COLS=["participant_id","case_id","n_action_rows","n_action_text","n_rta","rta_empty_FLAG","n_rta_recordings","rta_not_transcribed"]
 def qa_rows(all_rows):
     from collections import defaultdict
     agg=defaultdict(lambda:{"n_events":0,"n_action_text":0,"n_rta":0})
     for r in all_rows:
-        key=(r["participant_id"],r["case_id"])
-        a=agg[key]
-        if r["stream"]=="action": a["n_events"]+=1; a["n_action_text"]+= (1 if r["has_text"] else 0)
-        else: a["n_rta"]+= 1
+        a=agg[(r["participant_id"],r["case_id"])]
+        if r["stream"]=="action": a["n_events"]+=1; a["n_action_text"]+=(1 if r["has_text"] else 0)
+        else: a["n_rta"]+=1
     out=[]
-    for (pid,cid),a in agg.items():
-        out.append({"participant_id":pid,"case_id":cid,"n_action_rows":a["n_events"],
-                    "n_action_text":a["n_action_text"],"n_rta":a["n_rta"],
-                    "rta_empty_FLAG":(a["n_rta"]==0)})
+    for (pid,cid),a in sorted(agg.items(), key=lambda kv:(str(kv[0][0]),str(kv[0][1]))):
+        x=QA_EXTRA.get((pid,cid))
+        out.append({"participant_id":pid,"case_id":cid,"n_action_rows":a["n_events"],"n_action_text":a["n_action_text"],
+                    "n_rta":a["n_rta"],"rta_empty_FLAG":(a["n_rta"]==0),
+                    "n_rta_recordings":(x["n_rec"] if x else None),"rta_not_transcribed":(x["lost"] if x else None)})
     return out
 
 def write_qa(qrows, path):
     import csv
-    cols=["participant_id","case_id","n_action_rows","n_action_text","n_rta","rta_empty_FLAG"]
     with open(path,"w",newline="",encoding="utf-8") as f:
-        w=csv.DictWriter(f,fieldnames=cols); w.writeheader()
-        for r in qrows: w.writerow(r)
+        w=csv.DictWriter(f,fieldnames=QA_COLS); w.writeheader()
+        for r in qrows: w.writerow({c:_cell(r.get(c)) for c in QA_COLS})
 
-if __name__=="__main__":
-    os.makedirs(SAMPLES,exist_ok=True); os.makedirs(EXPECT,exist_ok=True)
-    s1=make_session("P001","faculty","NA")
-    s2=make_session("P014","student","2", empty_rta_yvonne=True)  # simulates a failed-transcription case
-    json.dump(s1, open(os.path.join(SAMPLES,"ot_session_P001.json"),"w"), indent=1)
-    json.dump(s2, open(os.path.join(SAMPLES,"ot_session_P014.json"),"w"), indent=1)
+def build_expected(line_mode, plan_mode, outdir):
+    QA_EXTRA.clear(); os.makedirs(outdir, exist_ok=True)
     allrows=[]
     for fn in sorted(os.listdir(SAMPLES)):
         if not fn.endswith(".json"): continue
-        doc=json.load(open(os.path.join(SAMPLES,fn)))
-        allrows += parse_session(doc, fn)
+        allrows += parse_session(json.load(open(os.path.join(SAMPLES,fn))), fn, line_mode, plan_mode)
     corpus=[r for r in allrows if r["has_text"]]
-    write_csv(allrows, os.path.join(EXPECT,"ona_events_full.csv"))
-    write_csv(corpus,  os.path.join(EXPECT,"ncoder_corpus.csv"))
-    write_qa(qa_rows(allrows), os.path.join(EXPECT,"qa_summary.csv"))
-    print(f"rows total={len(allrows)} corpus(text)={len(corpus)}")
-    print("sample corpus rows:")
-    for r in corpus[:6]:
-        print(f"  [{r['participant_id']}|{r['case_id']}|{r['kind']}|t={r['time_ms']}] {r['text'][:60]}")
+    write_csv(allrows, os.path.join(outdir,"ona_events_full.csv"))
+    write_csv(corpus,  os.path.join(outdir,"ncoder_corpus.csv"))
+    write_qa(qa_rows(allrows), os.path.join(outdir,"qa_summary.csv"))
+    return allrows, corpus
+
+if __name__=="__main__":
+    os.makedirs(SAMPLES,exist_ok=True); os.makedirs(EXPECT,exist_ok=True)
+    json.dump(make_session("P001","faculty","NA"), open(os.path.join(SAMPLES,"ot_session_P001.json"),"w"), indent=1)
+    json.dump(make_session("P014","student","2", empty_rta_yvonne=True), open(os.path.join(SAMPLES,"ot_session_P014.json"),"w"), indent=1)  # failed-transcription case
+    json.dump(make_session_v2("P021","2","NA"), open(os.path.join(SAMPLES,"ot_session_P021_v2.json"),"w"), indent=1)
+    for lm, pm, d in [("sentence","final",EXPECT), ("event","final",os.path.join(HERE,"expected_event_lines")),
+                      ("sentence","delta",os.path.join(HERE,"expected_plan_delta"))]:
+        allrows, corpus = build_expected(lm, pm, d)
+        print(f"{lm}/{pm}: rows total={len(allrows)} corpus(text)={len(corpus)} -> {os.path.relpath(d, HERE)}")

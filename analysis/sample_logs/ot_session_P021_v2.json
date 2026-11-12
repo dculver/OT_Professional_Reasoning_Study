@@ -1,0 +1,432 @@
+{
+ "schema": "ot_prof_reasoning_v2",
+ "export_kind": "final",
+ "study_id": "P021",
+ "generated_at": "2026-11-11T00:00:00Z",
+ "session": {
+  "group": "2",
+  "year_in_program": "NA",
+  "session_started_at_ms": 1000
+ },
+ "cases": [
+  {
+   "case_id": "practice",
+   "case_role": "Practice",
+   "case_name": "Patricia",
+   "analyzed": false,
+   "task": null,
+   "rta": []
+  },
+  {
+   "case_id": 1,
+   "case_role": "Case 1",
+   "case_name": "Florence",
+   "analyzed": true,
+   "case_started_offset_ms": 60000,
+   "task": {
+    "case_id": 1,
+    "case_role": "Case 1",
+    "case_name": "Florence",
+    "synthesis": {
+     "impression": "Florence has reduced shoulder range. She fears a nursing home.",
+     "impression_last_edit": null,
+     "impression_revisions": [
+      {
+       "version": 1,
+       "text": "Florence has reduced",
+       "ts": 1
+      },
+      {
+       "version": 2,
+       "text": "Florence has reduced shoulder range.",
+       "ts": 2
+      },
+      {
+       "version": 3,
+       "text": "Florence has reduced shoulder range. She fears a nursing home.",
+       "ts": 3
+      }
+     ],
+     "desired_outcomes": []
+    },
+    "occupations": [
+     {
+      "id": "occ_1",
+      "name": "Dressing",
+      "description": "She wants to dress without the aide."
+     },
+     {
+      "id": "occ_2",
+      "name": "Bathing",
+      "description": "She wants to shower safely."
+     }
+    ],
+    "entries": [
+     {
+      "id": "ent_1",
+      "type": "barrier",
+      "excerpt": "pain with overhead reach",
+      "provenance_src": "fl_ch_pain",
+      "mechanism": "limited shoulder flexion",
+      "otpf4_aspect": null,
+      "occupation_ids": [
+       "occ_1",
+       "occ_2"
+      ],
+      "ts": 1
+     }
+    ],
+    "intervention_plan": {
+     "selectedBarrierIds": [
+      "ent_1"
+     ],
+     "perBarrier": {
+      "ent_1": {
+       "approach": "Restore reach.",
+       "method": "Pulleys. Shelf reach.",
+       "grading": "Raise height."
+      }
+     },
+     "prioritization": "Reach gates dressing.",
+     "goal": "Dress in 3 weeks.",
+     "immediate": "Sleep.",
+     "revisions": [
+      {
+       "version": 1,
+       "scope": "barrier",
+       "field": "method",
+       "barrier_id": "ent_1",
+       "text": "Pulleys.",
+       "ts": 1
+      },
+      {
+       "version": 2,
+       "scope": "barrier",
+       "field": "method",
+       "barrier_id": "ent_1",
+       "text": "Pulleys. Shelf reach.",
+       "ts": 2
+      }
+     ]
+    },
+    "event_log": [
+     {
+      "t": 500,
+      "t_clock": "00:00.5",
+      "kind": "tab_switch",
+      "detail": {
+       "tab": "chart"
+      }
+     },
+     {
+      "t": 1000,
+      "t_clock": "00:01.0",
+      "kind": "occupation_add",
+      "detail": {
+       "name": "Dressing",
+       "description": "She wants to dress without the aide."
+      }
+     },
+     {
+      "t": 1400,
+      "t_clock": "00:01.4",
+      "kind": "occupation_add",
+      "detail": {
+       "name": "Bathing",
+       "description": "She wants to shower safely."
+      }
+     },
+     {
+      "t": 3000,
+      "t_clock": "00:03.0",
+      "kind": "classify",
+      "detail": {
+       "type": "barrier",
+       "excerpt": "pain with overhead reach",
+       "entry_id": "ent_1",
+       "occIds": [
+        "occ_1",
+        "occ_2"
+       ],
+       "occupations": [
+        "Dressing",
+        "Bathing"
+       ],
+       "occupation": "Dressing; Bathing",
+       "mechanism": "limited shoulder flexion",
+       "aspect": null,
+       "src": "fl_ch_pain",
+       "source": "Initial Evaluation - Sensory/pain"
+      }
+     },
+     {
+      "t": 5000,
+      "t_clock": "00:05.0",
+      "kind": "synthesis_revision",
+      "detail": {
+       "version": 1,
+       "len": 20
+      }
+     },
+     {
+      "t": 6000,
+      "t_clock": "00:06.0",
+      "kind": "synthesis_revision",
+      "detail": {
+       "version": 2,
+       "len": 36
+      }
+     },
+     {
+      "t": 40000,
+      "t_clock": "00:40.0",
+      "kind": "synthesis_revision",
+      "detail": {
+       "version": 3,
+       "len": 62
+      }
+     },
+     {
+      "t": 41000,
+      "t_clock": "00:41.0",
+      "kind": "barrier_select",
+      "detail": {
+       "id": "ent_1",
+       "on": true,
+       "entry": "pain with overhead reach",
+       "entry_type": "barrier",
+       "mechanism": "limited shoulder flexion"
+      }
+     },
+     {
+      "t": 42000,
+      "t_clock": "00:42.0",
+      "kind": "plan_revision",
+      "detail": {
+       "scope": "barrier",
+       "field": "method",
+       "barrier_id": "ent_1",
+       "version": 1,
+       "len": 8
+      }
+     },
+     {
+      "t": 42500,
+      "t_clock": "00:42.5",
+      "kind": "plan_edit",
+      "detail": {
+       "scope": "barrier",
+       "barrier_id": "ent_1",
+       "field": "method",
+       "len": 8
+      }
+     },
+     {
+      "t": 43000,
+      "t_clock": "00:43.0",
+      "kind": "plan_revision",
+      "detail": {
+       "scope": "barrier",
+       "field": "method",
+       "barrier_id": "ent_1",
+       "version": 2,
+       "len": 20
+      }
+     },
+     {
+      "t": 43500,
+      "t_clock": "00:43.5",
+      "kind": "plan_edit",
+      "detail": {
+       "scope": "barrier",
+       "barrier_id": "ent_1",
+       "field": "method",
+       "len": 20
+      }
+     },
+     {
+      "t": 44000,
+      "t_clock": "00:44.0",
+      "kind": "session_resumed",
+      "detail": {
+       "gap_wall_ms": 90000,
+       "resumed_at_t": 43800
+      }
+     }
+    ]
+   },
+   "rta": [
+    {
+     "text": "I wanted the medical picture first.",
+     "case_relative_t": 3000,
+     "session_offset_t": 63000,
+     "paused": null,
+     "kind": "final",
+     "item_id": "it3",
+     "item_kind": "action",
+     "action_kind": "classify",
+     "rec_id": "1_it3_r1",
+     "chunk_index": 0
+    },
+    {
+     "text": "The reach problem touches both dressing and bathing.",
+     "case_relative_t": 3000,
+     "session_offset_t": 63000,
+     "paused": null,
+     "kind": "final",
+     "item_id": "it3",
+     "item_kind": "action",
+     "action_kind": "classify",
+     "rec_id": "1_it3_r1",
+     "chunk_index": 1
+    },
+    {
+     "text": "I was weighing whether she could stay home.",
+     "case_relative_t": 7000,
+     "session_offset_t": 67000,
+     "paused": null,
+     "kind": "final",
+     "item_id": "it5",
+     "item_kind": "pause",
+     "action_kind": null,
+     "rec_id": "1_it5_r2",
+     "chunk_index": 0
+    },
+    {
+     "text": "I chose reach because dressing depends on it.",
+     "case_relative_t": 43000,
+     "session_offset_t": 103000,
+     "paused": null,
+     "kind": "final",
+     "item_id": "it8",
+     "item_kind": "action",
+     "action_kind": "plan_revision",
+     "rec_id": "1_it8_r3",
+     "chunk_index": 0
+    }
+   ],
+   "rta_items": [
+    {
+     "item_id": "it1",
+     "index": 0,
+     "kind": "action",
+     "action": {
+      "kind": "occupation_add",
+      "event_indices": [
+       1
+      ]
+     },
+     "clip_start_t": 0,
+     "clip_end_t": 1000,
+     "anchor_t": 1000
+    },
+    {
+     "item_id": "it2",
+     "index": 1,
+     "kind": "action",
+     "action": {
+      "kind": "occupation_add",
+      "event_indices": [
+       2
+      ]
+     },
+     "clip_start_t": 1000,
+     "clip_end_t": 1400,
+     "anchor_t": 1400
+    },
+    {
+     "item_id": "it3",
+     "index": 2,
+     "kind": "action",
+     "action": {
+      "kind": "classify",
+      "event_indices": [
+       3
+      ]
+     },
+     "clip_start_t": 1400,
+     "clip_end_t": 3000,
+     "anchor_t": 3000
+    },
+    {
+     "item_id": "it4",
+     "index": 3,
+     "kind": "action",
+     "action": {
+      "kind": "synthesis_revision",
+      "event_indices": [
+       4,
+       5
+      ]
+     },
+     "clip_start_t": 3000,
+     "clip_end_t": 6000,
+     "anchor_t": 6000
+    },
+    {
+     "item_id": "it5",
+     "index": 4,
+     "kind": "pause",
+     "clip_start_t": 6000,
+     "clip_end_t": 38000,
+     "still_start_t": 7000,
+     "still_ms": 31000,
+     "anchor_t": 7000
+    },
+    {
+     "item_id": "it6",
+     "index": 5,
+     "kind": "action",
+     "action": {
+      "kind": "synthesis_revision",
+      "event_indices": [
+       6
+      ]
+     },
+     "clip_start_t": 38000,
+     "clip_end_t": 40000,
+     "anchor_t": 40000
+    },
+    {
+     "item_id": "it7",
+     "index": 6,
+     "kind": "action",
+     "action": {
+      "kind": "barrier_select",
+      "event_indices": [
+       7
+      ]
+     },
+     "clip_start_t": 40000,
+     "clip_end_t": 41000,
+     "anchor_t": 41000
+    },
+    {
+     "item_id": "it8",
+     "index": 7,
+     "kind": "action",
+     "action": {
+      "kind": "plan_revision",
+      "event_indices": [
+       8,
+       10
+      ]
+     },
+     "clip_start_t": 41000,
+     "clip_end_t": 43000,
+     "anchor_t": 43000
+    }
+   ],
+   "rta_transcription_summary": {
+    "n_recordings": 4,
+    "n_silent": 0,
+    "audio_ms": 40000,
+    "by_status": {
+     "done": 3,
+     "error": 1
+    },
+    "median_rtf": 1.9
+   }
+  }
+ ]
+}
