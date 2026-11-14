@@ -57,9 +57,10 @@ CONFIG.TA_TEXT = {
   intro_title: "Talk through your thinking",
   intro_body:
     "You will now see a list of the things you did in this case, along with any long pauses. " +
-    "Select an item to watch that part of your session play back. When it finishes, press <b>Record</b>, " +
+    "The items play one at a time, in the order you did them. Each one shows that part of your session. When it finishes, press <b>Record</b>, " +
     "explain what you were thinking at that point, then press <b>Done</b>. If you have nothing to add for an item, " +
-    "press <b>Nothing to add</b>. Every item needs one or the other before you can finish. " +
+    "press <b>Nothing to add</b>. Every item needs one or the other, in order, before you can finish. " +
+    "You can watch an earlier item again, but you cannot add to it once you have moved on. " +
     "If about {secs} seconds pass without any sound while you are recording, a short prompt will remind you to keep talking.",
   /* Approved wording (2026-09-10), with its two em-dashes replaced by parentheses to meet the ASCII rule. */
   reasoning_reminder:
@@ -75,6 +76,11 @@ CONFIG.TA_TEXT = {
   watch_first: "Watch this part of your session first. Record and Nothing to add become available when it finishes.",
   finish_confirm: "You have responded to every item. Finish the think-aloud for this case? You will not be able to return to it.",
   finish_button: "Finish think-aloud",
+  /* approved 2026-11-12: responses strictly in action order (wording <<SIGN-OFF>>) */
+  in_order: "Please respond to the items in order. This one opens when you reach it.",
+  already_answered: "You already responded to this item. You can watch it again, but you cannot add to it now. Your next item is waiting in the list.",
+  slip_fix: "You chose Nothing to add for this item. If that was a mistake, you can press Record now, before you respond to the next item.",
+  all_done_note: "Every item has a response. You can watch any item again, or press {finish} when you are ready.",
   label: {
     occupation_add:         'You added the occupation "{name}"',
     classify:               'You marked "{excerpt}" as a {valence} for {occupations}',
@@ -934,6 +940,12 @@ const Clip = (function(){
    list on the right (always visible), a control bar at the bottom.
    Per item: watch the clip -> Record ... Done, or Nothing to add.
    Every item needs a response before Finish is enabled (approved 2026-11-11).
+   STRICT ORDER (Dennis, 2026-11-12): items are answered only in action order, so
+   narration is never given about an action after narrating a later one. Earlier
+   items can be re-watched but not added to. One exception (assumed, pending
+   Dennis's confirmation): the item answered just before can change Nothing to add
+   into a recording until the next item is answered (an accidental click), logged
+   as slip_fix. Later items are locked.
    Record / Nothing to add unlock only after the clip has played to its end
    once, so every participant sees each cue before responding.
    ===================================================================== */
@@ -1031,6 +1043,14 @@ function runThinkAloud(caseObj){
   [info, bPlay, bReplay, bRec, bNothing, recBox, bFinish].forEach(function(n){ bar.appendChild(n); });
 
   function item(){ return TA.current != null ? TA.items[TA.current] : null; }
+  /* the next item awaiting a response (items.length when all are answered) */
+  function frontier(){ for(var i = 0; i < TA.items.length; i++){ if(!TA.items[i].response) return i; } return TA.items.length; }
+  /* a slip fix is allowed only on the most recently answered item, only from Nothing to add,
+     and only while the item after it is still unanswered */
+  function slipFixable(it){ return !!it && it.response === "nothing_to_add" && TA.last_answered_id === it.item_id
+    && it.index === frontier() - 1; }
+  function canRecord(it){ return !!it && (it.index === frontier() || slipFixable(it)); }
+  function canNothing(it){ return !!it && it.index === frontier(); }
   /* a pause is shown as its span (start to end), matching where its narration is anchored */
   function itemTime(it){ return it.kind === "pause" && it.still_start_t != null ? mmss(it.still_start_t) + ' to ' + mmss(it.clip_end_t) : mmss(it.clip_end_t); }
   function nResponded(){ return TA.items.filter(function(i){ return !!i.response; }).length; }
@@ -1045,20 +1065,20 @@ function runThinkAloud(caseObj){
     bPlay.textContent = (mode === "paused") ? "Play" : "Pause";
     enable(bPlay, !!it && (mode === "playing" || mode === "paused"));
     enable(bReplay, !!it && mode !== "saving");
-    enable(bRec, !!it && !TA.no_mic && it.watched && (mode === "ready" || mode === "idle"));
-    enable(bNothing, !!it && it.watched && it.response !== "recorded" && (mode === "ready" || mode === "idle"));
+    enable(bRec, !!it && !TA.no_mic && it.watched && canRecord(it) && (mode === "ready" || mode === "idle"));
+    enable(bNothing, !!it && it.watched && canNothing(it) && (mode === "ready" || mode === "idle"));
     enable(bDone, mode === "recording");
     var left = n - nResponded();
     bFinish.textContent = left ? (X.finish_button + " (" + left + " left)") : X.finish_button;
     enable(bFinish, left === 0 && !rec_);
   }
   function renderList(){
-    var n = TA.items.length, k = nResponded();
+    var n = TA.items.length, k = nResponded(), fr = frontier();
     var rows = TA.items.map(function(it, i){
-      var cur = (i === TA.current), st = it.response === "recorded" ? ["#16a34a","Recorded"] : it.response === "nothing_to_add" ? ["#64748b","Nothing to add"]
-              : it.watched ? ["#d97706","Watched"] : ["#cbd5e1","Not yet"];
-      return '<div class="ta-row" data-i="' + i + '" style="display:flex;gap:9px;align-items:flex-start;padding:9px 12px;border-bottom:1px solid #e2e8f0;cursor:pointer;'
-        + (cur ? 'background:#e0ecf8;' : '') + (it.kind === "pause" ? 'font-style:italic;' : '') + '">'
+      var cur = (i === TA.current), locked = (i > fr && !it.response), st = it.response === "recorded" ? ["#16a34a","Recorded"] : it.response === "nothing_to_add" ? ["#64748b","Nothing to add"]
+              : it.watched ? ["#d97706","Watched"] : locked ? ["#e2e8f0","Not yet"] : ["#2563eb","Up next"];
+      return '<div class="ta-row" data-i="' + i + '"' + (locked ? ' data-locked="1"' : '') + ' style="display:flex;gap:9px;align-items:flex-start;padding:9px 12px;border-bottom:1px solid #e2e8f0;'
+        + (locked ? 'cursor:default;opacity:.5;' : 'cursor:pointer;') + (cur ? 'background:#e0ecf8;' : '') + (it.kind === "pause" ? 'font-style:italic;' : '') + '">'
         + '<span style="flex:0 0 22px;color:#64748b;font-variant-numeric:tabular-nums">' + (i + 1) + '</span>'
         + '<span style="flex:1 1 auto;min-width:0"><span style="display:block;line-height:1.35">' + taEsc(it.label) + '</span>'
         + '<span style="display:flex;gap:6px;align-items:center;margin-top:3px;font-size:11.5px;color:#475569;font-style:normal">'
@@ -1070,7 +1090,9 @@ function runThinkAloud(caseObj){
       + '<div style="margin-top:4px;color:#475569">' + k + ' of ' + n + ' done</div>'
       + '<div style="margin-top:7px;height:7px;background:#e2e8f0;border-radius:4px;overflow:hidden"><div style="height:100%;width:' + (100 * k / n) + '%;background:#16a34a"></div></div></div>'
       + '<div id="ta_rows" style="flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain">' + rows + '</div>';
-    list.querySelectorAll(".ta-row").forEach(function(r){ r.onclick = function(){ select(+r.dataset.i); }; });
+    list.querySelectorAll(".ta-row").forEach(function(r){ r.onclick = function(){
+      if(r.dataset.locked){ ev("locked_click", { index: +r.dataset.i }); showNote(X.in_order, 4000, "info"); return; }
+      select(+r.dataset.i); }; });
     var curRow = list.querySelector('.ta-row[data-i="' + TA.current + '"]'); if(curRow) curRow.scrollIntoView({ block:"nearest" });
   }
   function render(){ renderBar(); renderList(); }
@@ -1078,6 +1100,7 @@ function runThinkAloud(caseObj){
   // ---- playback ----
   function select(i){
     if(mode === "recording" || mode === "saving") return;
+    if(i > frontier() && !TA.items[i].response) return;   /* later items are locked (an answered later item exists only after a lost recording reopened an earlier one) */
     clearTimeout(advanceTimer);
     TA.current = i; var it = item(); it.views++; if(it.first_shown_wall_ms == null) it.first_shown_wall_ms = Date.now();
     ev("item_select", { index: i });
@@ -1094,7 +1117,9 @@ function runThinkAloud(caseObj){
       var it2 = item(); if(!it2 || it2 !== it) return;
       if(!it.watched){ it.watched = true; it.watched_wall_ms = Date.now(); }
       mode = "ready"; ev("clip_end"); render();
-      if(it.kind === "pause") showNote("No clicks, typing, scrolling, or mouse movement for " + Math.round(it.still_ms / 1000) + " seconds here.", 0, "info");
+      if(slipFixable(it)) showNote(X.slip_fix, 0, "info");
+      else if(it.response && frontier() < TA.items.length) showNote(X.already_answered, 0, "info");
+      else if(it.kind === "pause") showNote("No clicks, typing, scrolling, or mouse movement for " + Math.round(it.still_ms / 1000) + " seconds here.", 0, "info");
       Persist.saveNow();
     });
   }
@@ -1104,8 +1129,8 @@ function runThinkAloud(caseObj){
   bNothing.onclick = function(){
     var it = item(); if(!it) return;
     if(!it.watched){ showNote(X.watch_first, 4000, "info"); return; }
-    if(it.response === "recorded") return;
-    it.response = "nothing_to_add"; it.nothing_to_add_wall_ms = Date.now(); ev("nothing_to_add");
+    if(!canNothing(it)) return;
+    it.response = "nothing_to_add"; it.nothing_to_add_wall_ms = Date.now(); TA.last_answered_id = it.item_id; ev("nothing_to_add");
     Persist.saveNow(); advance();
   };
 
@@ -1140,6 +1165,7 @@ function runThinkAloud(caseObj){
   bRec.onclick = function(){
     var it = item(); if(!it) return;
     if(!it.watched){ showNote(X.watch_first, 4000, "info"); return; }
+    if(!canRecord(it)) return;
     ensureMic().then(function(ok){
       if(!ok){ showNote("Your microphone is not available, so please choose Nothing to add for each item.", 6000, "warn"); return; }
       try{ if(mic.ac && mic.ac.state === "suspended") mic.ac.resume(); }catch(e){}
@@ -1192,7 +1218,8 @@ function runThinkAloud(caseObj){
         uiModal({ title: "I did not hear anything", html: X.mic_dead, buttons: [{ label: "OK", value: true, primary: true }] });
         Persist.saveNow(); return;
       }
-      it.response = "recorded"; it.responded_wall_ms = Date.now();
+      if(it.response === "nothing_to_add"){ it.slip_fix_wall_ms = Date.now(); ev("slip_fix", { rec_id: r.rec_id }); }
+      it.response = "recorded"; it.responded_wall_ms = Date.now(); TA.last_answered_id = it.item_id;
       if(analyzed){ Persist.putAudio(r.rec_id, blob); TQ.enqueue(r, blob, { caseId: caseObj.id, itemId: it.item_id }); }
       Persist.saveNow();
       mode = "ready"; advance();
@@ -1203,13 +1230,13 @@ function runThinkAloud(caseObj){
   // ---- flow ----
   function advance(){
     render();
-    var n = TA.items.length, start = (TA.current == null ? 0 : TA.current + 1);
-    for(var k = 0; k < n; k++){ var i = (start + k) % n; if(!TA.items[i].response){
+    var i = frontier();
+    if(i < TA.items.length){
       /* "advancing": Record / Nothing to add stay disabled during the short gap, so a quick
          click cannot add a second recording to the item just finished */
-      mode = "advancing"; render(); advanceTimer = setTimeout(function(){ select(i); }, 800); return; } }
+      mode = "advancing"; render(); advanceTimer = setTimeout(function(){ select(i); }, 800); return; }
     mode = "idle"; render();
-    showNote("Every item has a response. Press " + X.finish_button + " when you are ready, or select any item to add more.", 0, "info");
+    showNote(taFmt(X.all_done_note, { finish: X.finish_button }), 0, "info");
   }
   bFinish.onclick = function(){
     if(nResponded() < TA.items.length || mode === "recording" || mode === "saving") return;
@@ -1239,8 +1266,7 @@ function runThinkAloud(caseObj){
   // ---- intro ----
   function startList(){
     TA.intro_done = true; render();
-    var first = 0; for(var i = 0; i < TA.items.length; i++){ if(!TA.items[i].response){ first = i; break; } }
-    select(first);
+    select(Math.min(frontier(), TA.items.length - 1));
   }
   render();
   if(TA.intro_done){ ensureMic().then(startList); return; }
@@ -1425,7 +1451,11 @@ function caseExport(c, audio){
     rta_events: ta ? ta.events : [],
     rta_phase: ta ? { format: ta.format, started_wall_ms: ta.phase_started_wall_ms, ended_wall_ms: ta.phase_ended_wall_ms,
                       duration_ms: (ta.phase_ended_wall_ms && ta.phase_started_wall_ms) ? ta.phase_ended_wall_ms - ta.phase_started_wall_ms : null,
-                      intro_done: !!ta.intro_done, no_mic: !!ta.no_mic, mic_errors: ta.mic_errors || [] } : null,
+                      intro_done: !!ta.intro_done, no_mic: !!ta.no_mic, mic_errors: ta.mic_errors || [],
+                      order_enforced: true,
+                      n_slip_fixes: (ta.items || []).filter(function(i){ return i.slip_fix_wall_ms != null; }).length,
+                      n_reopened_after_reload: (ta.items || []).filter(function(i){ return i.reopened_after_reload; }).length,
+                      n_locked_clicks: (ta.events || []).filter(function(e){ return e.type === "locked_click"; }).length } : null,
     rta_gap_summary: ta ? ta.gap_summary : null,
     rta_transcription_summary: ta ? transcriptionSummary(ta) : null
   };

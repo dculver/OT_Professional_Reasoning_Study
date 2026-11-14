@@ -1,0 +1,76 @@
+
+===================  ground_response_crossprod  ===================
+function (x, y, z) 
+{
+    UNIT = NULL
+    UNIT_LABEL = NULL
+    eff_call_env <- new.env(parent = environment(ground_effect_function))
+    environment(ground_effect_function) <- eff_call_env
+    assign("UNIT", UNIT, envir = eff_call_env)
+    assign("UNIT_LABEL", UNIT_LABEL, envir = eff_call_env)
+    all_connection_matrices_raw <- list_vec_apply(x, y, ground_effect_function)
+    response_matrices <- Map(function(zi, yi) zi %*% t(yi), z, 
+        y)
+    these_self_connections <- lapply(response_matrices, function(x) {
+        0.5 * (x - diag(diag(x)))
+    })
+    all_connection_matrices <- lapply(seq(all_connection_matrices_raw), 
+        function(i) {
+            all_connection_matrices_raw[[i]] + these_self_connections[[i]]
+        })
+    dir_vecs <- t(sapply(all_connection_matrices, function(x) {
+        dim(x) <- c(1, nrow(x)^2)
+        (x)
+    }))
+    acc_call_env <- new.env(parent = environment(accumulate_unit_vectors_by))
+    environment(accumulate_unit_vectors_by) <- acc_call_env
+    assign("UNIT", UNIT, envir = acc_call_env)
+    assign("UNIT_LABEL", UNIT_LABEL, envir = acc_call_env)
+    dir_vecs <- accumulate_unit_vectors_by(dir_vecs)
+    return(dir_vecs)
+}
+<bytecode: 0x787ffb9118>
+<environment: namespace:tma>
+
+===================  list_vec_apply  ===================
+function (x, y = NULL, fn) 
+{
+    args <- lapply(as.list(match.call())[-1L], eval, parent.frame())
+    names <- names(args) %||% character(length(args))
+    dovec <- names %in% vectorize.args
+    do.call("mapply", c(FUN = FUN, args[dovec], MoreArgs = list(args[!dovec]), 
+        SIMPLIFY = SIMPLIFY, USE.NAMES = USE.NAMES))
+}
+<bytecode: 0x78801a8238>
+<environment: 0x78801b99d8>
+
+===================  colSums.ena.matrix  ===================
+function (x, na.rm = FALSE, dims = 1L, binary = FALSE) 
+{
+    x_mat <- as.matrix(x)
+    if (isTRUE(binary)) {
+        x_mat[x_mat > 0] <- 1
+    }
+    colSums(x_mat)
+}
+<bytecode: 0x787f68fab8>
+<environment: namespace:tma>
+
+===================  _sphere_norm  ===================
+function (x) 
+{
+    x <- as.matrix(x)
+    r <- nrow(x)
+    output <- matrix(0, r, ncol(x))
+    for (p in 1:r) {
+        vlength <- (sum(x[p, ]^2))^(1/2)
+        if (!is.na(vlength)) {
+            if (vlength > 0) {
+                output[p, ] <- (x[p, ]/vlength)
+            }
+        }
+    }
+    return(output)
+}
+<bytecode: 0x788182bd58>
+<environment: namespace:tma>

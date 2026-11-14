@@ -1,0 +1,123 @@
+R: R version 4.6.1 (2026-06-24) | run: 2026-11-14 09:13:57 
+tma version: 0.3.1 
+test data: 40 lines; P1 8, P2 24, P3 8 
+
+===== V0: tma default (counts add up, response line excluded) - baseline ===== 
+  P1: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P2: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P3: MISMATCH (largest difference from the hand-computed answer = 0.500000) 
+----- V0 P3 tma ----- 
+      response
+ground Act1 Act2 Act3 Act4 Mech Talk
+  Act1    0  1.0    0    0  1.0  2.0
+  Act2    0  0.0    1    0  1.5  2.0
+  Act3    0  0.0    0    1  1.0  2.0
+  Act4    0  0.0    0    0  0.0  1.0
+  Mech    0  0.5    1    1  1.0  3.5
+  Talk    0  1.0    1    1  2.5  3.0
+----- V0 P3 hand-computed ----- 
+      response
+ground Act1 Act2 Act3 Act4 Mech Talk
+  Act1    0    1    0    0    1    2
+  Act2    0    0    1    0    1    2
+  Act3    0    0    0    1    1    2
+  Act4    0    0    0    0    0    1
+  Mech    0    0    1    1    1    3
+  Talk    0    1    1    1    2    3
+  P3 same-line codes: Act2->Mech = 1.500, Mech->Act2 = 0.500, Talk->Mech = 2.500 (item-3 talk line carries Talk + Mech) 
+
+===== V1: custom function reproducing the default (checks the custom plumbing) ===== 
+----- shape of tma's arguments to the custom function (first call) ----- 
+ [1] "List of 3"                                                                      " $ g  :List of 8"                                                              
+ [3] "  ..$ : Named num [1:6] 0 0 0 0 0 0"                                            "  .. ..- attr(*, \"names\")= chr [1:6] \"Act1\" \"Act2\" \"Act3\" \"Act4\" ..."
+ [5] "  ..$ : Named num [1:6] 1 0 0 0 0 0"                                            "  .. ..- attr(*, \"names\")= chr [1:6] \"Act1\" \"Act2\" \"Act3\" \"Act4\" ..."
+ [7] "  ..$ : Named num [1:6] 1 0 0 0 0 1"                                            "  .. ..- attr(*, \"names\")= chr [1:6] \"Act1\" \"Act2\" \"Act3\" \"Act4\" ..."
+ [9] "  .. [list output truncated]"                                                   " $ r  :List of 8"                                                              
+[11] "  ..$ : num [1:6] 1 0 0 0 0 0"                                                  "  ..$ : num [1:6] 0 0 0 0 0 1"                                                 
+[13] "  ..$ : num [1:6] 0 1 0 0 0 0"                                                  "  .. [list output truncated]"                                                  
+[15] " $ rig:List of 8"                                                               "  ..$ : Named num [1:6] 1 0 0 0 0 0"                                           
+[17] "  .. ..- attr(*, \"names\")= chr [1:6] \"Act1\" \"Act2\" \"Act3\" \"Act4\" ..." "  ..$ : Named num [1:6] 0 0 0 0 0 1"                                           
+[19] "  .. ..- attr(*, \"names\")= chr [1:6] \"Act1\" \"Act2\" \"Act3\" \"Act4\" ..." "  ..$ : Named num [1:6] 0 1 0 0 0 0"                                           
+[21] "  .. ..- attr(*, \"names\")= chr [1:6] \"Act1\" \"Act2\" \"Act3\" \"Act4\" ..." "  .. [list output truncated]"                                                  
+  P1: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P2: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P3: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P3 same-line codes: Act2->Mech = 1.000, Mech->Act2 = 0.000, Talk->Mech = 2.000 (item-3 talk line carries Talk + Mech) 
+
+===== V2: presence via tma's ground_effect_function hook ===== 
+  P1: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P2: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P3: MISMATCH (largest difference from the hand-computed answer = 0.500000) 
+----- V2 P3 tma ----- 
+      response
+ground Act1 Act2 Act3 Act4 Mech Talk
+  Act1    0  1.0    0    0  1.0  2.0
+  Act2    0  0.0    1    0  1.5  2.0
+  Act3    0  0.0    0    1  1.0  2.0
+  Act4    0  0.0    0    0  0.0  1.0
+  Mech    0  0.5    1    1  1.0  3.5
+  Talk    0  1.0    1    1  2.5  3.0
+----- V2 P3 hand-computed ----- 
+      response
+ground Act1 Act2 Act3 Act4 Mech Talk
+  Act1    0    1    0    0    1    2
+  Act2    0    0    1    0    1    2
+  Act3    0    0    0    1    1    2
+  Act4    0    0    0    0    0    1
+  Mech    0    0    1    1    1    3
+  Talk    0    1    1    1    2    3
+  P3 same-line codes: Act2->Mech = 1.500, Mech->Act2 = 0.500, Talk->Mech = 2.500 (item-3 talk line carries Talk + Mech) 
+
+===== V3: presence (custom function) ===== 
+  P1: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P2: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P3: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P3 same-line codes: Act2->Mech = 1.000, Mech->Act2 = 0.000, Talk->Mech = 2.000 (item-3 talk line carries Talk + Mech) 
+
+===== V4: presence + response line included (same-line codes connect) ===== 
+  P1: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P2: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P3: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P3 same-line codes: Act2->Mech = 2.000, Mech->Act2 = 1.000, Talk->Mech = 2.000 (item-3 talk line carries Talk + Mech) 
+
+===== V5: counts + each item and stream weighted equally ===== 
+  P1: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P2: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P3: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P3 same-line codes: Act2->Mech = 1.000, Mech->Act2 = 0.000, Talk->Mech = 2.000 (item-3 talk line carries Talk + Mech) 
+
+===== V6: presence + each item and stream weighted equally ===== 
+  P1: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P2: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P3: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P3 same-line codes: Act2->Mech = 1.000, Mech->Act2 = 0.000, Talk->Mech = 2.000 (item-3 talk line carries Talk + Mech) 
+
+===== V7: V6 + per-stream windows (actions reach 3 items, talk 2) ===== 
+  P1: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P2: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P3: MATCH (largest difference from the hand-computed answer = 0.000000) 
+  P3 same-line codes: Act2->Mech = 1.000, Mech->Act2 = 0.000, Talk->Mech = 2.000 (item-3 talk line carries Talk + Mech) 
+
+===== After sphere normalization: quiet (P1) vs talkative (P2) ===== 
+link = average normalized action->action connection; share = % of the network that is action->action. 
+Talkativeness-neutral means P1 and P2 rows are equal within a variant. _sqrt = with square-root weighting. 
+----- normalized comparison ----- 
+   variant participant  link share_pct link_sqrt share_sqrt_pct
+1       V0          P1 0.189      10.7     0.250           18.8
+2       V0          P2 0.009       0.0     0.077            1.8
+3       V1          P1 0.189      10.7     0.250           18.8
+4       V1          P2 0.009       0.0     0.077            1.8
+5       V2          P1 0.189      10.7     0.250           18.8
+6       V2          P2 0.038       0.4     0.129            5.0
+7       V3          P1 0.189      10.7     0.250           18.8
+8       V3          P2 0.038       0.4     0.129            5.0
+9       V4          P1 0.160       7.7     0.218           14.3
+10      V4          P2 0.037       0.4     0.124            4.6
+11      V5          P1 0.189      10.7     0.250           18.8
+12      V5          P2 0.040       0.5     0.144            6.3
+13      V6          P1 0.189      10.7     0.250           18.8
+14      V6          P2 0.173       9.0     0.244           17.9
+15      V7          P1 0.158       7.5     0.224           15.0
+16      V7          P2 0.148       6.6     0.219           14.4
+
+Done. Tell Claude probe v2 has run; it will read analysis/tma_probe_out/log_v2.txt. 

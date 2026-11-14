@@ -31,7 +31,11 @@ Advisor: Dr. Robyn Cooper.
 - RTA (retrospective think-aloud): since 2026-11-11, SEGMENTED and cued. After each case
   the participant works through a list of their own actions plus long pauses (>= 20 s of
   no input); each item replays that stretch of the session, then they record a short
-  think-aloud or choose "Nothing to add" (every item needs one). Each recording is
+  think-aloud or choose "Nothing to add" (every item needs one). STRICT ORDER (2026-11-12):
+  items are answered only in action order; earlier items can be re-watched, not added to
+  (one logged exception: the just-answered item may change Nothing to add into a recording
+  before the next item is answered). Add/edit/delete of earlier think-alouds REJECTED
+  (Dennis, 2026-11-14) - do not build. Each recording is
   transcribed by Whisper in a background queue and anchored to its item. ONA/TMA Stream 2 (coded).
 Both feed the network model with a SINGLE SHARED CODEBOOK (required for multimodality).
 NO gaze stream - eye tracking removed 2026-08-31. See decision log A-B.

@@ -1,0 +1,604 @@
+EXPORTS:
+ accumulate
+accumulate_contexts
+accumulate_threads
+adjacency_key
+apply_tensor
+as.network.connection
+as.qe.code
+as.qe.data
+as.qe.horizon
+as.qe.metadata
+as.qe.unit
+as.unordered
+ATTR_NAMES
+colSums.ena.matrix
+context_tensor
+contexts
+conversation_rules
+decay
+find_meta_cols
+is.qe.code
+is.qe.data
+is.qe.horizon
+is.qe.metadata
+is.qe.unit
+namesToAdjacencyKey
+remove_meta_data
+rules
+simple_window
+tma.conversations
+view
+windows_weights 
+
+
+===================  contexts  ===================
+function (x, hoo_rules, units_by = NULL, split_rules = NULL) 
+{
+    x_ <- units(x, units_by)
+    for (r in hoo_rules) {
+        x_ <- hoo(x_, rule = r)
+    }
+    raw_input <- x_$model$raw.input
+    split_expr_valid <- TRUE
+    err_found <- 0
+    tryCatch(expr = rlang::enexpr(split_rules), error = function(e) {
+        err_found <<- 1
+        print(e$message)
+    }, warning = function(w) {
+        err_found <<- 2
+    }, finally = {
+        if (err_found != 0) {
+            split_expr_valid <- FALSE
+        }
+    })
+    if (split_expr_valid) {
+        split_rules_expr <- rlang::enexpr(split_rules)
+        if (!is.null(split_rules_expr)) {
+            unit_contexts <- x_$model$contexts
+            model_units <- x_$`_function.params`$units
+            if (is(split_rules, "function")) {
+                unique_units <- unique(model_units)
+                unit_contexts_res <- apply(unique_units, 1, function(u) {
+                  unit_label <- paste(u, collapse = "::")
+                  res <- do.call(what = split_rules, args = list(unit = u, 
+                    raw_input[unit_contexts[[unit_label]]]))
+                  attr(res, "tma.unit") <- attr(unit_contexts[[unit_label]], 
+                    "tma.unit")
+                  res2 <- lapply(res, function(r) {
+                    r[[ATTR_NAMES$CONTEXT_COL_ID]] <- seq.int(nrow(r))
+                    attr(r, "tma.unit") <- attr(res, "tma.unit")
+                    attr(r, "tma.unit_rows") <- which(r$QEUNIT == 
+                      unit_label)
+                    r
+                  })
+                  res2
+                })
+                names(unit_contexts_res) <- apply(unique_units, 
+                  1, paste, collapse = "::")
+                unit_contexts <- unit_contexts_res
+            }
+            else {
+                if (!inherits(x = split_rules_expr, what = "call")) {
+                  for (i in seq(split_rules_expr)) {
+                    unit_contexts <- lapply(unit_contexts, function(uc) {
+                      lapply(split(x = raw_input[uc, ], by = as.character(split_rules)), 
+                        function(x) {
+                          unit_tbl <- attr(x = uc, "tma.unit")
+                          unit_label <- paste0(unit_tbl, collapse = "::")
+                          x[[ATTR_NAMES$CONTEXT_COL_ID]] <- seq.int(nrow(x))
+                          attr(x = x, which = "tma.unit") <- attr(x = uc, 
+                            "tma.unit")
+                          attr(x = x, which = "tma.unit_rows") <- which(x$QEUNIT == 
+                            unit_label)
+                          x
+                        })
+                    })
+                  }
+                }
+                else {
+                  for (i in seq(split_rules)) {
+                    if (is.name(split_rules[[i]])) {
+                      unit_contexts <- lapply(unit_contexts, 
+                        function(uc) {
+                          split(x = raw_input[uc, ], by = as.character(split_rules[[i]]))
+                        })
+                    }
+                    else {
+                      stop("THIS NEEDS UPDATING (1)")
+                      units_to_split <- model_units[eval(split_rules[[i]][[2]]), 
+                        , which = TRUE]
+                      unit_contexts[units_to_split] <- lapply(unit_contexts[units_to_split], 
+                        split, by = names(split_rules[i]))
+                    }
+                  }
+                }
+            }
+            x_$model$contexts <- unit_contexts
+        }
+        else {
+            unit_contexts <- x_$model$contexts
+            model_units <- x_$`_function.params`$units
+            unique_units <- unique(model_units)
+            unit_contexts_res <- apply(unique_units, 1, function(u) {
+                unit_label <- paste(trimws(u), collapse = "::")
+                res <- raw_input[unit_contexts[[unit_label]]]
+                res[[ATTR_NAMES$CONTEXT_COL_ID]] <- seq.int(nrow(res))
+                attr(res, "tma.unit") <- attr(unit_contexts[[unit_label]], 
+                  "tma.unit")
+                attr(res, "tma.unit_rows") <- which(res$QEUNIT == 
+                  unit_label)
+                res
+            })
+            names(unit_contexts_res) <- apply(unique_units, 1, 
+                paste, collapse = "::")
+            unit_contexts <- unit_contexts_res
+            x_$model$contexts <- unit_contexts
+        }
+    }
+    x_
+}
+<bytecode: 0x7881c3d3b8>
+<environment: namespace:tma>
+
+===================  rules  ===================
+function (...) 
+{
+    rlang::exprs(...)
+}
+<bytecode: 0x7881d8b578>
+<environment: namespace:tma>
+
+===================  accumulate_contexts  ===================
+function (x, codes, decay.function = decay(simple_window, window_size = 4), 
+    time.column = NULL, mode.column = NULL, mask = NULL, weight.by = sqrt, 
+    norm.by = `_sphere_norm`, meta.data = NULL, return.dena.set = FALSE, 
+    return.ena.set = TRUE, context_filter = NULL, summarize_ground_using = colSums, 
+    calculate_adj_vectors_using = ground_response_crossprod, 
+    ground_effect_function = function(x, y) crossprod(t(x), y), 
+    accumulate_unit_vectors_by = colSums) 
+{
+    data <- x$model$raw.input
+    f.contexts <- x$model$contexts
+    units <- x$`_function.params`$units
+    f.codes = codes
+    f.time = time.column
+    f.decay = decay.function
+    f.mode = mode.column
+    f.weighting.function = weight.by
+    f.meta.data = meta.data
+    f.units = as.data.frame(names(f.contexts))
+    f.raw <- data.table::copy(data)
+    f.raw$QEID <- seq(nrow(f.raw))
+    use.modes = ifelse(any(is.null(f.mode)), FALSE, TRUE)
+    use.meta = ifelse(any(is.null(f.meta.data)), FALSE, TRUE)
+    use.mask = ifelse(is.matrix(mask), TRUE, FALSE)
+    use.window = ifelse(is.null(f.time) || is.na(f.time), TRUE, 
+        FALSE)
+    meta_cols <- x$`_function.params`$units.by
+    if (use.meta) {
+        meta_cols <- unique(meta_cols, c(f.meta.data[!is.na(f.meta.data)]))
+    }
+    output.meta.data <- as.data.frame(f.raw[0, c(meta_cols), 
+        with = FALSE])
+    undirected.adjacency.vectors = data.frame(matrix(0, nrow = 1, 
+        ncol = ncol(adjacency_key(f.codes))))[0, ]
+    directed.adjacency.vectors = data.frame(matrix(0, nrow = 1, 
+        ncol = length(f.codes)^2)[0, ])
+    if (use.mask) {
+        if (any(is.na(mask[lower.tri(mask)]))) {
+            mask[lower.tri(mask)] = mask[upper.tri(mask)]
+        }
+    }
+    else {
+        mask <- matrix(1, nrow = length(f.codes), ncol = length(f.codes))
+    }
+    n = length(codes)
+    blank.code.matrix = matrix(0, nrow = n, ncol = n, dimnames = list(codes, 
+        codes))
+    unit.code.matrices <- structure(rep(list(list(directed.adjacency = blank.code.matrix, 
+        undirected.adjacency = structure(rep(0, ncol(blank.code.matrix))))), 
+        length(names(f.contexts))), names = names(f.contexts))
+    for (unit.index in seq(f.contexts)) {
+        unit.contexts <- f.contexts[[unit.index]]
+        if (is.numeric(unit.contexts)) {
+            unit.contexts <- list(unit.contexts)
+        }
+        this.unit <- attr(unit.contexts[[1]], "tma.unit")
+        if (is.null(this.unit)) {
+            this.unit <- attr(unit.contexts, "tma.unit")
+        }
+        unit.label <- paste(as.character(this.unit), collapse = "::")
+        unit.directed.adjacency.vectors <- data.frame(matrix(0, 
+            nrow = 1, ncol = length(f.codes)^2)[0, ])
+        unit.undirected.adjacency.vectors <- data.frame(matrix(0, 
+            nrow = 1, ncol = ncol(adjacency_key(f.codes))))[0, 
+            ]
+        if (is.data.frame(unit.contexts)) {
+            unit.contexts <- list(unit.contexts)
+        }
+        all_codes <- as.matrix(x$model$raw.input[, c(codes), 
+            with = FALSE])
+        res_context <- lapply(seq(unit.contexts), function(context.index) {
+            this.code.matrix <- blank.code.matrix
+            this.context.rows <- unit.contexts[[context.index]]
+            if (is.numeric(this.context.rows)) {
+                this.context <- x$model$raw.input[this.context.rows, 
+                  ]
+            }
+            else {
+                this.context <- x$model$raw.input[this.context.rows, 
+                  , on = c("QEID")]
+            }
+            this.context$CID <- seq(nrow(this.context))
+            this_context_codes <- all_codes[this.context$QEID, 
+                , drop = FALSE]
+            this.unit.rows_tf <- this.context$QEUNIT == unit.label
+            if (!is.null(context_filter)) {
+                this.unit.rows_tf <- do.call(context_filter, 
+                  list(unit = unit.label, context = this.context))
+            }
+            this.unit.rows <- which(this.unit.rows_tf)
+            if (use.window) {
+                f.time <- "CID"
+            }
+            this.time <- this.context[[c(f.time)]]
+            if (use.modes) {
+                these.modes <- as.factor(this.context[[c(f.mode)]])
+            }
+            if (length(this.unit.rows) > 0) {
+                response.times <- this.time[this.unit.rows]
+                grounds <- lapply(this.unit.rows, function(ur) {
+                  grounds <- vector(length = nrow(this.context))
+                  grounds[seq_len(ur)] <- TRUE
+                  attr(grounds, "tma.response.index") <- ur
+                  grounds
+                })
+                grounds.codes.raw <- lapply(grounds, function(xx) this_context_codes[xx, 
+                  , drop = FALSE])
+                this.unit.resp.idx <- sapply(grounds, attr, which = "tma.response.index")
+                responses.codes <- list_vec_apply(grounds.codes.raw, 
+                  this.unit.resp.idx, function(x, y) {
+                    as.numeric(x[y, , drop = FALSE])
+                  })
+                grounds.modes <- rep(NA, length(responses.codes))
+                if (use.modes) {
+                  grounds.modes <- lapply(grounds, function(x) these.modes[x])
+                }
+                ground.times <- lapply(grounds, function(x) this.time[x])
+                all.decays <- sapply(seq(grounds), function(wh) {
+                  call_env <- new.env(parent = environment(f.decay))
+                  RESPONSE_INDEX <- attr(grounds[[wh]], which = "tma.response.index")
+                  ROWS <- grounds[[wh]]
+                  assign("FULL_CONTEXT", this.context, envir = call_env)
+                  assign("RESPONSE_INDEX", RESPONSE_INDEX, envir = call_env)
+                  assign("ROWS", ROWS, envir = call_env)
+                  environment(f.decay) <- call_env
+                  subbed <- as.numeric(response.times[wh] - ground.times[[wh]])
+                  if (is.function(f.decay)) {
+                    f.decay(subbed)
+                  }
+                  else if (use.modes) {
+                    mapply(FUN = function(xx, yy, INDEX) {
+                      do.call(xx, args = list(x = yy))
+                    }, f.decay[grounds.modes[[wh]]], subbed, 
+                      which(grounds[[wh]]))
+                  }
+                }, simplify = FALSE)
+                grounds.codes = mapply(grounds.codes.raw, all.decays, 
+                  FUN = function(x, y) {
+                    if (length(y) == 1) {
+                      x * y[[1]]
+                    }
+                    else {
+                      x * y
+                    }
+                  }, SIMPLIFY = FALSE)
+                this.responses.in.grounds <- list_vec_apply(grounds.codes, 
+                  this.unit.resp.idx, function(x, g) {
+                    x[g, ]
+                  })
+                these.grounds <- lapply(grounds.codes, function(x) summarize_ground_using(x))
+                all_only_ground_connections <- list_vec_apply(x = these.grounds, 
+                  y = this.responses.in.grounds, fn = function(x, 
+                    y) x - y)
+                adj_call_env <- new.env(parent = environment(calculate_adj_vectors_using))
+                environment(calculate_adj_vectors_using) <- adj_call_env
+                assign("UNIT", this.unit, envir = adj_call_env)
+                assign("UNIT_LABEL", unit.label, envir = adj_call_env)
+                assign("ground_effect_function", ground_effect_function, 
+                  envir = adj_call_env)
+                assign("accumulate_unit_vectors_by", accumulate_unit_vectors_by, 
+                  envir = adj_call_env)
+                dir_vecs <- calculate_adj_vectors_using(all_only_ground_connections, 
+                  responses.codes, this.responses.in.grounds)
+                dim(dir_vecs) <- c(1, length(dir_vecs))
+                data.frame(dir_vecs)
+            }
+        })
+        unit.directed.adjacency.vectors <- data.table::rbindlist(res_context)
+        directed.adjacency.vectors <- rbind(directed.adjacency.vectors, 
+            colSums(unit.directed.adjacency.vectors))
+        if (nrow(unit.directed.adjacency.vectors) > 0) {
+            unit.undirected.adjacency.vectors <- unit.directed.adjacency.vectors[, 
+                {
+                  as.list(as.undirected.vector(as.undirected.matrix(matrix(unlist(.SD), 
+                    ncol = sqrt(length(.SD))))))
+                }, by = seq(nrow(unit.directed.adjacency.vectors))][, 
+                -1]
+        }
+        undirected.adjacency.vectors <- rbind(undirected.adjacency.vectors, 
+            colSums(unit.undirected.adjacency.vectors))
+        output.meta.data <- rbind(output.meta.data, this.unit[, 
+            c(meta_cols), with = FALSE])
+    }
+    directed.adjacency.vectors <- structure(lapply(directed.adjacency.vectors, 
+        reclass, cl = "ena.co.occurrence"), class = c("ena.connections", 
+        "data.table", "data.frame"), names = apply(t(apply(matrix(c(rep(seq(f.codes), 
+        times = length(f.codes)), rep(seq(f.codes), each = length(f.codes))), 
+        ncol = 2), 2, function(x) f.codes[x])), 2, paste, collapse = " & "))
+    undirected.adjacency.vectors <- structure(lapply(undirected.adjacency.vectors, 
+        reclass, cl = "ena.co.occurrence"), class = c("ena.connections", 
+        "data.table", "data.frame"), names = apply(adjacency_key(f.codes), 
+        2, paste, collapse = " & "))
+    x$meta.data <- data.table::copy(data.table::as.data.table(output.meta.data))
+    set(x$meta.data, j = "ENA_UNIT", value = do.call(paste, c(lapply(x$`_function.params`$units.by, 
+        function(u) x$meta.data[[u]]), sep = "::")))
+    for (i in colnames(x$meta.data)) {
+        data.table::set(x$meta.data, j = i, value = reclass(x$meta.data[[i]], 
+            "ena.metadata"))
+    }
+    class(x$meta.data) = c("ena.matrix", class(x$meta.data))
+    if (return.ena.set) {
+        x$rotation = structure(list(codes = f.codes, adjacency.key = structure(adjacency_key(f.codes), 
+            dimnames = list(NULL, names(undirected.adjacency.vectors)))), 
+            class = c("ena.rotation.set", "list"))
+        x$connection.counts <- data.table::copy(undirected.adjacency.vectors)
+        x$connection.counts <- structure(cbind(x$meta.data, x$connection.counts), 
+            class = class(undirected.adjacency.vectors))
+        x$model$row.connection.counts <- structure(data.table::copy(x$connection.counts), 
+            class = c("row.connections", "ena.matrix", "data.table", 
+                "data.frame"))
+        if (!is.null(norm.by)) {
+            x$line.weights <- norm.by(x = as.matrix(undirected.adjacency.vectors))
+        }
+        output = x
+    }
+    else {
+        dena_data = ena.set.directed(f.raw, f.units, NA, f.codes)
+        dena_data$meta.data <- data.table::as.data.table(output.meta.data)
+        dena_data$meta.data[, `:=`(c("ENA_UNIT"), merge_columns(dena_data$meta.data, 
+            cols = x$`_function.params`$units.by, sep = "::"))]
+        for (i in colnames(dena_data$meta.data)) {
+            data.table::set(dena_data$meta.data, j = i, value = reclass(dena_data$meta.data[[i]], 
+                "ena.metadata"))
+        }
+        code_length <- length(dena_data$rotation$codes)
+        dena_data$rotation$adjacency.key <- data.table::data.table(matrix(c(rep(1:code_length, 
+            each = code_length), rep(1:code_length, code_length)), 
+            byrow = TRUE, nrow = 2))
+        dena_data$connection.counts <- data.table::as.data.table(cbind(dena_data$meta.data, 
+            directed.adjacency.vectors))
+        dena_data$model$row.connection.counts = data.table::as.data.table(cbind(dena_data$meta.data, 
+            directed.adjacency.vectors))
+        dena_data$connection.counts = reclass(dena_data$connection.counts, 
+            c("ena.connections", "ena.matrix"))
+        dena_data$model$row.connection.counts <- reclass(dena_data$model$row.connection.counts, 
+            c("row.connections", "ena.matrix"))
+        if (!is.null(norm.by)) {
+            dena_data$line.weights <- norm.by(x = as.matrix(directed.adjacency.vectors))
+        }
+        output = dena_data
+    }
+    output$model$contexts <- f.contexts
+    return(output)
+}
+<bytecode: 0x7881d9db60>
+<environment: namespace:tma>
+
+===================  accumulate  ===================
+function (context_model, codes, tensor = context_tensor(context_model$model$raw.input), 
+    time_column = NULL, ordered = FALSE, binary = TRUE) 
+{
+    send_cols = attr(tensor, "sender_cols")
+    recv_cols = attr(tensor, "receiver_cols")
+    mode_cols = attr(tensor, "mode_column")
+    if (is.null(time_column)) {
+        time_column <- ATTR_NAMES$CONTEXT_COL_ID
+    }
+    context_model$rotation <- structure(list(codes = codes, adjacency.key = adjacency_key(codes, 
+        !ordered)), class = c("ena.rotation.set", "list"))
+    adj_vector_names <- colnames(context_model$rotation$adjacency.key)
+    adj_vector_names_full <- colnames(adjacency_key(codes, FALSE))
+    ind_mat <- matrix(nrow = length(codes), ncol = length(codes))
+    units_by <- context_model$`_function.params`$units.by
+    meta_cols <- c("QEID", "QEUNIT", units_by)
+    mode_dim_1 <- dim(tensor)[1] == 1 && attr(tensor, "mode_column") == 
+        ATTR_NAMES$CONTEXT_ID
+    result_cpp <- lapply(context_model$model$contexts, function(ctx) {
+        ctx_fun <- function(ctx__) {
+            unit_context_lookup <- as.matrix(ctx__[, lapply(.SD, 
+                function(x) as.numeric(as.factor(x))), .SDcols = c(send_cols, 
+                recv_cols, mode_cols)])
+            unit_rows <- attr(ctx__, "tma.unit_rows")
+            this_unit <- attr(ctx__, "tma.unit")
+            unit_to_last <- seq.int(last(unit_rows))
+            res2 <- apply_tensor(tensor, attr(tensor, "dim"), 
+                attr(tensor, "sender_inds") - 1, attr(tensor, 
+                  "receiver_inds") - 1, attr(tensor, "mode_inds") - 
+                  1, unit_context_lookup[unit_to_last, , drop = FALSE] - 
+                  1, unit_rows - 1, as.matrix(ctx__[unit_to_last, 
+                  ..codes]), ctx__[unit_to_last, ][[time_column]])
+            rcc <- data.table::as.data.table(res2$row_connection_counts)
+            colnames(rcc) <- adj_vector_names_full
+            rcc <- rcc[, lapply(.SD, reclass, "ena.co.occurrence"), 
+                .SDcols = adj_vector_names_full]
+            unit_row_meta <- ctx__[unit_rows, meta_cols, with = FALSE]
+            unit_row_meta <- unit_row_meta[, lapply(.SD, reclass, 
+                "ena.metadata"), .SDcols = meta_cols]
+            rcc <- cbind(unit_row_meta, rcc)
+            rcc <- reclass(x = rcc, c("ordered.row.connections", 
+                "row.connections", "ena.matrix"))
+            cc <- data.table::as.data.table(res2$connection_counts)
+            colnames(cc) <- adj_vector_names_full
+            cc <- cc[, lapply(.SD, reclass, "ena.co.occurrence"), 
+                .SDcols = adj_vector_names_full]
+            cc <- cbind(this_unit, cc)
+            cc <- reclass(x = cc, c("ordered.ena.connections", 
+                "ena.connections", "ena.matrix"))
+            rcc
+        }
+        if (is.data.frame(ctx)) {
+            res <- ctx_fun(ctx)
+        }
+        else {
+            results <- lapply(ctx, ctx_fun)
+            res <- data.table::rbindlist(results)
+            res <- reclass(x = res, c("ordered.row.connections", 
+                "row.connections", "ena.matrix"))
+        }
+        return(res)
+    })
+    row_connection_counts <- rbindlist(result_cpp)
+    data.table::setorderv(row_connection_counts, "QEID")
+    row_connection_counts <- reclass(x = row_connection_counts, 
+        c("ordered.row.connections", "row.connections", "ena.matrix"))
+    context_model$model$row.connection.counts <- row_connection_counts
+    cc_type <- NULL
+    if (isTRUE(ordered)) {
+        class(context_model) <- c("ena.ordered.set", class(context_model))
+        connection_counts <- data.table::as.data.table(do.call(rbind, 
+            lapply(result_cpp, function(rcpp) {
+                colSums(as.matrix.ena.matrix(rcpp))
+            })))
+        connection_counts <- reclass(x = connection_counts, c("ordered.ena.connections", 
+            "ena.connections", "ena.matrix"))
+        connection_counts <- connection_counts[, lapply(.SD, 
+            reclass, "ena.co.occurrence"), .SDcols = colnames(connection_counts)]
+        cc_type <- "ordered.ena.connections"
+    }
+    else {
+        class(context_model) <- c("ena.unordered.set", class(context_model))
+        context_model$model$row.connection.counts <- as.unordered(context_model$model$row.connection.counts)
+        connection_counts <- context_model$model$row.connection.counts[, 
+            lapply(.SD, colSums.ena.matrix, binary = binary), 
+            by = "QEUNIT", .SDcols = adj_vector_names]
+        connection_counts <- connection_counts[, lapply(.SD, 
+            reclass, "ena.co.occurrence"), .SDcols = adj_vector_names]
+        cc_type <- "unordered.ena.connections"
+    }
+    cc_meta <- data.table::rbindlist(lapply(result_cpp, function(rc) rc[1, 
+        c("QEUNIT", units_by), with = FALSE]))
+    cc_meta$ENA_UNIT <- context_model$model$unit.labels
+    cc_meta <- cc_meta[, lapply(.SD, reclass, "ena.metadata"), 
+        .SDcols = colnames(cc_meta)]
+    connection_counts <- cbind(cc_meta, connection_counts)
+    connection_counts <- reclass(connection_counts, c(cc_type, 
+        "ena.connections", "ena.matrix"))
+    context_model$connection.counts <- connection_counts
+    context_model$meta.data <- context_model$connection.counts[, 
+        sapply(context_model$connection.counts, is, "ena.metadata"), 
+        with = FALSE]
+    class(context_model$meta.data) = c("ena.matrix", class(context_model$meta.data))
+    return(context_model)
+}
+<bytecode: 0x7881de2078>
+<environment: namespace:tma>
+
+===================  context_tensor  ===================
+function (df, sender_cols = NULL, receiver_cols = NULL, mode_column = ATTR_NAMES$CONTEXT_ID, 
+    default_window = 1, default_weight = 1) 
+{
+    unique_list = get_unique_values(df, sender_cols, receiver_cols, 
+        mode_column)
+    weight_window_axis <- c("weight", "window")
+    unique_senders <- unique_list$unique_senders
+    unique_receivers <- unique_list$unique_receivers
+    unique_modes <- if (is.factor(unique_list$unique_modes)) 
+        as.numeric(unique_list$unique_modes)
+    else unique_list$unique_modes
+    dim_names <- list()
+    for (i in seq_along(sender_cols)) {
+        dim_names[[paste0("sender_", i)]] <- unique_senders[[i]]
+    }
+    for (i in seq_along(receiver_cols)) {
+        dim_names[[paste0("receiver_", i)]] <- unique_receivers[[i]]
+    }
+    if (length(unique_modes) > 0) {
+        dim_names[["modes"]] <- unique_modes
+    }
+    dim_names[["weight_window"]] <- weight_window_axis
+    dims <- c()
+    dims <- c(sapply(unique_senders, length), sapply(unique_receivers, 
+        length))
+    if (length(unique_modes > 0)) {
+        dims <- c(dims, length(unique_modes))
+    }
+    dims <- c(dims, length(weight_window_axis))
+    multidim_arr <- array(0, dim = dims, dimnames = dim_names)
+    multidim_arr <- array(rep(c(default_weight, default_window), 
+        each = prod(unlist(dims))/2), dim = dims, dimnames = dim_names)
+    si <- seq_along(sender_cols)
+    ri <- seq_along(receiver_cols) + ifelse(length(si) > 0, si[length(si)], 
+        0)
+    if (length(ri) > 0) {
+        mi <- seq_along(ri) + ri[length(ri)]
+    }
+    else {
+        mi <- 1
+    }
+    attr(multidim_arr, "sender_cols") <- sender_cols
+    attr(multidim_arr, "receiver_cols") <- receiver_cols
+    attr(multidim_arr, "mode_column") <- mode_column
+    attr(multidim_arr, "sender_inds") <- si
+    attr(multidim_arr, "receiver_inds") <- ri
+    attr(multidim_arr, "mode_inds") <- mi
+    attr(multidim_arr, "default_window") <- default_window
+    attr(multidim_arr, "default_weight") <- default_weight
+    return(multidim_arr)
+}
+<bytecode: 0x7881e15b28>
+<environment: namespace:tma>
+
+===================  decay  ===================
+function (what, ...) 
+{
+    .Deprecated("tma::context_tensor", "tma v0.2.0")
+    args <- list(...)
+    function(x) {
+        do.call(what, list(x = x, args = args))
+    }
+}
+<bytecode: 0x7881e2a158>
+<environment: namespace:tma>
+
+===================  simple_window  ===================
+function (x, args = NULL) 
+{
+    .Deprecated("tma::context_tensor", "tma v0.2.0")
+    (x <= args$window_size) * 1
+}
+<bytecode: 0x7881e3ecb8>
+<environment: namespace:tma>
+
+===================  apply_tensor  ===================
+function (tensor, dims, dims_sender, dims_receiver, dims_mode, 
+    context_matrix, unit_rows, codes, times, ordered = TRUE) 
+{
+    .Call(`_tma_apply_tensor`, tensor, dims, dims_sender, dims_receiver, 
+        dims_mode, context_matrix, unit_rows, codes, times, ordered)
+}
+<bytecode: 0x7881e4f770>
+<environment: namespace:tma>
+
+===================  accumulate_networks  ===================
+function (x, code_cols, decay_function, time_col = -1L, ordered = TRUE) 
+{
+    .Call(`_tma_accumulate_networks`, x, code_cols, decay_function, 
+        time_col, ordered)
+}
+<bytecode: 0x7881e604a0>
+<environment: namespace:tma>
+
+===================  model  ===================
+(not found)

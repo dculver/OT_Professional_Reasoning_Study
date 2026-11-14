@@ -1,0 +1,118 @@
+R: R version 4.6.1 (2026-06-24) | platform: aarch64-apple-darwin23 | run: 2026-11-14 09:02:41 
+tma version: 0.3.1 
+saved function source to analysis/tma_probe_out/tma_source.txt 
+test data: 32 lines (P1 8, P2 24) 
+
+Action-to-action connections in the hand-computed references (the point of item windows): 
+  P1 item_window             Act1->Act2=1  Act2->Act3=1  Act3->Act4=1  Act1->Act3=0 
+  P1 line_window             Act1->Act2=1  Act2->Act3=1  Act3->Act4=1  Act1->Act3=0 
+  P1 item_window_no_self     Act1->Act2=1  Act2->Act3=1  Act3->Act4=1  Act1->Act3=0 
+  P2 item_window             Act1->Act2=1  Act2->Act3=1  Act3->Act4=1  Act1->Act3=0 
+  P2 line_window             Act1->Act2=0  Act2->Act3=0  Act3->Act4=0  Act1->Act3=0 
+  P2 item_window_no_self     Act1->Act2=1  Act2->Act3=1  Act3->Act4=1  Act1->Act3=0 
+
+===== tma run: time.column = item_ordinal (integer item number; lines in one item share a time) ===== 
+
+----- class of result ----- 
+[1] "ena.ordered.set" "ena.set"         "list"           
+
+----- names of result ----- 
+[1] "meta.data"         "model"             "rotation"          "plots"             "_function.params"  "connection.counts" "line.weights"     
+
+----- connection.counts ----- 
+  participant_id ENA_UNIT Act1 & Act1 Act2 & Act1 Act3 & Act1 Act4 & Act1 Talk & Act1 Act1 & Act2 Act2 & Act2 Act3 & Act2 Act4 & Act2 Talk & Act2 Act1 & Act3 Act2 & Act3 Act3 & Act3
+1             P1       P1           0           0           0           0           0           1           0           0           0           1           0           1           0
+2             P2       P2           0           0           0           0           0           1           0           0           0           5           0           1           0
+  Act4 & Act3 Talk & Act3 Act1 & Act4 Act2 & Act4 Act3 & Act4 Act4 & Act4 Talk & Act4 Act1 & Talk Act2 & Talk Act3 & Talk Act4 & Talk Talk & Talk
+1           0           1           0           0           1           0           1           2           2           2           1           3
+2           0           5           0           0           1           0           5          10          10          10           5         115
+
+===== tma run: time.column = item_time_fine (item number plus a tiny within-item offset) ===== 
+
+----- class of result ----- 
+[1] "ena.ordered.set" "ena.set"         "list"           
+
+----- names of result ----- 
+[1] "meta.data"         "model"             "rotation"          "plots"             "_function.params"  "connection.counts" "line.weights"     
+
+----- connection.counts ----- 
+  participant_id ENA_UNIT Act1 & Act1 Act2 & Act1 Act3 & Act1 Act4 & Act1 Talk & Act1 Act1 & Act2 Act2 & Act2 Act3 & Act2 Act4 & Act2 Talk & Act2 Act1 & Act3 Act2 & Act3 Act3 & Act3
+1             P1       P1           0           0           0           0           0           1           0           0           0           1           0           1           0
+2             P2       P2           0           0           0           0           0           1           0           0           0           5           0           1           0
+  Act4 & Act3 Talk & Act3 Act1 & Act4 Act2 & Act4 Act3 & Act4 Act4 & Act4 Talk & Act4 Act1 & Talk Act2 & Talk Act3 & Talk Act4 & Talk Talk & Talk
+1           0           2           0           0           1           0           2           2           2           2           1           3
+2           0          10           0           0           1           0          10          10          10          10           5         137
+
+===== tma run: time.column = line (plain line number, for comparison with a line window) ===== 
+
+----- class of result ----- 
+[1] "ena.ordered.set" "ena.set"         "list"           
+
+----- names of result ----- 
+[1] "meta.data"         "model"             "rotation"          "plots"             "_function.params"  "connection.counts" "line.weights"     
+
+----- connection.counts ----- 
+  participant_id ENA_UNIT Act1 & Act1 Act2 & Act1 Act3 & Act1 Act4 & Act1 Talk & Act1 Act1 & Act2 Act2 & Act2 Act3 & Act2 Act4 & Act2 Talk & Act2 Act1 & Act3 Act2 & Act3 Act3 & Act3
+1             P1       P1           0           0           0           0           0           0           0           0           0           1           0           0           0
+2             P2       P2           0           0           0           0           0           0           0           0           0           1           0           0           0
+  Act4 & Act3 Talk & Act3 Act1 & Act4 Act2 & Act4 Act3 & Act4 Act4 & Act4 Talk & Act4 Act1 & Talk Act2 & Talk Act3 & Talk Act4 & Talk Talk & Talk
+1           0           1           0           0           0           0           1           1           1           1           1           0
+2           0           1           0           0           0           0           1           1           1           1           1          16
+
+----- reference matrices (rows = ground code, cols = response code) ----- 
+$`P1 item_window`
+      response
+ground Act1 Act2 Act3 Act4 Talk
+  Act1    1    1    0    0    2
+  Act2    0    1    1    0    2
+  Act3    0    0    1    1    2
+  Act4    0    0    0    1    1
+  Talk    0    1    1    1    4
+
+$`P1 line_window`
+      response
+ground Act1 Act2 Act3 Act4 Talk
+  Act1    1    1    0    0    2
+  Act2    0    1    1    0    2
+  Act3    0    0    1    1    2
+  Act4    0    0    0    1    1
+  Talk    0    1    1    1    4
+
+$`P1 item_window_no_self`
+      response
+ground Act1 Act2 Act3 Act4 Talk
+  Act1    0    1    0    0    2
+  Act2    0    0    1    0    2
+  Act3    0    0    0    1    2
+  Act4    0    0    0    0    1
+  Talk    0    1    1    1    3
+
+$`P2 item_window`
+      response
+ground Act1 Act2 Act3 Act4 Talk
+  Act1    1    1    0    0   10
+  Act2    0    1    1    0   10
+  Act3    0    0    1    1   10
+  Act4    0    0    0    1    5
+  Talk    0    1    1    1   20
+
+$`P2 line_window`
+      response
+ground Act1 Act2 Act3 Act4 Talk
+  Act1    1    0    0    0    3
+  Act2    0    1    0    0    3
+  Act3    0    0    1    0    3
+  Act4    0    0    0    1    3
+  Talk    0    1    1    1   20
+
+$`P2 item_window_no_self`
+      response
+ground Act1 Act2 Act3 Act4 Talk
+  Act1    0    1    0    0   10
+  Act2    0    0    1    0   10
+  Act3    0    0    0    1   10
+  Act4    0    0    0    0    5
+  Talk    0    1    1    1   19
+
+
+Done. Tell Claude the probe has run; it will read analysis/tma_probe_out/log.txt and analysis/tma_probe_out/tma_source.txt. 
