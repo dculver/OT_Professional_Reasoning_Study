@@ -37,6 +37,9 @@ CONFIG.TA_EXPORT_AUDIO           = false;  /* <<SIGN-OFF / IRB>> include each an
 CONFIG.TA_AUDIO_BPS              = 32000;  /* recording bitrate (bits/s). Speech-grade Opus; keeps exported audio small. The
                                               browser may round it; the achieved rate is logged per recording (actual_bps). */
 CONFIG.UPLOAD_WARN_BYTES         = 45000000; /* Qualtrics file-upload limit is 50 MB; above this the download screens warn */
+CONFIG.TA_PRACTICE_MAX_ITEMS     = 3;      /* approved 2026-11-23: the practice think-aloud shows only the first 3 items */
+CONFIG.TA_PRACTICE_MIN_RECORDINGS = 1;     /* approved 2026-11-23: at least one practice item must be recorded (checks the mic);
+                                              waived if the participant continues without a mic or two practice recordings are silent */
 CONFIG.TA_PERSIST_PENDING_AUDIO  = true;   /* <<SIGN-OFF / IRB>> keep a recording in browser storage ONLY until it is
                                               transcribed, so a closed tab cannot lose untranscribed speech */
 CONFIG.TA_TRANSCRIBE_TIMEOUT_MIN_MS = 180000;  /* per-recording timeout floor ... */
@@ -69,6 +72,9 @@ CONFIG.TA_TEXT = {
     "rather than narrating your actions on the screen or justifying them after the fact. There are no right or " +
     "wrong responses; I am interested in how you think, not in a correct answer.",
   practice_prefix: "<b>This is only for practice.</b> ",
+  /* <<SIGN-OFF>> practice think-aloud (2026-11-23) */
+  practice_intro_note: "For the practice, you will see only your first {n} actions. Please record your thinking for at least one of them, so you can check that your microphone works.",
+  practice_need_recording: "For the practice, please record at least one item before you finish, so you can check that your microphone works.",
   start_button: "Start",
   start_button_practice: "Start the practice think-aloud",
   record_prompt: "Explain what you were thinking at this point. Press Done when you have finished.",
@@ -119,7 +125,11 @@ CONFIG.TA_TEXT = {
 
 const CASES_IN_ORDER = [PATRICIA, FLORENCE, YVONNE];
 const DEV = !!(study.url_params && study.url_params.dev === "1");   /* ?dev=1: diagnostics panel + partial download */
-if(study.url_params && study.url_params.export_audio === "1") CONFIG.TA_EXPORT_AUDIO = true;   /* per-link audio export (see CONFIG.TA_EXPORT_AUDIO) */
+if(study.url_params && study.url_params.export_audio === "1") CONFIG.TA_EXPORT_AUDIO = true;
+/* TEST MODE (approved 2026-11-23): &test_nomic=1 skips the microphone step and runs every think-aloud
+   without a microphone (Nothing to add only), so automated testers whose browsers have no microphone
+   can exercise everything else. Shown on screen and recorded in the file; never in participant links. */
+const TEST_NOMIC = !!(study.url_params && study.url_params.test_nomic === "1");   /* per-link audio export (see CONFIG.TA_EXPORT_AUDIO) */
 
 /* Per-case captured records assembled for the export. Keyed by case id. */
 study.cases = {};
@@ -972,7 +982,9 @@ function runThinkAloud(caseObj){
   } else {
     var built = buildThinkAloudItems(store.task, rec, { pauseMs: CONFIG.TA_PAUSE_MS, finalMinMs: CONFIG.TA_FINAL_MIN_MS, include: CONFIG.TA_INCLUDE,
       text: X, fmt: taFmt, trunc: taTrunc, caseEndT: store.case_ended_t });
-    TA = { format: "segmented_cued_retrospective_v1", analyzed: analyzed, items: built.items, gap_summary: built.gap_summary,
+    /* practice (approved 2026-11-23): only the first CONFIG.TA_PRACTICE_MAX_ITEMS items */
+    var shown = analyzed ? built.items : built.items.slice(0, CONFIG.TA_PRACTICE_MAX_ITEMS);
+    TA = { format: "segmented_cued_retrospective_v1", analyzed: analyzed, items: shown, items_available: built.items.length, gap_summary: built.gap_summary,
            events: [], phase_started_wall_ms: Date.now(), phase_ended_wall_ms: null, intro_done: false, current: null, rec_seq: 0,
            mic_errors: [] };
   }
@@ -982,6 +994,15 @@ function runThinkAloud(caseObj){
   if(DEV) window.__TA = TA;   /* ?dev=1 only: inspect the live think-aloud from the console */
   Persist.startAutosave(function(){ return TA.events.length + ":" + TA.items.filter(function(i){ return i.response; }).length; });
   if(resumed) ev("resumed");
+  /* A practice think-aloud saved by an older version (before the 3-item limit) is cut to the
+     limit on resume, so a participant resuming across a code update is never held to the long list. */
+  if(resumed && !analyzed && TA.items.length > CONFIG.TA_PRACTICE_MAX_ITEMS){
+    if(TA.items_available == null) TA.items_available = TA.items.length;
+    TA.items = TA.items.slice(0, CONFIG.TA_PRACTICE_MAX_ITEMS);
+    if(TA.current != null && TA.current >= TA.items.length) TA.current = null;
+    ev("practice_list_capped_on_resume", { kept: TA.items.length, available: TA.items_available });
+  }
+  if(TEST_NOMIC && !TA.no_mic){ TA.no_mic = true; ev("test_mode_no_mic"); }   /* test mode: think-aloud without a microphone */
 
   // ---- nothing to narrate: never show an empty screen ----
   if(!TA.items.length){
@@ -1051,7 +1072,13 @@ function runThinkAloud(caseObj){
   function slipFixable(it){ return !!it && it.response === "nothing_to_add" && TA.last_answered_id === it.item_id
     && it.index === frontier() - 1; }
   function canRecord(it){ return !!it && (it.index === frontier() || slipFixable(it)); }
-  function canNothing(it){ return !!it && it.index === frontier(); }
+  /* practice: at least CONFIG.TA_PRACTICE_MIN_RECORDINGS recorded items, unless the participant continued
+     without a microphone or two practice recordings were silent (so nobody can get stuck here) */
+  function nRecorded(){ return TA.items.filter(function(i){ return i.response === "recorded"; }).length; }
+  function nSilent(){ var n = 0; TA.items.forEach(function(i){ (i.recordings || []).forEach(function(r){ if(r.silent) n++; }); }); return n; }
+  function needRecording(){ return !analyzed && !TA.no_mic && nSilent() < 2 && nRecorded() < (CONFIG.TA_PRACTICE_MIN_RECORDINGS || 0); }
+  function nothingBlocked(){ return needRecording() && (TA.items.length - nResponded()) <= ((CONFIG.TA_PRACTICE_MIN_RECORDINGS || 0) - nRecorded()); }
+  function canNothing(it){ return !!it && it.index === frontier() && !nothingBlocked(); }
   /* a pause is shown as its span (start to end), matching where its narration is anchored */
   function itemTime(it){ return it.kind === "pause" && it.still_start_t != null ? mmss(it.still_start_t) + ' to ' + mmss(it.clip_end_t) : mmss(it.clip_end_t); }
   function nResponded(){ return TA.items.filter(function(i){ return !!i.response; }).length; }
@@ -1118,7 +1145,8 @@ function runThinkAloud(caseObj){
       var it2 = item(); if(!it2 || it2 !== it) return;
       if(!it.watched){ it.watched = true; it.watched_wall_ms = Date.now(); }
       mode = "ready"; ev("clip_end"); render();
-      if(slipFixable(it)) showNote(X.slip_fix, 0, "info");
+      if(it.index === frontier() && nothingBlocked()) showNote(X.practice_need_recording, 0, "info");
+      else if(slipFixable(it)) showNote(X.slip_fix, 0, "info");
       else if(it.response && frontier() < TA.items.length) showNote(X.already_answered, 0, "info");
       else if(it.kind === "pause") showNote("No clicks, typing, scrolling, or mouse movement for " + Math.round(it.still_ms / 1000) + " seconds here.", 0, "info");
       Persist.saveNow();
@@ -1130,6 +1158,7 @@ function runThinkAloud(caseObj){
   bNothing.onclick = function(){
     var it = item(); if(!it) return;
     if(!it.watched){ showNote(X.watch_first, 4000, "info"); return; }
+    if(it.index === frontier() && nothingBlocked()){ showNote(X.practice_need_recording, 6000, "info"); return; }
     if(!canNothing(it)) return;
     it.response = "nothing_to_add"; it.nothing_to_add_wall_ms = Date.now(); TA.last_answered_id = it.item_id; ev("nothing_to_add");
     Persist.saveNow(); advance();
@@ -1278,6 +1307,7 @@ function runThinkAloud(caseObj){
   g.innerHTML = '<div style="max-width:660px;line-height:1.7">'
     + '<h2 style="color:#ffd8a8;margin:0 0 14px">' + X.intro_title + '</h2>'
     + '<p style="margin:0 0 18px">' + taFmt(X.intro_body, { secs: secs }) + '</p>'
+    + (analyzed ? '' : '<p style="margin:0 0 18px">' + taFmt(X.practice_intro_note, { n: Math.min(CONFIG.TA_PRACTICE_MAX_ITEMS, TA.items.length) }) + '</p>')
     + '<div style="background:rgba(255,216,168,.12);border:1px solid #ffd8a8;border-radius:10px;padding:14px 18px;margin:0 0 22px;font-size:15px">'
     + (analyzed ? "" : X.practice_prefix) + X.reasoning_reminder + '</div>'
     + '<button id="ta_intro_go" style="background:#1e8e4e;color:#fff;border:0;border-radius:8px;padding:12px 24px;font:700 15px system-ui;cursor:pointer">'
@@ -1453,7 +1483,7 @@ function caseExport(c, audio){
     rta_phase: ta ? { format: ta.format, started_wall_ms: ta.phase_started_wall_ms, ended_wall_ms: ta.phase_ended_wall_ms,
                       duration_ms: (ta.phase_ended_wall_ms && ta.phase_started_wall_ms) ? ta.phase_ended_wall_ms - ta.phase_started_wall_ms : null,
                       intro_done: !!ta.intro_done, no_mic: !!ta.no_mic, mic_errors: ta.mic_errors || [],
-                      order_enforced: true,
+                      order_enforced: true, items_available: ta.items_available != null ? ta.items_available : (ta.items || []).length,
                       n_slip_fixes: (ta.items || []).filter(function(i){ return i.slip_fix_wall_ms != null; }).length,
                       n_reopened_after_reload: (ta.items || []).filter(function(i){ return i.reopened_after_reload; }).length,
                       n_locked_clicks: (ta.events || []).filter(function(e){ return e.type === "locked_click"; }).length } : null,
@@ -1473,6 +1503,7 @@ function buildSessionExport(kind, audio){
       session_started_at_ms: study.session_started_at_ms,
       group: study.group, year_in_program: study.year_in_program, url_params: study.url_params,
       task_viewport: study.task_viewport, browser_check: study.browser_check, permissions: study.permissions,
+      test_mode: TEST_NOMIC ? { test_nomic: true } : null,
       resumes: study.resumes || [], checkpoint_downloaded_wall_ms: study.checkpoint_downloaded_wall_ms || null, checkpoint_bytes: study.checkpoint_bytes || null,
       steps_done: Flow.done.slice(),
       audio_export: audio ? audio.stats : null,
@@ -1480,6 +1511,7 @@ function buildSessionExport(kind, audio){
       think_aloud: { format: "segmented_cued_retrospective_v1", pause_threshold_ms: CONFIG.TA_PAUSE_MS, final_min_ms: CONFIG.TA_FINAL_MIN_MS,
                      include: CONFIG.TA_INCLUDE, preroll_ms: Clip.PREROLL_MS, silence_reminder_ms: CONFIG.RTA_SILENCE_MS,
                      silence_rms: CONFIG.TA_SILENCE_RMS, mic_dead_rms: CONFIG.TA_MIC_DEAD_RMS, audio_exported: !!CONFIG.TA_EXPORT_AUDIO, audio_bps: CONFIG.TA_AUDIO_BPS,
+                     practice_max_items: CONFIG.TA_PRACTICE_MAX_ITEMS, practice_min_recordings: CONFIG.TA_PRACTICE_MIN_RECORDINGS,
                      pending_audio_persisted: !!CONFIG.TA_PERSIST_PENDING_AUDIO, transcription_model: TQ.model(),
                      transcribe_timeout_min_ms: CONFIG.TA_TRANSCRIBE_TIMEOUT_MIN_MS, transcribe_timeout_x: CONFIG.TA_TRANSCRIBE_TIMEOUT_X }
     },
@@ -1599,6 +1631,15 @@ function makeExportTrial(){
    always run, including on resume (full screen needs a fresh click).
    ===================================================================== */
 function buildTimeline(resuming){
+  if(TEST_NOMIC){
+    for(var k = timeline.length - 1; k >= 0; k--){ var tg = timeline[k] && timeline[k].data && timeline[k].data.trial_tag;
+      if(tg === "permission_gate_microphone" || tg === "init_microphone") timeline.splice(k, 1); }
+    study.permissions = study.permissions || {}; study.permissions.microphone = { state: "skipped_test_mode", t: new Date().toISOString() };
+    var tb = document.createElement("div"); tb.id = "test_mode_banner"; tb.textContent = "TEST MODE: no microphone. Not for participants.";
+    Object.assign(tb.style, { position:"fixed", left:"8px", top:"8px", zIndex:2147483000, background:"#b91c1c", color:"#fff",
+      font:"700 12px system-ui", padding:"4px 8px", borderRadius:"5px", pointerEvents:"none", opacity:".9" });
+    document.body.appendChild(tb);
+  }
   if(resuming) timeline.unshift(makeResumeNoticeTrial());
   CASES_IN_ORDER.forEach(function(c){
     if(Flow.done.indexOf("case:" + c.id) < 0) timeline.push(makeCaseTrial(c));

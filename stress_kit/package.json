@@ -1,0 +1,8 @@
+{
+  "name": "ot-study-stress-kit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Automated participants with real speech for the OT professional-reasoning study tool",
+  "scripts": { "soak": "node soak.js" },
+  "dependencies": { "playwright": "1.48.2" }
+}

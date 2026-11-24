@@ -1,0 +1,7 @@
+node_modules/
+soak_out/
+clips/*.wav
+clips/tts_*.txt
+clips/own/
+clips/own_*
+package-lock.json

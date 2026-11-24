@@ -1790,7 +1790,11 @@ CONFIG.TA_TEXT = {
 
 const CASES_IN_ORDER = [PATRICIA, FLORENCE, YVONNE];
 const DEV = !!(study.url_params && study.url_params.dev === "1");   /* ?dev=1: diagnostics panel + partial download */
-if(study.url_params && study.url_params.export_audio === "1") CONFIG.TA_EXPORT_AUDIO = true;   /* per-link audio export (see CONFIG.TA_EXPORT_AUDIO) */
+if(study.url_params && study.url_params.export_audio === "1") CONFIG.TA_EXPORT_AUDIO = true;
+/* TEST MODE (approved 2026-11-23): &test_nomic=1 skips the microphone step and runs every think-aloud
+   without a microphone (Nothing to add only), so automated testers whose browsers have no microphone
+   can exercise everything else. Shown on screen and recorded in the file; never in participant links. */
+const TEST_NOMIC = !!(study.url_params && study.url_params.test_nomic === "1");   /* per-link audio export (see CONFIG.TA_EXPORT_AUDIO) */
 
 /* Per-case captured records assembled for the export. Keyed by case id. */
 study.cases = {};
@@ -2655,6 +2659,15 @@ function runThinkAloud(caseObj){
   if(DEV) window.__TA = TA;   /* ?dev=1 only: inspect the live think-aloud from the console */
   Persist.startAutosave(function(){ return TA.events.length + ":" + TA.items.filter(function(i){ return i.response; }).length; });
   if(resumed) ev("resumed");
+  /* A practice think-aloud saved by an older version (before the 3-item limit) is cut to the
+     limit on resume, so a participant resuming across a code update is never held to the long list. */
+  if(resumed && !analyzed && TA.items.length > CONFIG.TA_PRACTICE_MAX_ITEMS){
+    if(TA.items_available == null) TA.items_available = TA.items.length;
+    TA.items = TA.items.slice(0, CONFIG.TA_PRACTICE_MAX_ITEMS);
+    if(TA.current != null && TA.current >= TA.items.length) TA.current = null;
+    ev("practice_list_capped_on_resume", { kept: TA.items.length, available: TA.items_available });
+  }
+  if(TEST_NOMIC && !TA.no_mic){ TA.no_mic = true; ev("test_mode_no_mic"); }   /* test mode: think-aloud without a microphone */
 
   // ---- nothing to narrate: never show an empty screen ----
   if(!TA.items.length){
@@ -3155,6 +3168,7 @@ function buildSessionExport(kind, audio){
       session_started_at_ms: study.session_started_at_ms,
       group: study.group, year_in_program: study.year_in_program, url_params: study.url_params,
       task_viewport: study.task_viewport, browser_check: study.browser_check, permissions: study.permissions,
+      test_mode: TEST_NOMIC ? { test_nomic: true } : null,
       resumes: study.resumes || [], checkpoint_downloaded_wall_ms: study.checkpoint_downloaded_wall_ms || null, checkpoint_bytes: study.checkpoint_bytes || null,
       steps_done: Flow.done.slice(),
       audio_export: audio ? audio.stats : null,
@@ -3282,6 +3296,15 @@ function makeExportTrial(){
    always run, including on resume (full screen needs a fresh click).
    ===================================================================== */
 function buildTimeline(resuming){
+  if(TEST_NOMIC){
+    for(var k = timeline.length - 1; k >= 0; k--){ var tg = timeline[k] && timeline[k].data && timeline[k].data.trial_tag;
+      if(tg === "permission_gate_microphone" || tg === "init_microphone") timeline.splice(k, 1); }
+    study.permissions = study.permissions || {}; study.permissions.microphone = { state: "skipped_test_mode", t: new Date().toISOString() };
+    var tb = document.createElement("div"); tb.id = "test_mode_banner"; tb.textContent = "TEST MODE: no microphone. Not for participants.";
+    Object.assign(tb.style, { position:"fixed", left:"8px", top:"8px", zIndex:2147483000, background:"#b91c1c", color:"#fff",
+      font:"700 12px system-ui", padding:"4px 8px", borderRadius:"5px", pointerEvents:"none", opacity:".9" });
+    document.body.appendChild(tb);
+  }
   if(resuming) timeline.unshift(makeResumeNoticeTrial());
   CASES_IN_ORDER.forEach(function(c){
     if(Flow.done.indexOf("case:" + c.id) < 0) timeline.push(makeCaseTrial(c));
