@@ -57,10 +57,10 @@
       if (!el) { el = document.createElement('div'); el.id = 'whisper_status';
         el.style.cssText = 'position:fixed;top:10px;right:12px;z-index:10009;font:600 12px system-ui;padding:5px 10px;border-radius:999px;display:flex;align-items:center;gap:6px;box-shadow:0 1px 6px rgba(0,0,0,.15);pointer-events:none;transition:opacity .3s';
         document.body.appendChild(el); }
-      var M = { init:['#4b5563','#f3f4f6','Preparing speech model…'],
-                downloading:['#92400e','#fef3c7','Loading speech model… '+Math.round(w.progress||0)+'%'],
+      var M = { init:['#4b5563','#f3f4f6','Preparing speech model...'],
+                downloading:['#92400e','#fef3c7','Loading speech model... '+Math.round(w.progress||0)+'%'],
                 ready:['#166534','#dcfce7','Speech model ready'],
-                transcribing:['#1e40af','#dbeafe','Transcribing your narration…'],
+                transcribing:['#1e40af','#dbeafe','Transcribing your narration...'],
                 transcribed:['#166534','#dcfce7','Narration transcribed'],
                 empty:['#92400e','#fef3c7','No speech detected'],
                 error:['#991b1b','#fee2e2','Speech model unavailable'] };

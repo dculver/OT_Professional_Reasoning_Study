@@ -590,7 +590,7 @@ partB = _rm(partB,
 partB = _rm(partB,
   '''    <div class="clin" data-src="fl_prof_5"><p>Asked what she most needs, Florence said she wants to remain in her own home and receive services there. She reported being very afraid of being placed in a nursing home.</p></div>`,''',
   '''    <div class="clin" data-src="fl_prof_5"><p>Asked what she most needs, Florence said she wants to remain in her own home and receive services there. She reported being very afraid of being placed in a nursing home.</p></div>
-    <div class="clin" data-src="fl_prof_6"><p><b>In Florence's words.</b> "I've kept my own place since I was a girl — my figurines, my books, the cat, Mary down the hall for our lunches. Denise comes mornings; she's good to me, but I don't love being washed like a child. I'd like to do a few small things for myself again. And I haven't truly slept in weeks — some nights I take the sling off just to get a few hours."</p></div>`,''')
+    <div class="clin" data-src="fl_prof_6"><p><b>In Florence's words:</b> "I've kept my own place since I was a girl — my figurines, my books, the cat, Mary down the hall for our lunches. Denise comes mornings; she's good to me, but I don't love being washed like a child. I'd like to do a few small things for myself again. And I haven't truly slept in weeks — some nights I take the sling off just to get a few hours."</p></div>`,''')
 # Y1 -- Yvonne: employment / return-to-work status (yv_ch_work), before Discharge
 partB = _rm(partB,
   '''    <div class="sect">Discharge Plan</div>
@@ -604,7 +604,7 @@ partB = _rm(partB,
 partB = _rm(partB,
   '''    <div class="clin" data-src="yv_prof_5"><p>Asked what she most needs, Yvonne said she wants to get her arm moving well and to prepare for retirement from her job.</p></div>`,''',
   '''    <div class="clin" data-src="yv_prof_5"><p>Asked what she most needs, Yvonne said she wants to get her arm moving well and to prepare for retirement from her job.</p></div>
-    <div class="clin" data-src="yv_prof_6"><p><b>In Yvonne's words.</b> "I've been the strong one my whole life — on the job, in the dojang, on the bike. Tiffany's carried everything at home since the surgery and I hate that. I catch myself in the mirror and I lose it. I want my arm back so I can be myself again, not so I can baby it."</p></div>`,''')
+    <div class="clin" data-src="yv_prof_6"><p><b>In Yvonne's words:</b> "I've been the strong one my whole life — on the job, in the dojang, on the bike. Tiffany's carried everything at home since the surgery and I hate that. I catch myself in the mirror and I lose it. I want my arm back so I can be myself again, not so I can baby it."</p></div>`,''')
 # P1 -- Patricia (practice): work-injury / income reality (pa_ch_work), lightest touch, no voice block
 partB = _rm(partB,
   '''    <div class="kv"><span class="k">Medications</span><span class="v">Amcill. No known allergies.</span></div></div>
@@ -914,6 +914,116 @@ partB = _rm(partB,
   'recordDelta("pop_back",{}); popEl.innerHTML=choiceStep(text); wireChoiceStep(text,src); if(window.__popRect) positionPop(window.__popRect); };')
 print("partB: classify popup re-positions on every step and stays inside the window")
 
+# =====================================================================
+# ---- STRESS-TEST FIXES (2026-11-25; report stress-test/duet-stress-test-report.md) ----
+# =====================================================================
+# P4 (defensive): a very fast double-click fires two mouseups whose 1 ms timers both open the
+#   classify popup; the second open replaced the first without a pop_close, so the think-aloud
+#   listed a false "you highlighted ... but did not classify it" item. A re-open for the same text
+#   within 600 ms of the first is now ignored.
+# Minor: a drag-selection that starts or ends inside a word is widened to the whole word, so an
+#   excerpt never carries a partial word. Applies identically to every case and both groups.
+partB = _rm(partB,
+  '''      const text=sel.toString().trim(); if(text.length<3) return;''',
+  '''      let rng0=sel.getRangeAt(0); const rng=snapRangeToWords(rng0);
+      if(rng.startOffset!==rng0.startOffset || rng.endOffset!==rng0.endOffset){ sel.removeAllRanges(); sel.addRange(rng); }
+      const text=rng.toString().trim(); if(text.length<3) return;''')
+partB = _rm(partB,
+  '''      const rng=sel.getRangeAt(0);
+      pendingRange=rng.cloneRange();''',
+  '''      if(popEl && window.__popOpen && window.__popOpen.text===text && window.__popOpen.src===src && Date.now()-window.__popOpen.t<600) return;
+      pendingRange=rng.cloneRange();''')
+partB = _rm(partB,
+  '''function openPopover(text, src, rect){
+  removePopKeepRange();''',
+  '''/* Widen a selection that starts or ends mid-word to whole words (within its text nodes). */
+function snapRangeToWords(r0){
+  const r=r0.cloneRange(), W=/[A-Za-z0-9'-]/;
+  const sc=r.startContainer, ec=r.endContainer;
+  if(sc.nodeType===3){ let i=r.startOffset; const t=sc.data;
+    if(i>0 && i<t.length && W.test(t[i-1]) && W.test(t[i])){ while(i>0 && W.test(t[i-1])) i--; r.setStart(sc,i); } }
+  if(ec.nodeType===3){ let j=r.endOffset; const t=ec.data;
+    if(j>0 && j<t.length && W.test(t[j-1]) && W.test(t[j])){ while(j<t.length && W.test(t[j])) j++; r.setEnd(ec,j); } }
+  return r;
+}
+function openPopover(text, src, rect){
+  removePopKeepRange(); window.__popOpen={text:text, src:src, t:Date.now()};''')
+
+# Minor: Add with a name but no description (or no name) used to just move the cursor. Now says why.
+partB = _rm(partB,
+  '''  const add=()=>{ const name=input.value.trim(); const description=(desc?desc.value.trim():""); if(!name) return; if(!description){ if(desc) desc.focus(); return; }''',
+  '''  const occMsg=(m)=>{ let el=document.getElementById("occ_msg");
+    if(!m){ if(el) el.remove(); return; }
+    if(!el){ el=document.createElement("div"); el.id="occ_msg"; el.className="occ-msg"; el.setAttribute("role","status"); input.parentElement.appendChild(el); }
+    el.textContent=m; };
+  input.addEventListener("input", ()=>occMsg("")); if(desc) desc.addEventListener("input", ()=>occMsg(""));
+  const add=()=>{ const name=input.value.trim(); const description=(desc?desc.value.trim():"");
+    if(!name){ occMsg("Please name the occupation, then press Add."); input.focus(); return; }
+    if(!description){ occMsg("Please add a short description of this occupation, then press Add."); if(desc) desc.focus(); return; }
+    occMsg("");''')
+partB = _rm(partB,
+  '''    input.value=""; if(desc) desc.value=""; recordDelta("occ_input",{value:""}); recordDelta("occ_desc_input",{value:""}); renderOccupations(); renderPlan(); };''',
+  '''    input.value=""; if(desc) desc.value=""; recordDelta("occ_input",{value:""}); recordDelta("occ_desc_input",{value:""}); renderOccupations(); renderPlan(); if(window.refreshMaxc) refreshMaxc(); };''')
+partB = _rm(partB,
+  '''    input.value=""; renderOutcomes(); updateWalkthrough(); };''',
+  '''    input.value=""; renderOutcomes(); updateWalkthrough(); if(window.refreshMaxc) refreshMaxc(); };''')
+
+# Minor: removing an occupation that some supports/barriers are linked to ONLY now asks first, and
+#   says what happens (they move to Unlinked; a barrier in the plan leaves the plan with its text).
+partB = _rm(partB,
+  '''    const id=b.dataset.occ;
+    logEvent("occupation_remove",{id});''',
+  '''    const id=b.dataset.occ;
+    const only=state.entries.filter(e=>(e.occIds||[]).length===1 && e.occIds[0]===id);
+    if(only.length && !b.dataset.ok){ confirmOccRemove(id, only).then(ok=>{ if(ok){ b.dataset.ok="1"; b.click(); } }); return; }
+    logEvent("occupation_remove",{id});''')
+partB = _rm(partB,
+  '''function renderPerformance(){''',
+  '''function confirmOccRemove(id, only){
+  const o=state.occupations.find(x=>x.id===id), nm=o?o.name:"this occupation", n=only.length;
+  const planned=only.filter(e=>state.plan.selectedBarrierIds.includes(e.id)).length;
+  const html=`Remove "${esc(nm)}"? ${n} support or barrier item${n===1?" is":"s are"} linked only to this occupation and will move to Unlinked.`
+    + (planned?` ${n===1?"It is":planned===1?"One of them is":planned+" of them are"} in your plan; ${planned===1?"it":"they"} will be taken out of the plan, along with what you wrote for ${planned===1?"it":"them"}.`:"");
+  if(typeof uiModal!=="function") return Promise.resolve(true);
+  return uiModal({ title:"Remove this occupation?", html:html,
+    buttons:[{label:"Remove", value:true}, {label:"Keep it", value:false, primary:true}] });
+}
+function renderPerformance(){''')
+
+# Minor: the plan's barrier checkboxes get an accessible name.
+partB = _rm(partB,
+  '''        return `<label class="ip-bar-pick"><input type="checkbox" data-bar="${b.id}" ${on?'checked':''}/>''',
+  '''        return `<label class="ip-bar-pick"><input type="checkbox" data-bar="${b.id}" ${on?'checked':''} aria-label="Address the barrier ${esc(b.mechanism||'')} (barrier to ${esc(occ.name)})"/>''')
+
+# Cosmetic: "not yet edited" showed under an impression that had text (after a resume, and in the
+#   think-aloud replay). The stamp now follows the text that is actually in the box.
+partB = _rm(partB,
+  '''  ta.value=state.synthesis.impression; let t=null;''',
+  '''  ta.value=state.synthesis.impression; let t=null; syncImpressionStamp();''')
+partB = _rm(partB,
+  '''function wireSynthesis(){''',
+  '''function syncImpressionStamp(){
+  const ta=document.getElementById("synthesis_impression"), st=document.getElementById("syn_stamp"); if(!ta||!st) return;
+  const revs=(state.synthesis.impression_revisions||[]), last=revs.length?revs[revs.length-1]:null, v=ta.value||"";
+  if(last && last.text===v) st.textContent="rev "+revs.length+" - "+new Date(last.ts).toLocaleTimeString();
+  else st.textContent = v.trim() ? "" : "not yet edited";
+}
+function wireSynthesis(){''')
+
+# Minor: in the practice, the open checklist (fixed bottom right) covered the bottom of the plan
+#   panel. The plan panel now gets bottom room equal to the checklist, so every field scrolls clear.
+partB = _rm(partB,
+  '''  const cont=document.getElementById("cl_continue");''',
+  '''  { const ipb=document.getElementById("ip_body"); if(ipb) ipb.style.paddingBottom=(el.offsetHeight+24)+"px"; }
+  const cont=document.getElementById("cl_continue");''')
+
+head = head + ('  <style>\n'
+  '  .occ-card .occ-desc{white-space:pre-wrap}\n'
+  '  .occ-msg{flex:1 1 100%;font-size:12.5px;color:#9a3412;font-weight:600;margin-top:4px}\n'
+  '  .maxc{flex:1 1 100%;font-size:11.5px;margin-top:3px;text-align:right}\n'
+  '  </style>\n')
+print("stress-test fixes: popup de-dupe, whole-word excerpts, occupation messages + remove confirm, a11y name, impression stamp, practice checklist room")
+
 # ---------- duplicate top-level identifier check A vs B ----------
 def top_names(js):
     names=set()
@@ -931,6 +1041,20 @@ out = ("<!DOCTYPE html>\n<!-- OT Professional Reasoning Study - FULL INSTRUMENT 
        "<script>\n" + partB + "\n</script>\n"
        "<script>\n" + partC + "\n</script>\n"
        "</body>\n</html>\n")
+# ---- DATA-TEXT HYGIENE (CLAUDE.md section 12; stress test 2026-11-25): no em/en dashes, ellipses,
+#      middle dots, curly quotes or other non-ASCII punctuation in participant-facing or data text.
+#      Applied to the whole assembled page (case text, labels, placeholders, chip text, comments).
+#      Case-text excerpts are data, so the degree sign and accented letters in the case text become
+#      ASCII too. UI glyphs (support/barrier markers, check mark, close and arrow symbols) are kept.
+_C = lambda *cps: "".join(chr(c) for c in cps)   # code points, so this file stays ASCII
+_ASCII = [(re.compile(r"[ \t]*" + _C(0x2014) + r"[ \t]*"), " - "), (re.compile(_C(0x2013)), "-"), (re.compile(_C(0x2026)), "..."),
+          (re.compile(r"[ \t]*" + _C(0xb7) + r"[ \t]*"), " - "), (re.compile("[" + _C(0x201c, 0x201d, 0x2018, 0x2019) + "]"), "'"),
+          (re.compile(_C(0xb0)), " degrees"), (re.compile(_C(0xf6)), "o"), (re.compile(_C(0xe8)), "e"), (re.compile(_C(0xa0)), " ")]
+for _rx, _to in _ASCII:
+    out = _rx.sub(_to, out)
+_left = sorted(set(ch for ch in out if ord(ch) > 127))
+assert set(_left) <= set(_C(0x2500, 0x2192, 0x2190, 0xd7, 0x25b2, 0x25cf, 0x2605, 0x2713)), "non-ASCII left: " + repr(_left)
+print("ascii hygiene: remaining non-ASCII are UI glyphs only:", "".join(_left))
 io.open("index_full.html","w",encoding="utf-8").write(out)
 print("index_full.html bytes:", len(out))
 

@@ -80,6 +80,13 @@ grading; one measurable occupation-based long-term goal; immediate-attention not
 NOTE: OTPF-4 tags are data-capture affordances, NOT the analytic codebook (see 8).
 
 ## 6. Build status
+- [2026-11-25] Stress-test fixes (stress_kit report, branch fix/stress-test-issues): participant links
+  without sub_id, or with group not 1/2 or a student year not 1-3, get a stop screen (test mode passes);
+  final file is saved through the browser's save dialog where the page can confirm it (Chrome/Edge),
+  else the participant confirms before returning to the survey; test mode never returns to the survey;
+  finishing leaves a "completed" marker so reopening says the study is finished; practice -> Case 1
+  transition screen; whole-word excerpts; confirm before removing a linked occupation; ASCII pass in
+  assemble.py over the whole page. Qualtrics consent-page landing is a survey-flow question (open).
 - [2026-11-11] Flow now: fullscreen -> browser check -> mic -> Whisper warmup ->
   Practice -> practice think-aloud -> Case 1 -> think-aloud -> CHECKPOINT file ->
   Case 2 -> think-aloud -> final file + return to Qualtrics. Autosave/resume via

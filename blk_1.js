@@ -1,7 +1,7 @@
 
 
 /* =====================================================================
-   CAPABILITY GATE (hard) — from original checkBrowser. Fails fast on
+   CAPABILITY GATE (hard) - from original checkBrowser. Fails fast on
    browsers lacking getUserMedia / WebM MediaRecorder /
    WASM / Fullscreen, and on mobile.
    ===================================================================== */
@@ -29,7 +29,7 @@
         <p style="font-size:17px;line-height:1.7;">This study runs in an up-to-date <strong>desktop web browser</strong> such as Chrome, Edge, Firefox, or Safari.</p>
         <p style="font-size:15px;color:#566673;">The study uses local speech processing that is not supported in ${reason}. Please reopen this link in a supported browser on a desktop or laptop computer.</p>
       </div>`;
-    throw new Error("Unsupported browser — study halted (" + (isMobile ? "mobile" : missing.join("; ") || "ua") + ").");
+    throw new Error("Unsupported browser - study halted (" + (isMobile ? "mobile" : missing.join("; ") || "ua") + ").");
   }
 })();
 
@@ -144,7 +144,7 @@ var jsPsych = initJsPsych({
    ===================================================================== */
 var timeline = [];
 
-/* 2 — ★ FULLSCREEN (Option 3), on its own fresh click AFTER share. Because no
+/* 2 - ★ FULLSCREEN (Option 3), on its own fresh click AFTER share. Because no
    browser dialog follows, fullscreen HOLDS. We then measure the fullscreen
    viewport (the task viewport) and set the session clock anchor. */
 timeline.push({
@@ -174,7 +174,7 @@ timeline.push({
   }
 });
 
-/* 2 — Browser-check: WIDTH is a hard gate (below 1000 the columns collide);
+/* 2 - Browser-check: WIDTH is a hard gate (below 1000 the columns collide);
    HEIGHT no longer rejects (minimum_height 0). Short screens proceed rather than being turned away. Runs after fullscreen,
    so it measures the real task viewport. Custom message wording uses "study", not the
    plugin default. */
@@ -195,14 +195,14 @@ timeline.push({
   }
 });
 
-/* 3 — Microphone permission + init (ALWAYS — the RTA needs audio). */
+/* 3 - Microphone permission + init (ALWAYS - the RTA needs audio). */
 timeline.push(permissionGate("microphone"));
 timeline.push({
   type: jsPsychInitializeMicrophone,
   data: { trial_tag: "init_microphone" }
 });
 
-/* 6 — Whisper warmup (background). Loads the model while the participant
+/* 6 - Whisper warmup (background). Loads the model while the participant
    reads; used by the RTA in Chunk 3. */
 timeline.push({
   type: jsPsychHtmlKeyboardResponse, choices: "NO_KEYS",
@@ -210,12 +210,12 @@ timeline.push({
   stimulus: `<div style="max-width:580px;margin:12% auto;text-align:center;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
       <h3 style="color:#1565c0;margin-bottom:16px;">Preparing speech analysis tools</h3>
       <p style="color:#44545f;margin-bottom:20px;">A speech model is loading in a background thread. The page stays responsive.<br>This only happens once.</p>
-      <p style="color:#8a9aa7;font-size:14px;">Continuing automatically…</p>
+      <p style="color:#8a9aa7;font-size:14px;">Continuing automatically...</p>
     </div>`,
   trial_duration: 1500,
   on_load: function () { warmUpTranscriber(); }
 });
 
-/* END OF CHUNK 1 — on_finish placeholder renders the captured session state. */
+/* END OF CHUNK 1 - on_finish placeholder renders the captured session state. */
 
 

@@ -10,17 +10,17 @@ const FLORENCE = {
     <div class="clin" data-src="fl_prof_3"><p>For the past five years a home health aide has assisted with bathing and hair care and has handled shopping, meal preparation, and care of the home. Florence's typical day begins with the aide washing her by 9:30 a.m. and a prepared breakfast by 10:30. Her days involve escorted trips to local stores, medical appointments, and the senior citizens club located in her building, where she usually eats lunch with Mary. Dinner is at home.</p></div>
     <div class="clin" data-src="fl_prof_4"><p>She reads romance novels, collects figurines, and keeps a cat. She values honesty and cleanliness and identifies with the Anglican Church.</p></div>
     <div class="clin" data-src="fl_prof_5"><p>Asked what she most needs, Florence said she wants to remain in her own home and receive services there. She reported being very afraid of being placed in a nursing home.</p></div>
-    <div class="clin" data-src="fl_prof_6"><p><b>In Florence's words.</b> "I've kept my own place since I was a girl — my figurines, my books, the cat, Mary down the hall for our lunches. Denise comes mornings; she's good to me, but I don't love being washed like a child. I'd like to do a few small things for myself again. And I haven't truly slept in weeks — some nights I take the sling off just to get a few hours."</p></div>`,
+    <div class="clin" data-src="fl_prof_6"><p><b>In Florence's words:</b> "I've kept my own place since I was a girl - my figurines, my books, the cat, Mary down the hall for our lunches. Denise comes mornings; she's good to me, but I don't love being washed like a child. I'd like to do a few small things for myself again. And I haven't truly slept in weeks - some nights I take the sling off just to get a few hours."</p></div>`,
 
   chartHTML:`
     <div class="sect">Referral &amp; Diagnosis</div>
     <div class="clin" data-src="fl_ch_ref"><div class="kv"><span class="k">Referral</span><span class="v">Outpatient occupational therapy, twice weekly for 10 weeks. Services are to progress the client to Phase 2 of the total shoulder arthroplasty protocol.</span></div>
     <div class="kv"><span class="k">Diagnosis</span><span class="v">Rheumatoid arthritis, 35-year history. Status post left total shoulder arthroplasty.</span></div>
-    <div class="kv"><span class="k">Relevant history</span><span class="v">Osteoporosis; hypertension; Sjögren's syndrome. Prior surgery: bilateral total knee replacements, bilateral wrist synovectomy, and metacarpophalangeal arthroplasty of digits 2–5.</span></div>
+    <div class="kv"><span class="k">Relevant history</span><span class="v">Osteoporosis; hypertension; Sjogren's syndrome. Prior surgery: bilateral total knee replacements, bilateral wrist synovectomy, and metacarpophalangeal arthroplasty of digits 2-5.</span></div>
     <div class="kv"><span class="k">Medications</span><span class="v">Celebrex. No known allergies.</span></div></div>
 
     <div class="sect">Social &amp; Lifestyle</div>
-    <div class="clin" data-src="fl_ch_soc"><p>Sedentary. No alcohol, tobacco, or drug use. Drinks 4–5 cups of tea daily. Height 5'0", weight 127 lb.</p></div>
+    <div class="clin" data-src="fl_ch_soc"><p>Sedentary. No alcohol, tobacco, or drug use. Drinks 4-5 cups of tea daily. Height 5'0", weight 127 lb.</p></div>
 
     <div class="sect">Activities of Daily Living</div>
     <div class="clin" data-src="fl_ch_adl"><p>Feeds herself with the right upper extremity when food is cut and presented. Requires maximal assistance to dress both upper and both lower extremities, and to don and doff the left shoulder immobilizer. Independently brushes her hair and teeth. <span class="num">QuickDASH score: 63.7%.</span></p></div>
@@ -41,10 +41,10 @@ const FLORENCE = {
     <div class="clin" data-src="fl_ch_pain"><p>No gross deficits in hearing, vestibular, taste, smell, proprioceptive, or cutaneous function. Nearsighted, wears corrective lenses. <span class="num">Left shoulder pain 7/10</span>, described as "miserable." No edema noted.</p></div>
 
     <div class="sect">Cardiopulmonary</div>
-    <div class="clin" data-src="fl_ch_cp"><p><span class="num">Metabolic equivalent of task value 2.5–3.0.</span></p></div>
+    <div class="clin" data-src="fl_ch_cp"><p><span class="num">Metabolic equivalent of task value 2.5-3.0.</span></p></div>
 
     <div class="sect">Movement</div>
-    <div class="clin" data-src="fl_ch_move"><p>Passive range, active range, and strength within functional limits in both upper extremities except the left shoulder, which is positioned in a soft immobilizing adduction sling that was not removed. Flexible swan neck deformities in digits 2–5 and boutonnière deformity of digit 1 bilaterally. Gross grasp strength not assessed.</p></div>
+    <div class="clin" data-src="fl_ch_move"><p>Passive range, active range, and strength within functional limits in both upper extremities except the left shoulder, which is positioned in a soft immobilizing adduction sling that was not removed. Flexible swan neck deformities in digits 2-5 and boutonniere deformity of digit 1 bilaterally. Gross grasp strength not assessed.</p></div>
 
     <div class="sect">Neuromuscular</div>
     <div class="clin" data-src="fl_ch_neuro"><p>Sitting balance 5/5 static and dynamic. Standing balance 4/5 static and dynamic. Tone normal, reflex integration grossly intact.</p></div>
@@ -66,7 +66,7 @@ const YVONNE = {
     <div class="clin" data-src="yv_prof_3"><p>Her interests include Tae Kwon Do, microbrewing, and motorcycle riding. She values love, honesty, and acceptance.</p></div>
     <div class="clin" data-src="yv_prof_4"><p>Since surgery, Tiffany has taken over cooking, shopping, and care of the home.</p></div>
     <div class="clin" data-src="yv_prof_5"><p>Asked what she most needs, Yvonne said she wants to get her arm moving well and to prepare for retirement from her job.</p></div>
-    <div class="clin" data-src="yv_prof_6"><p><b>In Yvonne's words.</b> "I've been the strong one my whole life — on the job, in the dojang, on the bike. Tiffany's carried everything at home since the surgery and I hate that. I catch myself in the mirror and I lose it. I want my arm back so I can be myself again, not so I can baby it."</p></div>`,
+    <div class="clin" data-src="yv_prof_6"><p><b>In Yvonne's words:</b> "I've been the strong one my whole life - on the job, in the dojang, on the bike. Tiffany's carried everything at home since the surgery and I hate that. I catch myself in the mirror and I lose it. I want my arm back so I can be myself again, not so I can baby it."</p></div>`,
 
   chartHTML:`
     <div class="sect">Referral &amp; Diagnosis</div>
@@ -76,7 +76,7 @@ const YVONNE = {
     <div class="kv"><span class="k">Medications</span><span class="v">Voltaren. Allergic to pollen.</span></div></div>
 
     <div class="sect">Social &amp; Lifestyle</div>
-    <div class="clin" data-src="yv_ch_soc"><p>Active lifestyle. Occasional alcohol and tobacco use, no drug use. Drinks 2–3 large cups of coffee daily. Height 5'11", weight 209 lb.</p></div>
+    <div class="clin" data-src="yv_ch_soc"><p>Active lifestyle. Occasional alcohol and tobacco use, no drug use. Drinks 2-3 large cups of coffee daily. Height 5'11", weight 209 lb.</p></div>
 
     <div class="sect">Activities of Daily Living</div>
     <div class="clin" data-src="yv_ch_adl"><p>Independent in feeding, grooming, toileting, and bathing. Able to dress but requires assistance to don and doff her bra. Independent with rolling, bridging, and moving between supine and short sitting. Transfers to and from all surfaces independently. Ambulates independently, observed with postural guarding of the left upper extremity.</p></div>
@@ -91,7 +91,7 @@ const YVONNE = {
     <div class="clin" data-src="yv_ch_ment"><p>Alert and oriented to person, place, time, and situation. Short- and long-term memory intact. Follows three-step commands and makes needs known. Reports frequently crying when she looks at the surgical site. No gross perceptual deficits.</p></div>
 
     <div class="sect">Sensory &amp; Pain</div>
-    <div class="clin" data-src="yv_ch_pain"><p>No gross deficits in visual, hearing, vestibular, taste, smell, or proprioceptive function. <span class="num">Left shoulder pain rated 7/10 before pain medication and 4/10 after</span>, on a 0–10 numeric rating scale. Reports a continuing sensation that her left breast is still present. Surgical incision fully closed, staples removed, scar flat. Light touch and localization impaired. Edema unremarkable.</p></div>
+    <div class="clin" data-src="yv_ch_pain"><p>No gross deficits in visual, hearing, vestibular, taste, smell, or proprioceptive function. <span class="num">Left shoulder pain rated 7/10 before pain medication and 4/10 after</span>, on a 0-10 numeric rating scale. Reports a continuing sensation that her left breast is still present. Surgical incision fully closed, staples removed, scar flat. Light touch and localization impaired. Edema unremarkable.</p></div>
 
     <div class="sect">Cardiopulmonary</div>
     <div class="clin" data-src="yv_ch_cp"><p>No deficits.</p></div>
@@ -99,10 +99,10 @@ const YVONNE = {
     <div class="sect">Movement</div>
     <div class="clin" data-src="yv_ch_move"><p>Passive range, active range, and strength within normal limits in the right upper extremity and both lower extremities. Left upper extremity active range within normal limits except at the shoulder. Left shoulder passive range of motion is shown below. Left shoulder active range of motion matched passive values at all four motions. Left upper extremity strength not evaluated. Client held the left upper extremity in a guarded position. No gross defects in prehension.</p>
       <table class="dtbl"><thead><tr><th>Motion</th><th>Range</th></tr></thead><tbody>
-        <tr><td>Flexion</td><td class="n">0–102°</td></tr>
-        <tr><td>Abduction</td><td class="n">0–88°</td></tr>
-        <tr><td>External rotation</td><td class="n">0–60°</td></tr>
-        <tr><td>Internal rotation</td><td class="n">0–80°</td></tr>
+        <tr><td>Flexion</td><td class="n">0-102 degrees</td></tr>
+        <tr><td>Abduction</td><td class="n">0-88 degrees</td></tr>
+        <tr><td>External rotation</td><td class="n">0-60 degrees</td></tr>
+        <tr><td>Internal rotation</td><td class="n">0-80 degrees</td></tr>
       </tbody></table></div>
 
     <div class="sect">Neuromuscular</div>
@@ -156,7 +156,7 @@ const PATRICIA = {
     <div class="clin" data-src="pa_ch_ment"><p>Alert and oriented to person, place, time, and situation. Short- and long-term memory intact. Follows three-step commands and makes needs known. Reports feeling anxious about not having money coming in to pay her bills. No gross perceptual deficits. <span class="num">Zung Self-Rating Anxiety Scale: 58 out of 100.</span></p></div>
 
     <div class="sect">Sensory &amp; Pain</div>
-    <div class="clin" data-src="pa_ch_pain"><p>No gross deficits in visual, hearing, vestibular, taste, smell, proprioceptive, or cutaneous function. A 2.5-cm scabbed incision with six external stitches observed over the anterior base of the left index finger. <span class="num">Circumferential measurement over the proximal phalanx: left 8.0 cm, right 7.2 cm.</span> <span class="num">Pain rated 3/10</span> on a 0–10 numeric scale at the left index finger; surgical area described as "sensitive to touch."</p></div>
+    <div class="clin" data-src="pa_ch_pain"><p>No gross deficits in visual, hearing, vestibular, taste, smell, proprioceptive, or cutaneous function. A 2.5-cm scabbed incision with six external stitches observed over the anterior base of the left index finger. <span class="num">Circumferential measurement over the proximal phalanx: left 8.0 cm, right 7.2 cm.</span> <span class="num">Pain rated 3/10</span> on a 0-10 numeric scale at the left index finger; surgical area described as "sensitive to touch."</p></div>
 
     <div class="sect">Cardiopulmonary</div>
     <div class="clin" data-src="pa_ch_cp"><p>No deficits. Performs all activities without fatigue.</p></div>
@@ -324,7 +324,7 @@ function renderCase(){
           <div class="panel-head"><span class="ey">Occupations</span><span class="count" id="occ_count">0</span></div>
           <div class="panel-body">
             <div class="occ-add">
-              <input id="occ_input" type="text" maxlength="80" placeholder="Name an occupation…" aria-label="Name an occupation"/>
+              <input id="occ_input" type="text" maxlength="80" placeholder="Name an occupation..." aria-label="Name an occupation"/>
               <textarea id="occ_desc" maxlength="600" rows="2" placeholder="Briefly describe this occupation. What do they want and what do they need to do?" aria-label="Briefly describe this occupation. What do they want and what do they need to do?"></textarea>
               <button class="btn btn-occ" id="occ_add">Add</button>
             </div>
@@ -351,7 +351,7 @@ function renderCase(){
               <label class="syn-lbl">Desired outcomes</label>
               <div class="syn-hint">What are the desired outcomes for this client? These become the basis for your intervention goals.</div>
               <div class="occ-add">
-                <input id="outcome_input" type="text" maxlength="140" placeholder="Name a desired outcome…" aria-label="Name a desired outcome"/>
+                <input id="outcome_input" type="text" maxlength="140" placeholder="Name a desired outcome..." aria-label="Name a desired outcome"/>
                 <button class="btn btn-syn" id="outcome_add">Add</button>
               </div>
               <div id="outcome_list"></div>
@@ -373,9 +373,15 @@ function renderCase(){
   renderOccupations(); renderPerformance(); renderOutcomes(); renderPlan(); refreshHighlights();
 }
 
+function syncImpressionStamp(){
+  const ta=document.getElementById("synthesis_impression"), st=document.getElementById("syn_stamp"); if(!ta||!st) return;
+  const revs=(state.synthesis.impression_revisions||[]), last=revs.length?revs[revs.length-1]:null, v=ta.value||"";
+  if(last && last.text===v) st.textContent="rev "+revs.length+" - "+new Date(last.ts).toLocaleTimeString();
+  else st.textContent = v.trim() ? "" : "not yet edited";
+}
 function wireSynthesis(){
   const ta=document.getElementById("synthesis_impression"), st=document.getElementById("syn_stamp");
-  ta.value=state.synthesis.impression; let t=null;
+  ta.value=state.synthesis.impression; let t=null; syncImpressionStamp();
   /* Append a discrete revision only when typing settles (debounced) or the
      field loses focus, and only if the text changed from the last snapshot.
      Yields a trajectory of settled impressions, not per-keystroke noise. */
@@ -388,7 +394,7 @@ function wireSynthesis(){
     updateWalkthrough();
     state.synthesis.impression=text; state.synthesis.impression_stamp=ts;
     logEvent("synthesis_revision",{version:revs.length, len:text.length});
-    st.textContent="rev "+revs.length+" · "+new Date(ts).toLocaleTimeString();
+    st.textContent="rev "+revs.length+" - "+new Date(ts).toLocaleTimeString();
   };
   ta.addEventListener("input", ()=>{ state.synthesis.impression=ta.value; recordDelta("impression",{text:ta.value}); clearTimeout(t); t=setTimeout(snapshot, 800); });
   ta.addEventListener("blur", ()=>{ clearTimeout(t); snapshot(); });
@@ -398,7 +404,7 @@ function wireOutcomes(){
   const add=()=>{ const text=input.value.trim(); if(!text) return;
     const oid=uid("out_"); state.synthesis.desired_outcomes.push({id:oid, text, otpf4_outcome_type:null, ts:Date.now()});
     logEvent("desired_outcome_add",{text}); recordDelta("outcome_add",{id:oid, text});
-    input.value=""; renderOutcomes(); updateWalkthrough(); };
+    input.value=""; renderOutcomes(); updateWalkthrough(); if(window.refreshMaxc) refreshMaxc(); };
   document.getElementById("outcome_add").addEventListener("click", add);
   input.addEventListener("keydown", e=>{ if(e.key==="Enter") add(); });
 }
@@ -436,9 +442,17 @@ function wireTabs(){
 function wireOccupations(){
   const input=document.getElementById("occ_input");
   const desc=document.getElementById("occ_desc");
-  const add=()=>{ const name=input.value.trim(); const description=(desc?desc.value.trim():""); if(!name) return; if(!description){ if(desc) desc.focus(); return; }
+  const occMsg=(m)=>{ let el=document.getElementById("occ_msg");
+    if(!m){ if(el) el.remove(); return; }
+    if(!el){ el=document.createElement("div"); el.id="occ_msg"; el.className="occ-msg"; el.setAttribute("role","status"); input.parentElement.appendChild(el); }
+    el.textContent=m; };
+  input.addEventListener("input", ()=>occMsg("")); if(desc) desc.addEventListener("input", ()=>occMsg(""));
+  const add=()=>{ const name=input.value.trim(); const description=(desc?desc.value.trim():"");
+    if(!name){ occMsg("Please name the occupation, then press Add."); input.focus(); return; }
+    if(!description){ occMsg("Please add a short description of this occupation, then press Add."); if(desc) desc.focus(); return; }
+    occMsg("");
     const id=uid("occ_"); state.occupations.push({id,name,description}); logEvent("occupation_add",{name,description}); recordDelta("occ_add",{id,name,description});
-    input.value=""; if(desc) desc.value=""; recordDelta("occ_input",{value:""}); recordDelta("occ_desc_input",{value:""}); renderOccupations(); renderPlan(); };
+    input.value=""; if(desc) desc.value=""; recordDelta("occ_input",{value:""}); recordDelta("occ_desc_input",{value:""}); renderOccupations(); renderPlan(); if(window.refreshMaxc) refreshMaxc(); };
   document.getElementById("occ_add").addEventListener("click", add);
   input.addEventListener("input", ()=>recordDelta("occ_input",{value:input.value}));
   if(desc) desc.addEventListener("input", ()=>recordDelta("occ_desc_input",{value:desc.value}));
@@ -454,12 +468,23 @@ function renderOccupations(){
   }).join("");
   list.querySelectorAll(".rm").forEach(b=>b.addEventListener("click",()=>{
     const id=b.dataset.occ;
+    const only=state.entries.filter(e=>(e.occIds||[]).length===1 && e.occIds[0]===id);
+    if(only.length && !b.dataset.ok){ confirmOccRemove(id, only).then(ok=>{ if(ok){ b.dataset.ok="1"; b.click(); } }); return; }
     logEvent("occupation_remove",{id}); recordDelta("occ_remove",{id});
     state.occupations=state.occupations.filter(o=>o.id!==id);
     state.entries.forEach(e=>{ e.occIds=(e.occIds||[]).filter(x=>x!==id); });
     state.plan.selectedBarrierIds=state.plan.selectedBarrierIds.filter(bid=>{ const en=state.entries.find(x=>x.id===bid); return en&&(en.occIds||[]).length>0; });
     renderOccupations(); renderPerformance(); renderPlan();
   }));
+}
+function confirmOccRemove(id, only){
+  const o=state.occupations.find(x=>x.id===id), nm=o?o.name:"this occupation", n=only.length;
+  const planned=only.filter(e=>state.plan.selectedBarrierIds.includes(e.id)).length;
+  const html=`Remove "${esc(nm)}"? ${n} support or barrier item${n===1?" is":"s are"} linked only to this occupation and will move to Unlinked.`
+    + (planned?` ${n===1?"It is":planned===1?"One of them is":planned+" of them are"} in your plan; ${planned===1?"it":"they"} will be taken out of the plan, along with what you wrote for ${planned===1?"it":"them"}.`:"");
+  if(typeof uiModal!=="function") return Promise.resolve(true);
+  return uiModal({ title:"Remove this occupation?", html:html,
+    buttons:[{label:"Remove", value:true}, {label:"Keep it", value:false, primary:true}] });
 }
 function renderPerformance(){
   const body=document.getElementById("pa_body");
@@ -501,8 +526,8 @@ function renderPlan(){
   const barriers=state.entries.filter(e=>e.type==="barrier" && (e.occIds||[]).length);
   const barrierPick = barriers.length
     ? barriers.map(b=>{ const occ={name:occNames(b.occIds)}; const on=state.plan.selectedBarrierIds.includes(b.id);
-        return `<label class="ip-bar-pick"><input type="checkbox" data-bar="${b.id}" ${on?'checked':''}/>
-          <span class="txt"><span class="mech">${esc(b.mechanism||'—')}</span> — barrier to ${esc(occ?occ.name:'?')}<br>
+        return `<label class="ip-bar-pick"><input type="checkbox" data-bar="${b.id}" ${on?'checked':''} aria-label="Address the barrier ${esc(b.mechanism||'')} (barrier to ${esc(occ.name)})"/>
+          <span class="txt"><span class="mech">${esc(b.mechanism||' - ')}</span> - barrier to ${esc(occ?occ.name:'?')}<br>
           <span style="opacity:.8">"${esc(trunc(b.excerpt,90))}"</span></span></label>`; }).join("")
     : `<div class="empty"><b>No barriers to address yet</b>Barriers you classify (linked to an occupation) appear here to build the plan on.</div>`;
 
@@ -511,27 +536,27 @@ function renderPlan(){
     const occ={name:occNames(b.occIds)};
     const pb=state.plan.perBarrier[bid]||{};
     return `<div class="ip-card">
-      <div class="cardh">${esc(b.mechanism||'barrier')} — ${esc(occ?occ.name:'?')}</div>
+      <div class="cardh">${esc(b.mechanism||'barrier')} - ${esc(occ?occ.name:'?')}</div>
       <div class="ip-field"><label>Describe your approach</label>
-        <textarea data-bid="${bid}" data-f="approach" placeholder="1–2 sentences">${esc(pb.approach||'')}</textarea></div>
+        <textarea data-bid="${bid}" data-f="approach" placeholder="1-2 sentences">${esc(pb.approach||'')}</textarea></div>
       <div class="ip-field"><label>Method (incl. safety / environment)</label>
-        <textarea data-bid="${bid}" data-f="method" placeholder="2–3 sentences">${esc(pb.method||'')}</textarea></div>
+        <textarea data-bid="${bid}" data-f="method" placeholder="2-3 sentences">${esc(pb.method||'')}</textarea></div>
       <div class="ip-field"><label>Grading up / down</label>
-        <textarea data-bid="${bid}" data-f="grading" placeholder="1–2 sentences">${esc(pb.grading||'')}</textarea></div>
+        <textarea data-bid="${bid}" data-f="grading" placeholder="1-2 sentences">${esc(pb.grading||'')}</textarea></div>
     </div>`;
   }).join("");
 
   body.innerHTML=`
-    <div class="ip-step"><span class="lbl">1 · Select the barriers you will address</span>
+    <div class="ip-step"><span class="lbl">1 - Select the barriers you will address</span>
       <span class="hint">Constrained to your own barrier classifications.</span>${barrierPick}</div>
-    <div class="ip-step"><span class="lbl">2 · Why prioritize these over the others?</span>
-      <textarea class="ip" id="ip_prioritization" placeholder="2–3 sentences">${esc(state.plan.prioritization)}</textarea></div>
-    <div class="ip-step"><span class="lbl">3 · For each barrier: approach, method, grading</span>
+    <div class="ip-step"><span class="lbl">2 - Why prioritize these over the others?</span>
+      <textarea class="ip" id="ip_prioritization" placeholder="2-3 sentences">${esc(state.plan.prioritization)}</textarea></div>
+    <div class="ip-step"><span class="lbl">3 - For each barrier: approach, method, grading</span>
       ${state.plan.selectedBarrierIds.length?cards:'<div class="empty">Select at least one barrier above.</div>'}</div>
-    <div class="ip-step"><span class="lbl">4 · Objective, measurable, occupation-based long-term goals that address the desired outcomes</span>
+    <div class="ip-step"><span class="lbl">4 - Objective, measurable, occupation-based long-term goals that address the desired outcomes</span>
       <textarea class="ip" id="ip_goal" placeholder="one goal per line">${esc(state.plan.goal)}</textarea></div>
-    <div class="ip-step"><span class="lbl">5 · Which goal or objective needs the most immediate attention, and why?</span>
-      <textarea class="ip" id="ip_immediate" placeholder="2–3 sentences">${esc(state.plan.immediate)}</textarea></div>`;
+    <div class="ip-step"><span class="lbl">5 - Which goal or objective needs the most immediate attention, and why?</span>
+      <textarea class="ip" id="ip_immediate" placeholder="2-3 sentences">${esc(state.plan.immediate)}</textarea></div>`;
 
   body.querySelectorAll('input[data-bar]').forEach(cb=>cb.addEventListener("change",()=>{
     const id=cb.dataset.bar;
@@ -589,12 +614,14 @@ function attachSelectionHandlers(){
     setTimeout(()=>{
       const sel=window.getSelection();
       if(!sel||sel.isCollapsed) return;
-      const text=sel.toString().trim(); if(text.length<3) return;
+      let rng0=sel.getRangeAt(0); const rng=snapRangeToWords(rng0);
+      if(rng.startOffset!==rng0.startOffset || rng.endOffset!==rng0.endOffset){ sel.removeAllRanges(); sel.addRange(rng); }
+      const text=rng.toString().trim(); if(text.length<3) return;
       let node=sel.anchorNode, srcEl=node&&(node.nodeType===1?node:node.parentElement);
       const body2=document.getElementById("case_body");
       while(srcEl && !(srcEl.dataset&&srcEl.dataset.src) && srcEl!==body2) srcEl=srcEl.parentElement;
       const src=(srcEl&&srcEl.dataset&&srcEl.dataset.src)||null;
-      const rng=sel.getRangeAt(0);
+      if(popEl && window.__popOpen && window.__popOpen.text===text && window.__popOpen.src===src && Date.now()-window.__popOpen.t<600) return;
       pendingRange=rng.cloneRange();
       openPopover(text, src, rng.getBoundingClientRect());
     },1);
@@ -612,8 +639,18 @@ function attachScrollCapture(){
     });
   });
 }
+/* Widen a selection that starts or ends mid-word to whole words (within its text nodes). */
+function snapRangeToWords(r0){
+  const r=r0.cloneRange(), W=/[A-Za-z0-9'-]/;
+  const sc=r.startContainer, ec=r.endContainer;
+  if(sc.nodeType===3){ let i=r.startOffset; const t=sc.data;
+    if(i>0 && i<t.length && W.test(t[i-1]) && W.test(t[i])){ while(i>0 && W.test(t[i-1])) i--; r.setStart(sc,i); } }
+  if(ec.nodeType===3){ let j=r.endOffset; const t=ec.data;
+    if(j>0 && j<t.length && W.test(t[j-1]) && W.test(t[j])){ while(j<t.length && W.test(t[j])) j++; r.setEnd(ec,j); } }
+  return r;
+}
 function openPopover(text, src, rect){
-  removePopKeepRange();
+  removePopKeepRange(); window.__popOpen={text:text, src:src, t:Date.now()};
   popEl=document.createElement("div"); popEl.className="pop"; popEl.innerHTML=choiceStep(text);
   document.body.appendChild(popEl); window.__popRect=rect; positionPop(rect); wireChoiceStep(text, src); recordDelta("pop_open",{excerpt:text, src:src, loc: serializeRange(pendingRange, src)});
 }
@@ -674,10 +711,10 @@ function commitEntry(e){
    UTILITIES / CHROME
    ===================================================================== */
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function trunc(s,n){ s=String(s); return s.length>n? s.slice(0,n-1)+"…" : s; }
+function trunc(s,n){ s=String(s); return s.length>n? s.slice(0,n-1)+"..." : s; }
 
 /* =====================================================================
-   PRACTICE WALKTHROUGH — practice case only.
+   PRACTICE WALKTHROUGH - practice case only.
    Mechanics-only, unlocked (interface stays live), completion-gated.
    Non-modal coach-marks point at controls; a persistent checklist tracks
    the required-action set and gates the Continue button. No timers.
@@ -699,14 +736,14 @@ const REQUIRED = [
   ["immediate",      "Fill in immediate attention"]
 ];
 const TOUR = [
-  {req:null,             sel:null,               h:"Welcome — this is practice", p:"This run is just to learn the tool before the real cases. Nothing here counts. Work through the checklist at the bottom in any order; when it's complete you can continue."},
+  {req:null,             sel:null,               h:"Welcome - this is practice", p:"This run is just to learn the tool before the real cases. Nothing here counts. Work through the checklist at the bottom in any order; when it's complete you can continue."},
   {req:"tabs",           sel:".tabs",            h:"Open every tab",            p:"The case material has two tabs. Open the Initial Evaluation tab at least once so you've seen all of it."},
   {req:"occupation",     sel:"#occ_input",       h:"Add an occupation",         p:"Name one occupation the client needs or wants to do, then briefly describe it (what they want and need to do). Press Add. Everything you classify links to an occupation."},
   {req:"support",        sel:"#case_body",       h:"Mark a support",            p:"Select any phrase in the case text. In the popup choose Support, name what enables it, and link it to an occupation."},
   {req:"barrier",        sel:"#case_body",       h:"Mark a barrier",            p:"Select another phrase and choose Barrier. Name what's getting in the way and link it to an occupation."},
   {req:"synthesis",      sel:"#aoi_synthesis",   h:"Synthesize the evaluation", p:"Write your clinical impression integrating the profile and your analysis, then add at least one desired outcome."},
-  {req:"plan",           sel:"#aoi_intervention",h:"Build the plan",            p:"Select one of your barriers to address, then fill its approach, method, and grading — plus the prioritization, goal, and immediate-attention boxes."},
-  {req:null,             sel:"#cl",              h:"That's everything",         p:"When every checklist item is checked, Continue turns on. Reopen this guide anytime with “Show guide.”"}
+  {req:"plan",           sel:"#aoi_intervention",h:"Build the plan",            p:"Select one of your barriers to address, then fill its approach, method, and grading - plus the prioritization, goal, and immediate-attention boxes."},
+  {req:null,             sel:"#cl",              h:"That's everything",         p:"When every checklist item is checked, Continue turns on. Reopen this guide anytime with 'Show guide.'"}
 ];
 
 function stepSatisfied(step){
@@ -770,6 +807,7 @@ function buildChecklist(){
     </div>`;
   document.getElementById("cl_bar").onclick=(e)=>{ if(e.target.id==="cl_guide") return; walk.listOpen=!walk.listOpen; buildChecklist(); };
   document.getElementById("cl_guide").onclick=(e)=>{ e.stopPropagation(); walk.tourOpen=true; showCoach(firstIncompleteStep()); };
+  { const ipb=document.getElementById("ip_body"); if(ipb) ipb.style.paddingBottom=(el.offsetHeight+24)+"px"; }
   const cont=document.getElementById("cl_continue");
   if(cont) cont.onclick=()=>{ if(done===REQUIRED.length){ walk.tourOpen=false; removeCoach(); submitCase(); } };
 }

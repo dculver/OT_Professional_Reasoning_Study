@@ -252,6 +252,7 @@ async function runParticipant(browser, idx) {
     await page.waitForSelector('#btn-select-mic', { timeout: 30000 }); await page.click('#btn-select-mic');
     mark('practice (includes speech-model download)'); await practiceWork(page);
     mark('practice think-aloud'); await thinkAloud(page, 'practice', res.plan, res.stats);
+    await page.waitForSelector('#tr_go', { timeout: 60000 }); await page.click('#tr_go');   // 'Practice complete' screen (2026-11-25)
     for (const cid of [1, 2]) {
       mark('case ' + cid); res['actions_' + cid] = await longCaseWork(page, N_ACTIONS, res.stats); await submitCase(page);
       mark('case ' + cid + ' think-aloud'); res['items_' + cid] = await thinkAloud(page, cid, res.plan, res.stats);
@@ -264,6 +265,7 @@ async function runParticipant(browser, idx) {
     }
     mark('waiting for transcription + final file');
     await page.waitForSelector('#dl', { timeout: 30 * 60000 });
+    await page.evaluate(() => { window.showSaveFilePicker = undefined; });   // use the plain download so Playwright sees it (2026-11-25)
     const [d] = await Promise.all([page.waitForEvent('download'), page.click('#dl')]);
     res.file = path.join(OUT, sub + '_final.json'); await d.saveAs(res.file);
     mark('done'); res.ok = true;

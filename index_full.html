@@ -39,7 +39,7 @@
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 
-  /* in-text classification marks — painted via CSS Custom Highlight API, no DOM mutation */
+  /* in-text classification marks - painted via CSS Custom Highlight API, no DOM mutation */
   ::highlight(ot-support){background-color:#CFE9E4;}
   ::highlight(ot-barrier){background-color:#F8DCC6;}
 
@@ -83,7 +83,7 @@
   /* #app is injected by renderCase and wraps banner + main.
      It MUST be a flex column that fills the remaining body height, or the
      height chain never reaches the panels and they grow with content
-     instead of scrolling internally — which would break AOI-rect stability. */
+     instead of scrolling internally - which would break AOI-rect stability. */
   #app{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
   .main{flex:1;min-height:0;display:flex;gap:var(--gutter);padding:var(--gutter);background:var(--page);overflow:hidden}
   .col{display:flex;flex-direction:column;gap:var(--gutter);min-width:0;min-height:0;overflow:hidden}
@@ -237,7 +237,7 @@
   .cl-continue:disabled{background:#c3cfda;cursor:not-allowed}
 </style>
 
-  <!-- Whisper transcription worker — warmed up during Chunk 1; used by the RTA in Chunk 3.
+  <!-- Whisper transcription worker - warmed up during Chunk 1; used by the RTA in Chunk 3.
        (Inline Blob Worker: no external file, no CORS issues on GitHub Pages.) -->
   <script>
     let __whisperWorker = null, __workerReady = false, __modelProgress = 0;
@@ -298,10 +298,10 @@
       if (!el) { el = document.createElement('div'); el.id = 'whisper_status';
         el.style.cssText = 'position:fixed;top:10px;right:12px;z-index:10009;font:600 12px system-ui;padding:5px 10px;border-radius:999px;display:flex;align-items:center;gap:6px;box-shadow:0 1px 6px rgba(0,0,0,.15);pointer-events:none;transition:opacity .3s';
         document.body.appendChild(el); }
-      var M = { init:['#4b5563','#f3f4f6','Preparing speech model…'],
-                downloading:['#92400e','#fef3c7','Loading speech model… '+Math.round(w.progress||0)+'%'],
+      var M = { init:['#4b5563','#f3f4f6','Preparing speech model...'],
+                downloading:['#92400e','#fef3c7','Loading speech model... '+Math.round(w.progress||0)+'%'],
                 ready:['#166534','#dcfce7','Speech model ready'],
-                transcribing:['#1e40af','#dbeafe','Transcribing your narration…'],
+                transcribing:['#1e40af','#dbeafe','Transcribing your narration...'],
                 transcribed:['#166534','#dcfce7','Narration transcribed'],
                 empty:['#92400e','#fef3c7','No speech detected'],
                 error:['#991b1b','#fee2e2','Speech model unavailable'] };
@@ -331,12 +331,17 @@
   .pop .pk-occ{display:flex;align-items:flex-start;gap:7px;font-size:13px;cursor:pointer;line-height:1.35}
   .pop .pk-occ input{margin-top:2px;flex:0 0 auto}
   </style>
+  <style>
+  .occ-card .occ-desc{white-space:pre-wrap}
+  .occ-msg{flex:1 1 100%;font-size:12.5px;color:#9a3412;font-weight:600;margin-top:4px}
+  .maxc{flex:1 1 100%;font-size:11.5px;margin-top:3px;text-align:right}
+  </style>
 </head>
 <body>
 <script>
 
 /* =====================================================================
-   CAPABILITY GATE (hard) — from original checkBrowser. Fails fast on
+   CAPABILITY GATE (hard) - from original checkBrowser. Fails fast on
    browsers lacking getUserMedia / WebM MediaRecorder /
    WASM / Fullscreen, and on mobile.
    ===================================================================== */
@@ -364,7 +369,7 @@
         <p style="font-size:17px;line-height:1.7;">This study runs in an up-to-date <strong>desktop web browser</strong> such as Chrome, Edge, Firefox, or Safari.</p>
         <p style="font-size:15px;color:#566673;">The study uses local speech processing that is not supported in ${reason}. Please reopen this link in a supported browser on a desktop or laptop computer.</p>
       </div>`;
-    throw new Error("Unsupported browser — study halted (" + (isMobile ? "mobile" : missing.join("; ") || "ua") + ").");
+    throw new Error("Unsupported browser - study halted (" + (isMobile ? "mobile" : missing.join("; ") || "ua") + ").");
   }
 })();
 
@@ -479,7 +484,7 @@ var jsPsych = initJsPsych({
    ===================================================================== */
 var timeline = [];
 
-/* 2 — ★ FULLSCREEN (Option 3), on its own fresh click AFTER share. Because no
+/* 2 - ★ FULLSCREEN (Option 3), on its own fresh click AFTER share. Because no
    browser dialog follows, fullscreen HOLDS. We then measure the fullscreen
    viewport (the task viewport) and set the session clock anchor. */
 timeline.push({
@@ -509,7 +514,7 @@ timeline.push({
   }
 });
 
-/* 2 — Browser-check: WIDTH is a hard gate (below 1000 the columns collide);
+/* 2 - Browser-check: WIDTH is a hard gate (below 1000 the columns collide);
    HEIGHT no longer rejects (minimum_height 0). Short screens proceed rather than being turned away. Runs after fullscreen,
    so it measures the real task viewport. Custom message wording uses "study", not the
    plugin default. */
@@ -530,14 +535,14 @@ timeline.push({
   }
 });
 
-/* 3 — Microphone permission + init (ALWAYS — the RTA needs audio). */
+/* 3 - Microphone permission + init (ALWAYS - the RTA needs audio). */
 timeline.push(permissionGate("microphone"));
 timeline.push({
   type: jsPsychInitializeMicrophone,
   data: { trial_tag: "init_microphone" }
 });
 
-/* 6 — Whisper warmup (background). Loads the model while the participant
+/* 6 - Whisper warmup (background). Loads the model while the participant
    reads; used by the RTA in Chunk 3. */
 timeline.push({
   type: jsPsychHtmlKeyboardResponse, choices: "NO_KEYS",
@@ -545,13 +550,13 @@ timeline.push({
   stimulus: `<div style="max-width:580px;margin:12% auto;text-align:center;color:#1d2a38;font-family:'Segoe UI',Arial,sans-serif;">
       <h3 style="color:#1565c0;margin-bottom:16px;">Preparing speech analysis tools</h3>
       <p style="color:#44545f;margin-bottom:20px;">A speech model is loading in a background thread. The page stays responsive.<br>This only happens once.</p>
-      <p style="color:#8a9aa7;font-size:14px;">Continuing automatically…</p>
+      <p style="color:#8a9aa7;font-size:14px;">Continuing automatically...</p>
     </div>`,
   trial_duration: 1500,
   on_load: function () { warmUpTranscriber(); }
 });
 
-/* END OF CHUNK 1 — on_finish placeholder renders the captured session state. */
+/* END OF CHUNK 1 - on_finish placeholder renders the captured session state. */
 
 
 </script>
@@ -567,17 +572,17 @@ const FLORENCE = {
     <div class="clin" data-src="fl_prof_3"><p>For the past five years a home health aide has assisted with bathing and hair care and has handled shopping, meal preparation, and care of the home. Florence's typical day begins with the aide washing her by 9:30 a.m. and a prepared breakfast by 10:30. Her days involve escorted trips to local stores, medical appointments, and the senior citizens club located in her building, where she usually eats lunch with Mary. Dinner is at home.</p></div>
     <div class="clin" data-src="fl_prof_4"><p>She reads romance novels, collects figurines, and keeps a cat. She values honesty and cleanliness and identifies with the Anglican Church.</p></div>
     <div class="clin" data-src="fl_prof_5"><p>Asked what she most needs, Florence said she wants to remain in her own home and receive services there. She reported being very afraid of being placed in a nursing home.</p></div>
-    <div class="clin" data-src="fl_prof_6"><p><b>In Florence's words.</b> "I've kept my own place since I was a girl — my figurines, my books, the cat, Mary down the hall for our lunches. Denise comes mornings; she's good to me, but I don't love being washed like a child. I'd like to do a few small things for myself again. And I haven't truly slept in weeks — some nights I take the sling off just to get a few hours."</p></div>`,
+    <div class="clin" data-src="fl_prof_6"><p><b>In Florence's words:</b> "I've kept my own place since I was a girl - my figurines, my books, the cat, Mary down the hall for our lunches. Denise comes mornings; she's good to me, but I don't love being washed like a child. I'd like to do a few small things for myself again. And I haven't truly slept in weeks - some nights I take the sling off just to get a few hours."</p></div>`,
 
   chartHTML:`
     <div class="sect">Referral &amp; Diagnosis</div>
     <div class="clin" data-src="fl_ch_ref"><div class="kv"><span class="k">Referral</span><span class="v">Outpatient occupational therapy, twice weekly for 10 weeks. Services are to progress the client to Phase 2 of the total shoulder arthroplasty protocol.</span></div>
     <div class="kv"><span class="k">Diagnosis</span><span class="v">Rheumatoid arthritis, 35-year history. Status post left total shoulder arthroplasty.</span></div>
-    <div class="kv"><span class="k">Relevant history</span><span class="v">Osteoporosis; hypertension; Sjögren's syndrome. Prior surgery: bilateral total knee replacements, bilateral wrist synovectomy, and metacarpophalangeal arthroplasty of digits 2–5.</span></div>
+    <div class="kv"><span class="k">Relevant history</span><span class="v">Osteoporosis; hypertension; Sjogren's syndrome. Prior surgery: bilateral total knee replacements, bilateral wrist synovectomy, and metacarpophalangeal arthroplasty of digits 2-5.</span></div>
     <div class="kv"><span class="k">Medications</span><span class="v">Celebrex. No known allergies.</span></div></div>
 
     <div class="sect">Social &amp; Lifestyle</div>
-    <div class="clin" data-src="fl_ch_soc"><p>Sedentary. No alcohol, tobacco, or drug use. Drinks 4–5 cups of tea daily. Height 5'0", weight 127 lb.</p></div>
+    <div class="clin" data-src="fl_ch_soc"><p>Sedentary. No alcohol, tobacco, or drug use. Drinks 4-5 cups of tea daily. Height 5'0", weight 127 lb.</p></div>
 
     <div class="sect">Activities of Daily Living</div>
     <div class="clin" data-src="fl_ch_adl"><p>Feeds herself with the right upper extremity when food is cut and presented. Requires maximal assistance to dress both upper and both lower extremities, and to don and doff the left shoulder immobilizer. Independently brushes her hair and teeth. <span class="num">QuickDASH score: 63.7%.</span></p></div>
@@ -598,10 +603,10 @@ const FLORENCE = {
     <div class="clin" data-src="fl_ch_pain"><p>No gross deficits in hearing, vestibular, taste, smell, proprioceptive, or cutaneous function. Nearsighted, wears corrective lenses. <span class="num">Left shoulder pain 7/10</span>, described as "miserable." No edema noted.</p></div>
 
     <div class="sect">Cardiopulmonary</div>
-    <div class="clin" data-src="fl_ch_cp"><p><span class="num">Metabolic equivalent of task value 2.5–3.0.</span></p></div>
+    <div class="clin" data-src="fl_ch_cp"><p><span class="num">Metabolic equivalent of task value 2.5-3.0.</span></p></div>
 
     <div class="sect">Movement</div>
-    <div class="clin" data-src="fl_ch_move"><p>Passive range, active range, and strength within functional limits in both upper extremities except the left shoulder, which is positioned in a soft immobilizing adduction sling that was not removed. Flexible swan neck deformities in digits 2–5 and boutonnière deformity of digit 1 bilaterally. Gross grasp strength not assessed.</p></div>
+    <div class="clin" data-src="fl_ch_move"><p>Passive range, active range, and strength within functional limits in both upper extremities except the left shoulder, which is positioned in a soft immobilizing adduction sling that was not removed. Flexible swan neck deformities in digits 2-5 and boutonniere deformity of digit 1 bilaterally. Gross grasp strength not assessed.</p></div>
 
     <div class="sect">Neuromuscular</div>
     <div class="clin" data-src="fl_ch_neuro"><p>Sitting balance 5/5 static and dynamic. Standing balance 4/5 static and dynamic. Tone normal, reflex integration grossly intact.</p></div>
@@ -623,7 +628,7 @@ const YVONNE = {
     <div class="clin" data-src="yv_prof_3"><p>Her interests include Tae Kwon Do, microbrewing, and motorcycle riding. She values love, honesty, and acceptance.</p></div>
     <div class="clin" data-src="yv_prof_4"><p>Since surgery, Tiffany has taken over cooking, shopping, and care of the home.</p></div>
     <div class="clin" data-src="yv_prof_5"><p>Asked what she most needs, Yvonne said she wants to get her arm moving well and to prepare for retirement from her job.</p></div>
-    <div class="clin" data-src="yv_prof_6"><p><b>In Yvonne's words.</b> "I've been the strong one my whole life — on the job, in the dojang, on the bike. Tiffany's carried everything at home since the surgery and I hate that. I catch myself in the mirror and I lose it. I want my arm back so I can be myself again, not so I can baby it."</p></div>`,
+    <div class="clin" data-src="yv_prof_6"><p><b>In Yvonne's words:</b> "I've been the strong one my whole life - on the job, in the dojang, on the bike. Tiffany's carried everything at home since the surgery and I hate that. I catch myself in the mirror and I lose it. I want my arm back so I can be myself again, not so I can baby it."</p></div>`,
 
   chartHTML:`
     <div class="sect">Referral &amp; Diagnosis</div>
@@ -633,7 +638,7 @@ const YVONNE = {
     <div class="kv"><span class="k">Medications</span><span class="v">Voltaren. Allergic to pollen.</span></div></div>
 
     <div class="sect">Social &amp; Lifestyle</div>
-    <div class="clin" data-src="yv_ch_soc"><p>Active lifestyle. Occasional alcohol and tobacco use, no drug use. Drinks 2–3 large cups of coffee daily. Height 5'11", weight 209 lb.</p></div>
+    <div class="clin" data-src="yv_ch_soc"><p>Active lifestyle. Occasional alcohol and tobacco use, no drug use. Drinks 2-3 large cups of coffee daily. Height 5'11", weight 209 lb.</p></div>
 
     <div class="sect">Activities of Daily Living</div>
     <div class="clin" data-src="yv_ch_adl"><p>Independent in feeding, grooming, toileting, and bathing. Able to dress but requires assistance to don and doff her bra. Independent with rolling, bridging, and moving between supine and short sitting. Transfers to and from all surfaces independently. Ambulates independently, observed with postural guarding of the left upper extremity.</p></div>
@@ -648,7 +653,7 @@ const YVONNE = {
     <div class="clin" data-src="yv_ch_ment"><p>Alert and oriented to person, place, time, and situation. Short- and long-term memory intact. Follows three-step commands and makes needs known. Reports frequently crying when she looks at the surgical site. No gross perceptual deficits.</p></div>
 
     <div class="sect">Sensory &amp; Pain</div>
-    <div class="clin" data-src="yv_ch_pain"><p>No gross deficits in visual, hearing, vestibular, taste, smell, or proprioceptive function. <span class="num">Left shoulder pain rated 7/10 before pain medication and 4/10 after</span>, on a 0–10 numeric rating scale. Reports a continuing sensation that her left breast is still present. Surgical incision fully closed, staples removed, scar flat. Light touch and localization impaired. Edema unremarkable.</p></div>
+    <div class="clin" data-src="yv_ch_pain"><p>No gross deficits in visual, hearing, vestibular, taste, smell, or proprioceptive function. <span class="num">Left shoulder pain rated 7/10 before pain medication and 4/10 after</span>, on a 0-10 numeric rating scale. Reports a continuing sensation that her left breast is still present. Surgical incision fully closed, staples removed, scar flat. Light touch and localization impaired. Edema unremarkable.</p></div>
 
     <div class="sect">Cardiopulmonary</div>
     <div class="clin" data-src="yv_ch_cp"><p>No deficits.</p></div>
@@ -656,10 +661,10 @@ const YVONNE = {
     <div class="sect">Movement</div>
     <div class="clin" data-src="yv_ch_move"><p>Passive range, active range, and strength within normal limits in the right upper extremity and both lower extremities. Left upper extremity active range within normal limits except at the shoulder. Left shoulder passive range of motion is shown below. Left shoulder active range of motion matched passive values at all four motions. Left upper extremity strength not evaluated. Client held the left upper extremity in a guarded position. No gross defects in prehension.</p>
       <table class="dtbl"><thead><tr><th>Motion</th><th>Range</th></tr></thead><tbody>
-        <tr><td>Flexion</td><td class="n">0–102°</td></tr>
-        <tr><td>Abduction</td><td class="n">0–88°</td></tr>
-        <tr><td>External rotation</td><td class="n">0–60°</td></tr>
-        <tr><td>Internal rotation</td><td class="n">0–80°</td></tr>
+        <tr><td>Flexion</td><td class="n">0-102 degrees</td></tr>
+        <tr><td>Abduction</td><td class="n">0-88 degrees</td></tr>
+        <tr><td>External rotation</td><td class="n">0-60 degrees</td></tr>
+        <tr><td>Internal rotation</td><td class="n">0-80 degrees</td></tr>
       </tbody></table></div>
 
     <div class="sect">Neuromuscular</div>
@@ -713,7 +718,7 @@ const PATRICIA = {
     <div class="clin" data-src="pa_ch_ment"><p>Alert and oriented to person, place, time, and situation. Short- and long-term memory intact. Follows three-step commands and makes needs known. Reports feeling anxious about not having money coming in to pay her bills. No gross perceptual deficits. <span class="num">Zung Self-Rating Anxiety Scale: 58 out of 100.</span></p></div>
 
     <div class="sect">Sensory &amp; Pain</div>
-    <div class="clin" data-src="pa_ch_pain"><p>No gross deficits in visual, hearing, vestibular, taste, smell, proprioceptive, or cutaneous function. A 2.5-cm scabbed incision with six external stitches observed over the anterior base of the left index finger. <span class="num">Circumferential measurement over the proximal phalanx: left 8.0 cm, right 7.2 cm.</span> <span class="num">Pain rated 3/10</span> on a 0–10 numeric scale at the left index finger; surgical area described as "sensitive to touch."</p></div>
+    <div class="clin" data-src="pa_ch_pain"><p>No gross deficits in visual, hearing, vestibular, taste, smell, proprioceptive, or cutaneous function. A 2.5-cm scabbed incision with six external stitches observed over the anterior base of the left index finger. <span class="num">Circumferential measurement over the proximal phalanx: left 8.0 cm, right 7.2 cm.</span> <span class="num">Pain rated 3/10</span> on a 0-10 numeric scale at the left index finger; surgical area described as "sensitive to touch."</p></div>
 
     <div class="sect">Cardiopulmonary</div>
     <div class="clin" data-src="pa_ch_cp"><p>No deficits. Performs all activities without fatigue.</p></div>
@@ -881,7 +886,7 @@ function renderCase(){
           <div class="panel-head"><span class="ey">Occupations</span><span class="count" id="occ_count">0</span></div>
           <div class="panel-body">
             <div class="occ-add">
-              <input id="occ_input" type="text" maxlength="80" placeholder="Name an occupation…" aria-label="Name an occupation"/>
+              <input id="occ_input" type="text" maxlength="80" placeholder="Name an occupation..." aria-label="Name an occupation"/>
               <textarea id="occ_desc" maxlength="600" rows="2" placeholder="Briefly describe this occupation. What do they want and what do they need to do?" aria-label="Briefly describe this occupation. What do they want and what do they need to do?"></textarea>
               <button class="btn btn-occ" id="occ_add">Add</button>
             </div>
@@ -908,7 +913,7 @@ function renderCase(){
               <label class="syn-lbl">Desired outcomes</label>
               <div class="syn-hint">What are the desired outcomes for this client? These become the basis for your intervention goals.</div>
               <div class="occ-add">
-                <input id="outcome_input" type="text" maxlength="140" placeholder="Name a desired outcome…" aria-label="Name a desired outcome"/>
+                <input id="outcome_input" type="text" maxlength="140" placeholder="Name a desired outcome..." aria-label="Name a desired outcome"/>
                 <button class="btn btn-syn" id="outcome_add">Add</button>
               </div>
               <div id="outcome_list"></div>
@@ -930,9 +935,15 @@ function renderCase(){
   renderOccupations(); renderPerformance(); renderOutcomes(); renderPlan(); refreshHighlights();
 }
 
+function syncImpressionStamp(){
+  const ta=document.getElementById("synthesis_impression"), st=document.getElementById("syn_stamp"); if(!ta||!st) return;
+  const revs=(state.synthesis.impression_revisions||[]), last=revs.length?revs[revs.length-1]:null, v=ta.value||"";
+  if(last && last.text===v) st.textContent="rev "+revs.length+" - "+new Date(last.ts).toLocaleTimeString();
+  else st.textContent = v.trim() ? "" : "not yet edited";
+}
 function wireSynthesis(){
   const ta=document.getElementById("synthesis_impression"), st=document.getElementById("syn_stamp");
-  ta.value=state.synthesis.impression; let t=null;
+  ta.value=state.synthesis.impression; let t=null; syncImpressionStamp();
   /* Append a discrete revision only when typing settles (debounced) or the
      field loses focus, and only if the text changed from the last snapshot.
      Yields a trajectory of settled impressions, not per-keystroke noise. */
@@ -945,7 +956,7 @@ function wireSynthesis(){
     updateWalkthrough();
     state.synthesis.impression=text; state.synthesis.impression_stamp=ts;
     logEvent("synthesis_revision",{version:revs.length, len:text.length});
-    st.textContent="rev "+revs.length+" · "+new Date(ts).toLocaleTimeString();
+    st.textContent="rev "+revs.length+" - "+new Date(ts).toLocaleTimeString();
   };
   ta.addEventListener("input", ()=>{ state.synthesis.impression=ta.value; recordDelta("impression",{text:ta.value}); clearTimeout(t); t=setTimeout(snapshot, 800); });
   ta.addEventListener("blur", ()=>{ clearTimeout(t); snapshot(); });
@@ -955,7 +966,7 @@ function wireOutcomes(){
   const add=()=>{ const text=input.value.trim(); if(!text) return;
     const oid=uid("out_"); state.synthesis.desired_outcomes.push({id:oid, text, otpf4_outcome_type:null, ts:Date.now()});
     logEvent("desired_outcome_add",{text}); recordDelta("outcome_add",{id:oid, text});
-    input.value=""; renderOutcomes(); updateWalkthrough(); };
+    input.value=""; renderOutcomes(); updateWalkthrough(); if(window.refreshMaxc) refreshMaxc(); };
   document.getElementById("outcome_add").addEventListener("click", add);
   input.addEventListener("keydown", e=>{ if(e.key==="Enter") add(); });
 }
@@ -993,9 +1004,17 @@ function wireTabs(){
 function wireOccupations(){
   const input=document.getElementById("occ_input");
   const desc=document.getElementById("occ_desc");
-  const add=()=>{ const name=input.value.trim(); const description=(desc?desc.value.trim():""); if(!name) return; if(!description){ if(desc) desc.focus(); return; }
+  const occMsg=(m)=>{ let el=document.getElementById("occ_msg");
+    if(!m){ if(el) el.remove(); return; }
+    if(!el){ el=document.createElement("div"); el.id="occ_msg"; el.className="occ-msg"; el.setAttribute("role","status"); input.parentElement.appendChild(el); }
+    el.textContent=m; };
+  input.addEventListener("input", ()=>occMsg("")); if(desc) desc.addEventListener("input", ()=>occMsg(""));
+  const add=()=>{ const name=input.value.trim(); const description=(desc?desc.value.trim():"");
+    if(!name){ occMsg("Please name the occupation, then press Add."); input.focus(); return; }
+    if(!description){ occMsg("Please add a short description of this occupation, then press Add."); if(desc) desc.focus(); return; }
+    occMsg("");
     const id=uid("occ_"); state.occupations.push({id,name,description}); logEvent("occupation_add",{name,description}); recordDelta("occ_add",{id,name,description});
-    input.value=""; if(desc) desc.value=""; recordDelta("occ_input",{value:""}); recordDelta("occ_desc_input",{value:""}); renderOccupations(); renderPlan(); };
+    input.value=""; if(desc) desc.value=""; recordDelta("occ_input",{value:""}); recordDelta("occ_desc_input",{value:""}); renderOccupations(); renderPlan(); if(window.refreshMaxc) refreshMaxc(); };
   document.getElementById("occ_add").addEventListener("click", add);
   input.addEventListener("input", ()=>recordDelta("occ_input",{value:input.value}));
   if(desc) desc.addEventListener("input", ()=>recordDelta("occ_desc_input",{value:desc.value}));
@@ -1011,12 +1030,23 @@ function renderOccupations(){
   }).join("");
   list.querySelectorAll(".rm").forEach(b=>b.addEventListener("click",()=>{
     const id=b.dataset.occ;
+    const only=state.entries.filter(e=>(e.occIds||[]).length===1 && e.occIds[0]===id);
+    if(only.length && !b.dataset.ok){ confirmOccRemove(id, only).then(ok=>{ if(ok){ b.dataset.ok="1"; b.click(); } }); return; }
     logEvent("occupation_remove",{id}); recordDelta("occ_remove",{id});
     state.occupations=state.occupations.filter(o=>o.id!==id);
     state.entries.forEach(e=>{ e.occIds=(e.occIds||[]).filter(x=>x!==id); });
     state.plan.selectedBarrierIds=state.plan.selectedBarrierIds.filter(bid=>{ const en=state.entries.find(x=>x.id===bid); return en&&(en.occIds||[]).length>0; });
     renderOccupations(); renderPerformance(); renderPlan();
   }));
+}
+function confirmOccRemove(id, only){
+  const o=state.occupations.find(x=>x.id===id), nm=o?o.name:"this occupation", n=only.length;
+  const planned=only.filter(e=>state.plan.selectedBarrierIds.includes(e.id)).length;
+  const html=`Remove "${esc(nm)}"? ${n} support or barrier item${n===1?" is":"s are"} linked only to this occupation and will move to Unlinked.`
+    + (planned?` ${n===1?"It is":planned===1?"One of them is":planned+" of them are"} in your plan; ${planned===1?"it":"they"} will be taken out of the plan, along with what you wrote for ${planned===1?"it":"them"}.`:"");
+  if(typeof uiModal!=="function") return Promise.resolve(true);
+  return uiModal({ title:"Remove this occupation?", html:html,
+    buttons:[{label:"Remove", value:true}, {label:"Keep it", value:false, primary:true}] });
 }
 function renderPerformance(){
   const body=document.getElementById("pa_body");
@@ -1058,8 +1088,8 @@ function renderPlan(){
   const barriers=state.entries.filter(e=>e.type==="barrier" && (e.occIds||[]).length);
   const barrierPick = barriers.length
     ? barriers.map(b=>{ const occ={name:occNames(b.occIds)}; const on=state.plan.selectedBarrierIds.includes(b.id);
-        return `<label class="ip-bar-pick"><input type="checkbox" data-bar="${b.id}" ${on?'checked':''}/>
-          <span class="txt"><span class="mech">${esc(b.mechanism||'—')}</span> — barrier to ${esc(occ?occ.name:'?')}<br>
+        return `<label class="ip-bar-pick"><input type="checkbox" data-bar="${b.id}" ${on?'checked':''} aria-label="Address the barrier ${esc(b.mechanism||'')} (barrier to ${esc(occ.name)})"/>
+          <span class="txt"><span class="mech">${esc(b.mechanism||' - ')}</span> - barrier to ${esc(occ?occ.name:'?')}<br>
           <span style="opacity:.8">"${esc(trunc(b.excerpt,90))}"</span></span></label>`; }).join("")
     : `<div class="empty"><b>No barriers to address yet</b>Barriers you classify (linked to an occupation) appear here to build the plan on.</div>`;
 
@@ -1068,27 +1098,27 @@ function renderPlan(){
     const occ={name:occNames(b.occIds)};
     const pb=state.plan.perBarrier[bid]||{};
     return `<div class="ip-card">
-      <div class="cardh">${esc(b.mechanism||'barrier')} — ${esc(occ?occ.name:'?')}</div>
+      <div class="cardh">${esc(b.mechanism||'barrier')} - ${esc(occ?occ.name:'?')}</div>
       <div class="ip-field"><label>Describe your approach</label>
-        <textarea data-bid="${bid}" data-f="approach" placeholder="1–2 sentences">${esc(pb.approach||'')}</textarea></div>
+        <textarea data-bid="${bid}" data-f="approach" placeholder="1-2 sentences">${esc(pb.approach||'')}</textarea></div>
       <div class="ip-field"><label>Method (incl. safety / environment)</label>
-        <textarea data-bid="${bid}" data-f="method" placeholder="2–3 sentences">${esc(pb.method||'')}</textarea></div>
+        <textarea data-bid="${bid}" data-f="method" placeholder="2-3 sentences">${esc(pb.method||'')}</textarea></div>
       <div class="ip-field"><label>Grading up / down</label>
-        <textarea data-bid="${bid}" data-f="grading" placeholder="1–2 sentences">${esc(pb.grading||'')}</textarea></div>
+        <textarea data-bid="${bid}" data-f="grading" placeholder="1-2 sentences">${esc(pb.grading||'')}</textarea></div>
     </div>`;
   }).join("");
 
   body.innerHTML=`
-    <div class="ip-step"><span class="lbl">1 · Select the barriers you will address</span>
+    <div class="ip-step"><span class="lbl">1 - Select the barriers you will address</span>
       <span class="hint">Constrained to your own barrier classifications.</span>${barrierPick}</div>
-    <div class="ip-step"><span class="lbl">2 · Why prioritize these over the others?</span>
-      <textarea class="ip" id="ip_prioritization" placeholder="2–3 sentences">${esc(state.plan.prioritization)}</textarea></div>
-    <div class="ip-step"><span class="lbl">3 · For each barrier: approach, method, grading</span>
+    <div class="ip-step"><span class="lbl">2 - Why prioritize these over the others?</span>
+      <textarea class="ip" id="ip_prioritization" placeholder="2-3 sentences">${esc(state.plan.prioritization)}</textarea></div>
+    <div class="ip-step"><span class="lbl">3 - For each barrier: approach, method, grading</span>
       ${state.plan.selectedBarrierIds.length?cards:'<div class="empty">Select at least one barrier above.</div>'}</div>
-    <div class="ip-step"><span class="lbl">4 · Objective, measurable, occupation-based long-term goals that address the desired outcomes</span>
+    <div class="ip-step"><span class="lbl">4 - Objective, measurable, occupation-based long-term goals that address the desired outcomes</span>
       <textarea class="ip" id="ip_goal" placeholder="one goal per line">${esc(state.plan.goal)}</textarea></div>
-    <div class="ip-step"><span class="lbl">5 · Which goal or objective needs the most immediate attention, and why?</span>
-      <textarea class="ip" id="ip_immediate" placeholder="2–3 sentences">${esc(state.plan.immediate)}</textarea></div>`;
+    <div class="ip-step"><span class="lbl">5 - Which goal or objective needs the most immediate attention, and why?</span>
+      <textarea class="ip" id="ip_immediate" placeholder="2-3 sentences">${esc(state.plan.immediate)}</textarea></div>`;
 
   body.querySelectorAll('input[data-bar]').forEach(cb=>cb.addEventListener("change",()=>{
     const id=cb.dataset.bar;
@@ -1146,12 +1176,14 @@ function attachSelectionHandlers(){
     setTimeout(()=>{
       const sel=window.getSelection();
       if(!sel||sel.isCollapsed) return;
-      const text=sel.toString().trim(); if(text.length<3) return;
+      let rng0=sel.getRangeAt(0); const rng=snapRangeToWords(rng0);
+      if(rng.startOffset!==rng0.startOffset || rng.endOffset!==rng0.endOffset){ sel.removeAllRanges(); sel.addRange(rng); }
+      const text=rng.toString().trim(); if(text.length<3) return;
       let node=sel.anchorNode, srcEl=node&&(node.nodeType===1?node:node.parentElement);
       const body2=document.getElementById("case_body");
       while(srcEl && !(srcEl.dataset&&srcEl.dataset.src) && srcEl!==body2) srcEl=srcEl.parentElement;
       const src=(srcEl&&srcEl.dataset&&srcEl.dataset.src)||null;
-      const rng=sel.getRangeAt(0);
+      if(popEl && window.__popOpen && window.__popOpen.text===text && window.__popOpen.src===src && Date.now()-window.__popOpen.t<600) return;
       pendingRange=rng.cloneRange();
       openPopover(text, src, rng.getBoundingClientRect());
     },1);
@@ -1169,8 +1201,18 @@ function attachScrollCapture(){
     });
   });
 }
+/* Widen a selection that starts or ends mid-word to whole words (within its text nodes). */
+function snapRangeToWords(r0){
+  const r=r0.cloneRange(), W=/[A-Za-z0-9'-]/;
+  const sc=r.startContainer, ec=r.endContainer;
+  if(sc.nodeType===3){ let i=r.startOffset; const t=sc.data;
+    if(i>0 && i<t.length && W.test(t[i-1]) && W.test(t[i])){ while(i>0 && W.test(t[i-1])) i--; r.setStart(sc,i); } }
+  if(ec.nodeType===3){ let j=r.endOffset; const t=ec.data;
+    if(j>0 && j<t.length && W.test(t[j-1]) && W.test(t[j])){ while(j<t.length && W.test(t[j])) j++; r.setEnd(ec,j); } }
+  return r;
+}
 function openPopover(text, src, rect){
-  removePopKeepRange();
+  removePopKeepRange(); window.__popOpen={text:text, src:src, t:Date.now()};
   popEl=document.createElement("div"); popEl.className="pop"; popEl.innerHTML=choiceStep(text);
   document.body.appendChild(popEl); window.__popRect=rect; positionPop(rect); wireChoiceStep(text, src); recordDelta("pop_open",{excerpt:text, src:src, loc: serializeRange(pendingRange, src)});
 }
@@ -1231,10 +1273,10 @@ function commitEntry(e){
    UTILITIES / CHROME
    ===================================================================== */
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function trunc(s,n){ s=String(s); return s.length>n? s.slice(0,n-1)+"…" : s; }
+function trunc(s,n){ s=String(s); return s.length>n? s.slice(0,n-1)+"..." : s; }
 
 /* =====================================================================
-   PRACTICE WALKTHROUGH — practice case only.
+   PRACTICE WALKTHROUGH - practice case only.
    Mechanics-only, unlocked (interface stays live), completion-gated.
    Non-modal coach-marks point at controls; a persistent checklist tracks
    the required-action set and gates the Continue button. No timers.
@@ -1256,14 +1298,14 @@ const REQUIRED = [
   ["immediate",      "Fill in immediate attention"]
 ];
 const TOUR = [
-  {req:null,             sel:null,               h:"Welcome — this is practice", p:"This run is just to learn the tool before the real cases. Nothing here counts. Work through the checklist at the bottom in any order; when it's complete you can continue."},
+  {req:null,             sel:null,               h:"Welcome - this is practice", p:"This run is just to learn the tool before the real cases. Nothing here counts. Work through the checklist at the bottom in any order; when it's complete you can continue."},
   {req:"tabs",           sel:".tabs",            h:"Open every tab",            p:"The case material has two tabs. Open the Initial Evaluation tab at least once so you've seen all of it."},
   {req:"occupation",     sel:"#occ_input",       h:"Add an occupation",         p:"Name one occupation the client needs or wants to do, then briefly describe it (what they want and need to do). Press Add. Everything you classify links to an occupation."},
   {req:"support",        sel:"#case_body",       h:"Mark a support",            p:"Select any phrase in the case text. In the popup choose Support, name what enables it, and link it to an occupation."},
   {req:"barrier",        sel:"#case_body",       h:"Mark a barrier",            p:"Select another phrase and choose Barrier. Name what's getting in the way and link it to an occupation."},
   {req:"synthesis",      sel:"#aoi_synthesis",   h:"Synthesize the evaluation", p:"Write your clinical impression integrating the profile and your analysis, then add at least one desired outcome."},
-  {req:"plan",           sel:"#aoi_intervention",h:"Build the plan",            p:"Select one of your barriers to address, then fill its approach, method, and grading — plus the prioritization, goal, and immediate-attention boxes."},
-  {req:null,             sel:"#cl",              h:"That's everything",         p:"When every checklist item is checked, Continue turns on. Reopen this guide anytime with “Show guide.”"}
+  {req:"plan",           sel:"#aoi_intervention",h:"Build the plan",            p:"Select one of your barriers to address, then fill its approach, method, and grading - plus the prioritization, goal, and immediate-attention boxes."},
+  {req:null,             sel:"#cl",              h:"That's everything",         p:"When every checklist item is checked, Continue turns on. Reopen this guide anytime with 'Show guide.'"}
 ];
 
 function stepSatisfied(step){
@@ -1327,6 +1369,7 @@ function buildChecklist(){
     </div>`;
   document.getElementById("cl_bar").onclick=(e)=>{ if(e.target.id==="cl_guide") return; walk.listOpen=!walk.listOpen; buildChecklist(); };
   document.getElementById("cl_guide").onclick=(e)=>{ e.stopPropagation(); walk.tourOpen=true; showCoach(firstIncompleteStep()); };
+  { const ipb=document.getElementById("ip_body"); if(ipb) ipb.style.paddingBottom=(el.offsetHeight+24)+"px"; }
   const cont=document.getElementById("cl_continue");
   if(cont) cont.onclick=()=>{ if(done===REQUIRED.length){ walk.tourOpen=false; removeCoach(); submitCase(); } };
 }
@@ -1784,6 +1827,25 @@ CONFIG.TA_TEXT = {
   checkpoint_upload_link: "Open the upload page (only if you have to stop now)",
   resume_title: "Welcome back",
   resume_body: "Your progress was saved. You will continue where you left off. The next screens will ask for full screen and your microphone again.",
+  resume_body_test: "Your progress was saved. You will continue where you left off. The next screen will ask for full screen again.",
+  /* <<SIGN-OFF>> drafts added 2026-11-25 (stress-test fixes) */
+  bad_link_title: "This study link is incomplete",
+  bad_link_body: "The link you used is missing information the study needs, so the study cannot start. Nothing has been recorded. " +
+    "Please go back to the survey and open the study from the link it gives you. If this keeps happening, please email " +
+    '<a href="mailto:dennis.culver@drake.edu" style="color:#1565c0">dennis.culver@drake.edu</a>.',
+  finished_title: "You have already finished this study",
+  finished_body: "Thank you. This link has already been used to finish the study on this computer. If you have not uploaded your session file yet, " +
+    "look in your Downloads folder for a file whose name starts with <strong>{prefix}</strong> and upload it to the survey. " +
+    'If you cannot find it, please email <a href="mailto:dennis.culver@drake.edu" style="color:#1565c0">dennis.culver@drake.edu</a>.',
+  transition_title: "Practice complete",
+  transition_body: "You have finished the practice. Next is <b>Case 1 of 2</b>. From here on, your work is part of the study. " +
+    "The tool works the same way as in the practice, but there is no checklist or guide. When you have finished a case, press " +
+    "<b>Submit case and continue</b> at the top right.",
+  transition_button: "Start Case 1",
+  save_cancelled: "Your file was not saved. Please click the green button again and save it.",
+  save_unknown: "If a file was saved, you can continue. If you do not see it, click the green button again.",
+  confirm_saved_button: "I have saved my file. Continue to the survey",
+  test_no_return: "TEST MODE: the return to the survey is turned off, so nothing is sent to Qualtrics.",
   file_too_large: "Your file is larger than the survey normally accepts. Please download it and keep it. " +
     "If the survey will not accept it, contact the research team and they will collect it another way."
 };
@@ -1795,6 +1857,21 @@ if(study.url_params && study.url_params.export_audio === "1") CONFIG.TA_EXPORT_A
    without a microphone (Nothing to add only), so automated testers whose browsers have no microphone
    can exercise everything else. Shown on screen and recorded in the file; never in participant links. */
 const TEST_NOMIC = !!(study.url_params && study.url_params.test_nomic === "1");   /* per-link audio export (see CONFIG.TA_EXPORT_AUDIO) */
+
+/* LINK CHECK (stress test 2026-11-25, P2). Without a sub_id nothing can be saved for resume, the file
+   is named "anon", and the survey return carries no id, so a participant on a broken link would work
+   for an hour with no protection and an unlinkable file. group must be 1 (student) or 2 (faculty or
+   practitioner); year must be 1-3 for students and is ignored for group 2. A participant link that fails
+   gets a stop screen before anything starts; test mode is let through (the problems show on the test banner). */
+function linkProblems(){
+  var q = study.url_params || {}, out = [];
+  if(!String(study.sub_id_from_url || "").trim()) out.push("no sub_id");
+  var g = String(q.group == null ? "" : q.group).trim(), y = String(q.year == null ? "" : q.year).trim();
+  if(g !== "1" && g !== "2") out.push("group missing or not 1/2");
+  else if(g === "1" && ["1","2","3"].indexOf(y) < 0) out.push("year missing or not 1-3");
+  return out;
+}
+const LINK_PROBLEMS = linkProblems();
 
 /* Per-case captured records assembled for the export. Keyed by case id. */
 study.cases = {};
@@ -1838,6 +1915,27 @@ function uiModal(opts){
     if(primaryBtn) setTimeout(function(){ try{ primaryBtn.focus(); }catch(e){} }, 0);
   });
 }
+
+/* ---------- CHARACTER COUNTERS ----------
+   The capped fields (occupation name 80, description 600, desired outcome 140, mechanism 1000) used
+   to stop accepting text with no sign (stress test 2026-11-25). A small "N characters left" line now
+   appears once 80% of the limit is used. Display only: nothing is logged. */
+var MAXC_NAMES = { occ_input: "Occupation name", occ_desc: "Description", outcome_input: "Desired outcome", pk_mech: "" };
+function maxcShow(el){ var max = el.maxLength; return max > 0 && (max - el.value.length) <= Math.max(10, Math.round(max * 0.2)); }
+function updateMaxc(el){
+  if(!el || !el.id || !(el.id in MAXC_NAMES) || !(el.maxLength > 0)) return;
+  var cid = el.id + "_count", c = document.getElementById(cid), left = el.maxLength - el.value.length;
+  if(!maxcShow(el)){ if(c) c.remove(); return; }
+  if(!c){
+    c = document.createElement("div"); c.id = cid; c.className = "maxc";
+    var host = el.parentElement && el.parentElement.classList.contains("occ-add") ? el.parentElement : null;
+    if(host) host.appendChild(c); else el.insertAdjacentElement("afterend", c);
+  }
+  c.textContent = (MAXC_NAMES[el.id] ? MAXC_NAMES[el.id] + ": " : "") + (left > 0 ? left + " character" + (left === 1 ? "" : "s") + " left" : "character limit reached");
+  c.style.color = left > 0 ? "#64748b" : "#9a3412";
+}
+document.addEventListener("input", function(e){ updateMaxc(e.target); }, true);
+window.refreshMaxc = function(){ document.querySelectorAll(".maxc").forEach(function(c){ updateMaxc(document.getElementById(c.id.replace(/_count$/, ""))); if(!document.getElementById(c.id.replace(/_count$/, ""))) c.remove(); }); };
 
 /* ---------- FULLSCREEN GUARDIAN ----------
    Fullscreen can drop mid-study (Esc, a permission prompt). Re-entering requires
@@ -1886,8 +1984,19 @@ function mountAppInto(hostId){
   return host;
 }
 
+/* During a case the speech-model chip sits just under the banner, on the empty right end of the
+   plan panel's header, instead of over the Submit button (stress test 2026-11-25). */
+function placeChipForCase(){
+  var b = document.querySelector("#app .banner"); if(!b) return;
+  var st = document.getElementById("chip_case_style");
+  if(!st){ st = document.createElement("style"); st.id = "chip_case_style"; document.head.appendChild(st); }
+  st.textContent = "body.case-active #whisper_status{top:" + (Math.round(b.getBoundingClientRect().bottom) + 6) + "px !important}";
+  document.body.classList.add("case-active");
+}
+
 /* Remove any body-appended overlays so they never bleed between trials. */
 function cleanupOverlays(){
+  document.body.classList.remove("case-active");
   if(typeof removePop === "function"){ try{ removePop(); }catch(e){} }
   if(typeof removeCoach === "function"){ try{ removeCoach(); }catch(e){} }
   var cl = document.getElementById("cl"); if(cl) cl.remove();
@@ -1942,6 +2051,34 @@ function downloadJSON(payload, fname){
   var a = document.createElement("a"); a.href = url; a.download = fname; document.body.appendChild(a); a.click();
   setTimeout(function(){ a.remove(); }, 0);
   return url;
+}
+
+/* Save the final file and report whether it really was saved (stress test 2026-11-25, P1).
+   Where the browser offers a save dialog the page can watch (Chrome / Edge: showSaveFilePicker),
+   resolves "saved" only after the file is written, or "cancelled" if the dialog was closed.
+   Elsewhere (Firefox, Safari) a page cannot tell whether a download was kept, so it starts a
+   normal download and resolves "unknown"; the caller then asks the participant to confirm. */
+function saveFileReal(blob, fname){
+  if(typeof window.showSaveFilePicker === "function"){
+    var picker;
+    try{
+      picker = window.showSaveFilePicker({ suggestedName: fname, startIn: "downloads",
+        types: [{ description: "Session file", accept: { "application/json": [".json"] } }] });
+    }catch(e){ picker = Promise.reject(e); }
+    return picker.then(function(h){ return h.createWritable(); })
+      .then(function(w){ return w.write(blob).then(function(){ return w.close(); }); })
+      .then(function(){ return "saved"; }, function(err){
+        if(err && err.name === "AbortError") return "cancelled";
+        plainDownload(blob, fname); return "unknown";
+      });
+  }
+  plainDownload(blob, fname);
+  return Promise.resolve("unknown");
+}
+function plainDownload(blob, fname){
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a"); a.href = url; a.download = fname; document.body.appendChild(a); a.click();
+  setTimeout(function(){ a.remove(); }, 0);
 }
 
 /* =====================================================================
@@ -2010,11 +2147,12 @@ const Persist = (function(){
       // expire abandoned snapshots (any participant) older than the limit
       var cutoff = Date.now() - CONFIG.AUTOSAVE_EXPIRY_DAYS * 86400000;
       return op(SNAP, "readonly", function(s){ return s.getAll(); }).then(function(all){
-        var stale = (all || []).filter(function(x){ return x && x.kind !== "cases" && x.saved_at < cutoff; }).map(function(x){ return x.study_id; });
+        var stale = (all || []).filter(function(x){ return x && x.kind !== "cases" && !x.completed && x.saved_at < cutoff; }).map(function(x){ return x.study_id; });
         return Promise.all(stale.map(function(id){ return api.clear(id); }));
       }).then(function(){ return op(SNAP, "readonly", function(s){ return s.get(key); }); })
         .then(function(snap){
-          if(!snap || snap.completed) return null;
+          if(!snap) return null;
+          if(snap.completed) return { completed: true, study_id: key, completed_at: snap.saved_at };   /* finished on this computer (see markCompleted) */
           return op(SNAP, "readonly", function(s){ return s.get(key + "|cases"); }).then(function(c){
             snap.cases = (c && c.cases) || snap.cases || {};          // (older single-record saves carried cases inline)
             casesVersion = 0; savedCasesVersion = 0;                   // the stored copy is current
@@ -2039,7 +2177,7 @@ const Persist = (function(){
   };
 
   api.saveNow = function(){
-    if(!api.enabled || !key) return Promise.resolve(false);
+    if(!api.enabled || !key || api.completed) return Promise.resolve(false);
     var t0 = performance.now(), snap, casesRec = null, ver = casesVersion;
     try{
       snap = api.snapshot();
@@ -2073,7 +2211,20 @@ const Persist = (function(){
       return Promise.all(mine.map(function(x){ return op(AUDIO, "readwrite", function(s){ return s.delete(x); }); }));
     });
   };
-  api.markCompleted = function(){ if(timer) clearInterval(timer); return api.clear(key); };
+  /* After the final file is saved: erase the participant's work and audio, and leave only a small
+     "completed" marker (no study data) so reopening the link says the study is finished instead of
+     starting it again. FIX (stress test 2026-11-25): the clear used to be undone by the save that runs
+     when the page is left (pagehide / visibilitychange), so the full snapshot came back; saveNow is now
+     a no-op once completed. The marker never expires. */
+  api.completed = false;
+  api.markCompleted = function(){
+    if(timer) clearInterval(timer);
+    api.completed = true;
+    if(!api.enabled || !key) return Promise.resolve(null);
+    return api.clear(key).then(function(){
+      return op(SNAP, "readwrite", function(s){ return s.put({ v: 1, study_id: key, saved_at: Date.now(), completed: true }, key); });
+    });
+  };
   /* Not-yet-transcribed audio (CONFIG.TA_PERSIST_PENDING_AUDIO), or all analyzed audio until the end when
      CONFIG.TA_EXPORT_AUDIO is on (it is read back only to build the session file). */
   api.putAudio = function(recId, blob){ if(!api.enabled || !(CONFIG.TA_PERSIST_PENDING_AUDIO || CONFIG.TA_EXPORT_AUDIO)) return Promise.resolve(null);
@@ -2101,9 +2252,33 @@ function makeResumeNoticeTrial(){
     type: jsPsychHtmlKeyboardResponse, choices: "NO_KEYS", data: { trial_tag: "resume_notice" },
     stimulus: '<div style="max-width:620px;margin:10% auto;text-align:left;color:#1d2a38;font-family:system-ui">'
       + '<h2 style="color:#1565c0">' + CONFIG.TA_TEXT.resume_title + '</h2>'
-      + '<p style="font-size:17px;line-height:1.7">' + CONFIG.TA_TEXT.resume_body + '</p>'
+      + '<p style="font-size:17px;line-height:1.7">' + (TEST_NOMIC ? CONFIG.TA_TEXT.resume_body_test : CONFIG.TA_TEXT.resume_body) + '</p>'
       + '<button id="resume_go" style="margin-top:10px;padding:13px 28px;background:#1565c0;color:#fff;border:0;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer">Continue</button></div>',
     on_load: function(){ document.getElementById("resume_go").onclick = function(){ jsPsych.finishTrial(); }; }
+  };
+}
+
+/* A plain full-page message (no buttons), used for the stop screens. */
+function makeMessageTrial(tag, title, bodyHtml){
+  return {
+    type: jsPsychHtmlKeyboardResponse, choices: "NO_KEYS", data: { trial_tag: tag },
+    stimulus: '<div style="max-width:620px;margin:10% auto;text-align:left;color:#1d2a38;font-family:system-ui">'
+      + '<h2 style="color:#1565c0">' + title + '</h2>'
+      + '<p style="font-size:17px;line-height:1.7">' + bodyHtml + '</p></div>'
+  };
+}
+
+/* Between the practice think-aloud and Case 1 (stress test 2026-11-25: the practice used to run
+   straight into Case 1 with no signal that the real work had started). */
+function makeTransitionTrial(){
+  var X = CONFIG.TA_TEXT;
+  return {
+    type: jsPsychHtmlKeyboardResponse, choices: "NO_KEYS", data: { trial_tag: "practice_to_case1" },
+    stimulus: '<div style="max-width:620px;margin:10% auto;text-align:left;color:#1d2a38;font-family:system-ui">'
+      + '<h2 style="color:#1565c0">' + X.transition_title + '</h2>'
+      + '<p style="font-size:17px;line-height:1.7">' + X.transition_body + '</p>'
+      + '<button id="tr_go" style="margin-top:10px;padding:13px 28px;background:#1565c0;color:#fff;border:0;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer">' + X.transition_button + '</button></div>',
+    on_load: function(){ document.getElementById("tr_go").onclick = function(){ jsPsych.finishTrial(); }; }
   };
 }
 
@@ -2507,7 +2682,7 @@ const Clip = (function(){
     var app = document.getElementById("app"); if(app) app.style.pointerEvents = "none";
   }
   function lightRender(light){
-    if(light.impression){ state.synthesis.impression = S.synthesis.impression; setVal("#synthesis_impression", S.synthesis.impression); }
+    if(light.impression){ state.synthesis.impression = S.synthesis.impression; setVal("#synthesis_impression", S.synthesis.impression); if(typeof syncImpressionStamp === "function") syncImpressionStamp(); }
     if(light.plan_field){ ["prioritization","goal","immediate"].forEach(function(k){ state.plan[k] = S.plan[k]; setVal("#ip_" + k, S.plan[k]); }); }
     if(light.plan_barrier){
       state.plan.perBarrier = JSON.parse(JSON.stringify(S.plan.perBarrier || {}));
@@ -3069,6 +3244,7 @@ function makeCaseTrial(caseObj){
       attachCursorSampling();     // cursor track (replay reconstruction only; not analyzed)
       setupWalkthrough();         // practice only (no-op for real cases)
       addBannerSubmit();          // real cases only
+      placeChipForCase();
       Flow.live = function(){ return { kind:"case", case_id: caseObj.id, state: cloneForSave(state), seq: seq, last_t: nowRel(), saved_wall_ms: Date.now(),
                                        case_started_offset_ms: rec.case_started_offset_ms, viewport: rec.viewport }; };
       Persist.startAutosave(function(){ return state.log.length + ":" + state.recon.deltas.length + ":" + state.recon.cursor.length; });
@@ -3205,7 +3381,8 @@ function makeCheckpointTrial(){
         + '<button id="cp_dl" disabled style="opacity:.6;background:#1e8e4e;color:#fff;border:0;padding:12px 24px;border-radius:8px;font-weight:700;font-size:15px;cursor:pointer">Download my progress file</button>'
         + '<p id="cp_done" style="display:none;margin:10px 0 0;color:#16692f;font-weight:700">Downloaded.</p>'
         + '<p id="cp_big" style="display:none;margin:12px 0 0;color:#9a3412;font-weight:600">' + X.file_too_large + '</p>'
-        + (q ? '<p style="margin:22px 0 0;font-size:14px"><a href="' + q + '" target="_blank" rel="noopener">' + X.checkpoint_upload_link + '</a></p>' : '')
+        + (q && !TEST_NOMIC ? '<p style="margin:22px 0 0;font-size:14px"><a href="' + q + '" target="_blank" rel="noopener">' + X.checkpoint_upload_link + '</a></p>' : '')
+        + (TEST_NOMIC ? '<p style="margin:22px 0 0;font-size:14px;color:#b91c1c;font-weight:700">' + X.test_no_return + '</p>' : '')
         + '<div style="margin-top:26px"><button id="cp_go" disabled style="background:#1565c0;color:#fff;border:0;padding:12px 24px;border-radius:8px;font-weight:700;font-size:15px;opacity:.45;cursor:not-allowed">Continue to Case 2</button></div>'
         + '</div>';
       var go = document.getElementById("cp_go");
@@ -3253,38 +3430,62 @@ function makeExportTrial(){
         var fname = "ot_session_" + (study.sub_id_from_url || "anon") + "_" + Date.now() + ".json";
         var fileBlob = new Blob([JSON.stringify(payload)], { type: "application/json" }), tooBig = fileBlob.size > CONFIG.UPLOAD_WARN_BYTES;
         study.final_bytes = fileBlob.size; if(DEV) console.log("[export] final file bytes", fileBlob.size);
-        var url = URL.createObjectURL(fileBlob);
-        var qUrl = qualtricsUrl(), qConfigured = !!qUrl;
+        var X = CONFIG.TA_TEXT;
+        /* Test mode never sends the tab to the live survey (stress test 2026-11-25, P1). */
+        var qUrl = TEST_NOMIC ? null : qualtricsUrl(), qConfigured = !!qUrl;
         el.innerHTML = wrap
           + '<h2 style="color:#1565c0;margin:0 0 6px">You have finished both cases. Thank you.</h2>'
-          + '<p style="font-size:16px;margin:0 0 20px">One step completes your participation: download your session file below.'
-          + (qConfigured ? ' You will then be returned to the survey automatically to upload it.' : '')
+          + '<p style="font-size:16px;margin:0 0 20px">One step completes your participation: save your session file below.'
+          + (qConfigured ? ' You will then return to the survey to upload it.' : '')
           + ' Please do not close this tab until you have uploaded your file.</p>'
           + '<div style="background:#eef4fb;border:1px solid #cfe0f2;border-radius:10px;padding:16px 18px;margin:0 0 16px">'
-          +   '<p style="margin:0 0 6px;font-weight:700;color:#12507f">Download your session file</p>'
-          +   '<p style="margin:0 0 12px;font-size:15px">Click the green button. A file named <strong>' + fname + '</strong> will be saved to your computer (usually your Downloads folder). Remember where it goes - you will upload it to the survey.</p>'
-          +   '<a id="dl" href="' + url + '" download="' + fname + '" style="display:inline-block;background:#1e8e4e;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:15px">Download my session file</a>'
-          +   '<p id="dl_done" style="display:none;margin:10px 0 0;color:#16692f;font-weight:700">Downloaded.</p>'
-          +   (tooBig ? '<p id="dl_big" style="margin:12px 0 0;color:#9a3412;font-weight:600">' + CONFIG.TA_TEXT.file_too_large + '</p>' : '')
+          +   '<p style="margin:0 0 6px;font-weight:700;color:#12507f">Save your session file</p>'
+          +   '<p style="margin:0 0 12px;font-size:15px">Click the green button. A file named <strong>' + fname + '</strong> will be saved to your computer (usually your Downloads folder). If your browser asks where to save it, choose a place you will remember, then press Save. You will upload this file to the survey.</p>'
+          +   '<button id="dl" style="display:inline-block;background:#1e8e4e;color:#fff;border:0;cursor:pointer;padding:12px 24px;border-radius:8px;font-weight:700;font-size:15px">Download my session file</button>'
+          +   '<p id="dl_done" style="display:none;margin:10px 0 0;color:#16692f;font-weight:700">Saved.</p>'
+          +   '<p id="dl_cancel" style="display:none;margin:10px 0 0;color:#9a3412;font-weight:700">' + X.save_cancelled + '</p>'
+          +   (tooBig ? '<p id="dl_big" style="margin:12px 0 0;color:#9a3412;font-weight:600">' + X.file_too_large + '</p>' : '')
           + '</div>'
           + '<div style="background:#f6f8fa;border:1px solid #dfe6ec;border-radius:10px;padding:16px 18px;margin:0 0 20px">'
-          +   (qConfigured
-                ? '<p id="return_msg" style="margin:0;font-size:15px;color:#12507f">After you download the file, you will be returned to the survey automatically, where you will be asked to upload it (<strong>' + fname + '</strong>).</p>'
+          +   (TEST_NOMIC
+                ? '<p style="margin:0;color:#b91c1c;font-weight:700">' + X.test_no_return + '</p>'
+                : qConfigured
+                ? '<p id="return_msg" style="margin:0;font-size:15px;color:#12507f">After you save the file, you will return to the survey, where you will be asked to upload it (<strong>' + fname + '</strong>).</p>'
+                  + '<button id="ret_go" style="display:none;margin-top:12px;background:#1565c0;color:#fff;border:0;padding:12px 24px;border-radius:8px;font-weight:700;font-size:15px;cursor:pointer">' + X.confirm_saved_button + '</button>'
                 : '<p style="margin:0;color:#c0392b;font-weight:600">[Survey return URL not set yet - configure CONFIG.QUALTRICS_UPLOAD_URL. Your downloaded file is still saved.]</p>')
           + '</div>'
-          + '<p style="font-size:13px;color:#7a8894">If the download did not start, click the green button again. If you cannot find the file, check your Downloads folder for <strong>' + fname + '</strong>.</p>'
+          + '<p style="font-size:13px;color:#7a8894">If the file did not save, click the green button again. If you cannot find the file, check your Downloads folder for <strong>' + fname + '</strong>.</p>'
           + '</div>';
-        var dl = document.getElementById("dl"), dlDone = document.getElementById("dl_done"), returning = false;
+        var dl = document.getElementById("dl"), dlDone = document.getElementById("dl_done"), dlCancel = document.getElementById("dl_cancel"),
+            retGo = document.getElementById("ret_go"), returning = false, saving = false;
+        function goToSurvey(){
+          study.__guardUnload = false;
+          Persist.markCompleted().then(function(){ window.location.href = qUrl; }, function(){ window.location.href = qUrl; });
+        }
         function startReturnCountdown(){
           if(returning || !qConfigured) return; returning = true;
+          if(retGo) retGo.style.display = "none";
           var msg = document.getElementById("return_msg"), n = Math.max(1, Math.round(CONFIG.QUALTRICS_RETURN_DELAY_S || 5));
           (function tick(){
-            if(n <= 0){ study.__guardUnload = false; Persist.markCompleted().then(function(){ window.location.href = qUrl; }, function(){ window.location.href = qUrl; }); return; }
-            if(msg) msg.innerHTML = 'Returning you to the survey in <strong>' + n + '</strong> second' + (n === 1 ? '' : 's') + ' to upload your file. If the download did not start, click the green button again.';
+            if(n <= 0){ goToSurvey(); return; }
+            if(msg) msg.innerHTML = 'Your file is saved. Returning you to the survey in <strong>' + n + '</strong> second' + (n === 1 ? '' : 's') + ' to upload it.';
             n -= 1; setTimeout(tick, 1000);
           })();
         }
-        if(dl) dl.addEventListener("click", function(){ if(dlDone) dlDone.style.display = "block"; if(!qConfigured) study.__guardUnload = false; startReturnCountdown(); });
+        if(retGo) retGo.addEventListener("click", function(){ if(returning) return; returning = true; retGo.disabled = true; goToSurvey(); });
+        if(dl) dl.addEventListener("click", function(){
+          if(saving || returning) return; saving = true;
+          saveFileReal(fileBlob, fname).then(function(result){
+            saving = false;
+            dlCancel.style.display = result === "cancelled" ? "block" : "none";
+            if(result === "cancelled") return;
+            dlDone.textContent = result === "saved" ? "Saved." : "Downloaded. " + X.save_unknown;
+            dlDone.style.display = "block";
+            if(TEST_NOMIC || !qConfigured){ study.__guardUnload = false; if(TEST_NOMIC) Persist.markCompleted(); return; }
+            if(result === "saved") startReturnCountdown();          // the browser confirmed the file was written
+            else if(retGo) retGo.style.display = "inline-block";     // cannot tell: the participant confirms
+          });
+        });
       }
     }
   };
@@ -3298,22 +3499,37 @@ function makeExportTrial(){
 function buildTimeline(resuming){
   if(TEST_NOMIC){
     for(var k = timeline.length - 1; k >= 0; k--){ var tg = timeline[k] && timeline[k].data && timeline[k].data.trial_tag;
-      if(tg === "permission_gate_microphone" || tg === "init_microphone") timeline.splice(k, 1); }
+      if(tg === "permission_gate_microphone" || tg === "init_microphone" || tg === "whisper_warmup") timeline.splice(k, 1); }   /* no speech model without a mic */
     study.permissions = study.permissions || {}; study.permissions.microphone = { state: "skipped_test_mode", t: new Date().toISOString() };
-    var tb = document.createElement("div"); tb.id = "test_mode_banner"; tb.textContent = "TEST MODE: no microphone. Not for participants.";
-    Object.assign(tb.style, { position:"fixed", left:"8px", top:"8px", zIndex:2147483000, background:"#b91c1c", color:"#fff",
-      font:"700 12px system-ui", padding:"4px 8px", borderRadius:"5px", pointerEvents:"none", opacity:".9" });
+    var tb = document.createElement("div"); tb.id = "test_mode_banner";
+    tb.textContent = "TEST MODE: no microphone. Not for participants." + (LINK_PROBLEMS.length ? " Link: " + LINK_PROBLEMS.join(", ") + "." : "");
+    /* bottom centre: top left covered the case title (stress test 2026-11-25) */
+    Object.assign(tb.style, { position:"fixed", left:"50%", bottom:"4px", transform:"translateX(-50%)", zIndex:2147483000, background:"#b91c1c", color:"#fff",
+      font:"700 12px system-ui", padding:"4px 8px", borderRadius:"5px", pointerEvents:"none", opacity:".9", whiteSpace:"nowrap" });
     document.body.appendChild(tb);
   }
   if(resuming) timeline.unshift(makeResumeNoticeTrial());
-  CASES_IN_ORDER.forEach(function(c){
+  CASES_IN_ORDER.forEach(function(c, i){
+    var caseLive = Flow.resume && Flow.resume.kind === "case" && String(Flow.resume.case_id) === String(c.id);
+    if(i === 1 && Flow.done.indexOf("case:" + c.id) < 0 && !caseLive) timeline.push(makeTransitionTrial());   /* practice -> Case 1 */
     if(Flow.done.indexOf("case:" + c.id) < 0) timeline.push(makeCaseTrial(c));
     if(Flow.done.indexOf("ta:" + c.id) < 0) timeline.push(makeThinkAloudTrial(c));
     if(String(c.id) === String(CONFIG.CHECKPOINT_AFTER_CASE_ID) && Flow.done.indexOf("checkpoint") < 0) timeline.push(makeCheckpointTrial());
   });
   timeline.push(makeExportTrial());
 }
-Persist.init(study.sub_id_from_url).then(function(snap){
+if(LINK_PROBLEMS.length && !TEST_NOMIC){
+  /* Broken participant link: stop before anything starts or is saved (P2). */
+  jsPsych.run([makeMessageTrial("bad_link", CONFIG.TA_TEXT.bad_link_title, CONFIG.TA_TEXT.bad_link_body)]);
+} else Persist.init(study.sub_id_from_url).then(function(snap){
+  if(snap && snap.completed){
+    if(!TEST_NOMIC){
+      jsPsych.run([makeMessageTrial("already_finished", CONFIG.TA_TEXT.finished_title,
+        taFmt(CONFIG.TA_TEXT.finished_body, { prefix: "ot_session_" + taEsc(study.sub_id_from_url) }))]);
+      return;
+    }
+    snap = null; Persist.completed = false; Persist.clear();      // test runs reuse their ids: start fresh
+  }
   if(snap){ restoreFromSnapshot(snap); requeuePendingTranscriptions(); }
   buildTimeline(!!snap);
   jsPsych.run(timeline);
