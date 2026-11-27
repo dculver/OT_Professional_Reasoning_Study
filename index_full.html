@@ -1080,7 +1080,7 @@ function entryHTML(e){
       <button class="rm" data-entry="${e.id}" aria-label="Remove entry">×</button>
     </div>
     <div class="exc">"${esc(trunc(e.excerpt,140))}"</div>
-    ${e.mechanism?`<div class="mech">${verb} <b>${esc(e.mechanism)}</b></div>`:''}
+    ${e.mechanism?`<div class="mech">${isBar?"In the way":"Enables"}: <b>${esc(e.mechanism)}</b></div>`:''}
   </div>`;
 }
 function renderPlan(){
@@ -3189,6 +3189,8 @@ function addBannerSubmit(){
     // plan-level prioritization/goal/immediate boxes, and -- for every barrier
     // the participant chose to address -- its approach, method, and grading.
     var p = state.plan || {}, missing = [];
+    if(!state.occupations.length)                    missing.push("Add at least one occupation.");
+    if(!(state.synthesis.desired_outcomes || []).length) missing.push("Add at least one desired outcome.");
     if(!(state.synthesis.impression || "").trim()) missing.push("Write a clinical impression.");
     if(!(p.prioritization || "").trim())            missing.push("Complete the prioritization box.");
     if(!(p.goal || "").trim())                       missing.push("Complete the long-term goal box.");

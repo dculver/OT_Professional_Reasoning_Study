@@ -1022,6 +1022,9 @@ head = head + ('  <style>\n'
   '  .occ-msg{flex:1 1 100%;font-size:12.5px;color:#9a3412;font-weight:600;margin-top:4px}\n'
   '  .maxc{flex:1 1 100%;font-size:11.5px;margin-top:3px;text-align:right}\n'
   '  </style>\n')
+# ---- PENDING DECISION (prepared 2026-11-27, not merged): plain barrier/support wording ----
+partB = _rm(partB, '${e.mechanism?`<div class="mech">${verb} <b>${esc(e.mechanism)}</b></div>`:\'\'}',
+  '${e.mechanism?`<div class="mech">${isBar?"In the way":"Enables"}: <b>${esc(e.mechanism)}</b></div>`:\'\'}')
 print("stress-test fixes: popup de-dupe, whole-word excerpts, occupation messages + remove confirm, a11y name, impression stamp, practice checklist room")
 
 # ---------- duplicate top-level identifier check A vs B ----------

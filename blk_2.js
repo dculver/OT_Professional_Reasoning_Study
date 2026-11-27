@@ -518,7 +518,7 @@ function entryHTML(e){
       <button class="rm" data-entry="${e.id}" aria-label="Remove entry">×</button>
     </div>
     <div class="exc">"${esc(trunc(e.excerpt,140))}"</div>
-    ${e.mechanism?`<div class="mech">${verb} <b>${esc(e.mechanism)}</b></div>`:''}
+    ${e.mechanism?`<div class="mech">${isBar?"In the way":"Enables"}: <b>${esc(e.mechanism)}</b></div>`:''}
   </div>`;
 }
 function renderPlan(){

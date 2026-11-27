@@ -1481,6 +1481,8 @@ function addBannerSubmit(){
     // plan-level prioritization/goal/immediate boxes, and -- for every barrier
     // the participant chose to address -- its approach, method, and grading.
     var p = state.plan || {}, missing = [];
+    if(!state.occupations.length)                    missing.push("Add at least one occupation.");
+    if(!(state.synthesis.desired_outcomes || []).length) missing.push("Add at least one desired outcome.");
     if(!(state.synthesis.impression || "").trim()) missing.push("Write a clinical impression.");
     if(!(p.prioritization || "").trim())            missing.push("Complete the prioritization box.");
     if(!(p.goal || "").trim())                       missing.push("Complete the long-term goal box.");
